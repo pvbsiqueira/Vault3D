@@ -6,9 +6,9 @@ import { parseSTL } from './stl-parser.js';
 // Estado global da aplicação
 const state = {
   models: [],
+  folders: [], // Array de { id, name, handle, count }
   activeFilter: 'all',
   searchQuery: '',
-  activeFolderName: '',
   modalScene: null,
   modalCamera: null,
   modalRenderer: null,
@@ -38,7 +38,8 @@ const allSectionHeader = document.getElementById('allSectionHeader');
 const allCountBadge = document.getElementById('allCountBadge');
 const modelsGrid = document.getElementById('modelsGrid');
 const subToolbar = document.getElementById('subToolbar');
-const currentFolderPath = document.getElementById('currentFolderPath');
+const foldersChipsList = document.getElementById('foldersChipsList');
+const btnAddFolderChip = document.getElementById('btnAddFolderChip');
 const fileCountBadge = document.getElementById('fileCountBadge');
 const searchInput = document.getElementById('searchInput');
 const filterBtns = document.querySelectorAll('.pill-btn');
@@ -70,6 +71,9 @@ const platesList = document.getElementById('platesList');
 function init() {
   btnSelectFolder.addEventListener('click', handleChooseFolder);
   btnEmptySelectFolder.addEventListener('click', handleChooseFolder);
+  if (btnAddFolderChip) {
+    btnAddFolderChip.addEventListener('click', handleChooseFolder);
+  }
   folderInputFallback.addEventListener('change', handleFallbackFileSelect);
   btnLoadSample.addEventListener('click', loadSampleModels);
 
@@ -132,9 +136,12 @@ async function handleChooseFolder() {
   if ('showDirectoryPicker' in window) {
     try {
       const dirHandle = await window.showDirectoryPicker({ mode: 'read' });
-      state.activeFolderName = dirHandle.name;
+      if (state.folders.some(f => f.name === dirHandle.name)) {
+        showToast(`A pasta "${dirHandle.name}" já está na biblioteca.`, 'warning');
+        return;
+      }
       const files = await scanDirectoryHandle(dirHandle);
-      processFoundFiles(files, dirHandle.name);
+      addFilesToLibrary(files, dirHandle.name, dirHandle);
     } catch (err) {
       if (err.name !== 'AbortError') {
         console.warn('Erro ao abrir pasta com showDirectoryPicker, tentando fallback:', err);
@@ -197,7 +204,13 @@ function handleFallbackFileSelect(e) {
     }));
 
   const rootName = fileList[0]?.webkitRelativePath?.split('/')[0] || 'Pasta Selecionada';
-  processFoundFiles(validFiles, rootName);
+  if (state.folders.some(f => f.name === rootName)) {
+    showToast(`A pasta "${rootName}" já está na biblioteca.`, 'warning');
+    e.target.value = '';
+    return;
+  }
+  addFilesToLibrary(validFiles, rootName);
+  e.target.value = '';
 }
 
 /**
@@ -251,7 +264,11 @@ function setupDragAndDrop() {
     }
 
     if (files.length > 0) {
-      processFoundFiles(files, rootName);
+      if (state.folders.some(f => f.name === rootName)) {
+        showToast(`A pasta "${rootName}" já está na biblioteca.`, 'warning');
+        return;
+      }
+      addFilesToLibrary(files, rootName);
     }
   });
 }
@@ -306,7 +323,12 @@ async function loadSampleModels() {
       });
     }
 
-    processFoundFiles(loadedFiles, 'Modelos de Exemplo (sample_models)');
+    const sampleFolderName = 'Modelos de Exemplo (sample_models)';
+    if (state.folders.some(f => f.name === sampleFolderName)) {
+      showToast(`A pasta de exemplos já está na biblioteca.`, 'info');
+      return;
+    }
+    addFilesToLibrary(loadedFiles, sampleFolderName);
   } catch (err) {
     alert('Erro ao carregar arquivos de exemplo: ' + err.message);
   } finally {
@@ -409,19 +431,21 @@ function toggleFavorite(model) {
 }
 
 /**
- * Processa e indexa a lista de arquivos encontrados
+ * Adiciona uma pasta e seus arquivos 3D à biblioteca existente (suporte a múltiplas pastas)
  */
-function processFoundFiles(files, folderName) {
-  if (files.length === 0) {
-    alert('Nenhum arquivo 3D (.STL ou .3MF) foi encontrado na pasta selecionada.');
+function addFilesToLibrary(files, folderName, dirHandle = null) {
+  if (!files || files.length === 0) {
+    showToast(`Nenhum arquivo 3D (.STL ou .3MF) foi encontrado em "${folderName}".`, 'warning');
     return;
   }
 
+  const folderId = 'folder-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5);
   const savedFavs = loadFavorites();
 
-  state.activeFolderName = folderName;
-  state.models = files.map((item, index) => ({
-    id: `model-${index}-${Date.now()}`,
+  const newModels = files.map((item, index) => ({
+    id: `model-${folderId}-${index}-${Date.now()}`,
+    folderId,
+    folderName,
     file: item.file,
     name: item.name,
     size: item.size,
@@ -437,24 +461,115 @@ function processFoundFiles(files, folderName) {
     loadingThumbnail: false
   }));
 
-  // Ordenar alfabeticamente com kanjis e alfabetos asiáticos no final
+  // Registrar a pasta no estado
+  state.folders.push({
+    id: folderId,
+    name: folderName,
+    handle: dirHandle,
+    count: newModels.length
+  });
+
+  // Acrescentar modelos ao acervo global
+  state.models.push(...newModels);
+
+  // Ordenar todos os modelos alfabeticamente (A-Z ocidentais primeiro, Kanjis/CJK ao final)
   state.models.sort((a, b) => compareModelNames(a.name, b.name));
 
-  // Atualizar visualização
+  // Atualizar visualização para exibir a galeria
   dropZone.style.display = 'none';
   galleryContainer.style.display = 'block';
   subToolbar.style.display = 'flex';
-  currentFolderPath.textContent = state.activeFolderName;
-  updateStatsBadge();
 
+  renderFolderChips();
+  updateStatsBadge();
   renderGallery();
   processThumbnailQueue();
+
+  showToast(`Pasta "${folderName}" adicionada com ${newModels.length} modelo(s)!`, 'success');
+}
+
+/**
+ * Remove uma pasta específica e todos os seus modelos associados da biblioteca
+ */
+function removeFolder(folderId) {
+  const folderIndex = state.folders.findIndex(f => f.id === folderId);
+  if (folderIndex === -1) return;
+
+  const folderName = state.folders[folderIndex].name;
+
+  // Revogar URLs de miniaturas criadas para os modelos dessa pasta
+  const modelsToRemove = state.models.filter(m => m.folderId === folderId);
+  modelsToRemove.forEach(m => {
+    if (m.thumbnailUrl && m.thumbnailUrl.startsWith('blob:')) {
+      URL.revokeObjectURL(m.thumbnailUrl);
+    }
+  });
+
+  // Remover pasta e modelos do estado
+  state.folders.splice(folderIndex, 1);
+  state.models = state.models.filter(m => m.folderId !== folderId);
+
+  // Se o modelo ativo no modal pertencia a essa pasta, fechar modal
+  if (state.activeModel && state.activeModel.folderId === folderId) {
+    closeViewerModal();
+  }
+
+  showToast(`Pasta "${folderName}" removida da biblioteca.`);
+
+  // Se não houver mais pastas conectadas, volta para a tela inicial vazia
+  if (state.folders.length === 0) {
+    dropZone.style.display = 'block';
+    galleryContainer.style.display = 'none';
+    subToolbar.style.display = 'none';
+    favoritesGrid.innerHTML = '';
+    modelsGrid.innerHTML = '';
+    if (foldersChipsList) foldersChipsList.innerHTML = '';
+    return;
+  }
+
+  renderFolderChips();
+  updateStatsBadge();
+  renderGallery();
+}
+
+/**
+ * Renderiza os chips de pastas conectadas no sub-toolbar
+ */
+function renderFolderChips() {
+  if (!foldersChipsList) return;
+  foldersChipsList.innerHTML = '';
+
+  state.folders.forEach(folder => {
+    const chip = document.createElement('div');
+    chip.className = 'folder-chip';
+    chip.title = `${folder.name} (${folder.count} arquivos)`;
+
+    chip.innerHTML = `
+      <span class="folder-chip-icon">📁</span>
+      <span class="folder-chip-name">${escapeHtml(folder.name)}</span>
+      <span class="folder-chip-count">(${folder.count})</span>
+      <button class="btn-remove-folder" title="Remover pasta '${escapeHtml(folder.name)}' da biblioteca" aria-label="Remover pasta">
+        &times;
+      </button>
+    `;
+
+    const btnRemove = chip.querySelector('.btn-remove-folder');
+    btnRemove.addEventListener('click', (e) => {
+      e.stopPropagation();
+      removeFolder(folder.id);
+    });
+
+    foldersChipsList.appendChild(chip);
+  });
 }
 
 function updateStatsBadge() {
+  if (!fileCountBadge) return;
   const stlCount = state.models.filter(m => m.type === 'stl').length;
   const tmfCount = state.models.filter(m => m.type === '3mf').length;
-  fileCountBadge.textContent = `(${state.models.length} modelos: ${stlCount} STL, ${tmfCount} 3MF)`;
+  const foldersCount = state.folders.length;
+  const folderText = foldersCount === 1 ? '1 pasta' : `${foldersCount} pastas`;
+  fileCountBadge.textContent = `(${state.models.length} modelos em ${folderText}: ${stlCount} STL, ${tmfCount} 3MF)`;
 }
 
 /**

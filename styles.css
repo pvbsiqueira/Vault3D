@@ -180,7 +180,7 @@ body {
   border-color: #3b82f6;
 }
 
-/* Sub-toolbar / Path & Filter Stats */
+/* Sub-toolbar / Multi-Folder Manager & Filters */
 .sub-toolbar {
   max-width: 1440px;
   margin: 1.25rem auto 0;
@@ -193,26 +193,118 @@ body {
   gap: 1rem;
 }
 
-.folder-path-display {
+.folders-manager {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 0.5rem;
-  font-size: 0.85rem;
-  color: var(--text-secondary);
+  flex: 1;
+  min-width: 280px;
+}
+
+.folders-chips-list {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.folder-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
   background: #111827;
-  padding: 0.45rem 0.85rem;
-  border-radius: var(--radius-sm);
   border: 1px solid var(--border-color);
-  max-width: 600px;
+  padding: 0.35rem 0.65rem 0.35rem 0.75rem;
+  border-radius: var(--radius-md);
+  font-size: 0.82rem;
+  color: var(--text-primary);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.25);
+  transition: border-color 0.2s, background-color 0.2s;
+  max-width: 260px;
+}
+
+.folder-chip:hover {
+  border-color: rgba(56, 189, 248, 0.4);
+  background: #162032;
+}
+
+.folder-chip-icon {
+  font-size: 0.95rem;
+  flex-shrink: 0;
+}
+
+.folder-chip-name {
+  font-weight: 600;
+  color: #38bdf8;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.folder-path-display span.path-name {
-  color: #38bdf8;
-  font-family: monospace;
+.folder-chip-count {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.07);
+  padding: 1px 5px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.btn-remove-folder {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 2px;
+  transition: color 0.15s, background-color 0.15s, transform 0.1s;
+  flex-shrink: 0;
+}
+
+.btn-remove-folder:hover {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.15);
+  transform: scale(1.15);
+}
+
+.btn-add-folder-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: rgba(59, 130, 246, 0.1);
+  border: 1px dashed rgba(59, 130, 246, 0.4);
+  color: #60a5fa;
+  font-size: 0.78rem;
   font-weight: 600;
+  padding: 0.35rem 0.75rem;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-add-folder-chip:hover {
+  background: rgba(59, 130, 246, 0.2);
+  border-color: #60a5fa;
+  color: #93c5fd;
+  transform: translateY(-1px);
+}
+
+.sub-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+}
+
+.file-count-badge {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-weight: 500;
 }
 
 .filter-pills {

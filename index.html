@@ -39,12 +39,12 @@
           <input type="text" id="searchInput" class="search-input" placeholder="Buscar modelo por nome...">
         </div>
 
-        <!-- Botão principal de seleção de pasta -->
-        <button id="btnSelectFolder" class="btn btn-primary" title="Abrir pasta local com arquivos 3D">
+        <!-- Botão principal de adicionar pasta -->
+        <button id="btnSelectFolder" class="btn btn-primary" title="Adicionar pasta local à biblioteca 3D">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
           </svg>
-          <span>Selecionar Pasta</span>
+          <span>Adicionar Pasta</span>
         </button>
 
         <!-- Input invisível de fallback para navegadores legados -->
@@ -53,19 +53,27 @@
     </div>
   </header>
 
-  <!-- Sub-barra com caminho ativo e filtros -->
+  <!-- Sub-barra com gerenciador de pastas e filtros -->
   <div class="sub-toolbar" id="subToolbar" style="display: none;">
-    <div class="folder-path-display">
-      <span>Pasta:</span>
-      <span class="path-name" id="currentFolderPath">Nenhuma pasta carregada</span>
-      <span id="fileCountBadge" style="color: var(--text-muted); font-size: 0.8rem; margin-left: 6px;">(0 arquivos)</span>
+    <div class="folders-manager">
+      <div class="folders-chips-list" id="foldersChipsList"></div>
+      <button class="btn-add-folder-chip" id="btnAddFolderChip" title="Adicionar outra pasta à biblioteca">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="12" y1="5" x2="12" y2="19"></line>
+          <line x1="5" y1="12" x2="19" y2="12"></line>
+        </svg>
+        <span>Adicionar Pasta</span>
+      </button>
     </div>
 
-    <!-- Filtro de tipos -->
-    <div class="filter-pills">
-      <button class="pill-btn active" data-filter="all">Todos</button>
-      <button class="pill-btn" data-filter="stl">.STL</button>
-      <button class="pill-btn" data-filter="3mf">.3MF</button>
+    <div class="sub-toolbar-right">
+      <span id="fileCountBadge" class="file-count-badge">(0 arquivos)</span>
+      <!-- Filtro de tipos -->
+      <div class="filter-pills">
+        <button class="pill-btn active" data-filter="all">Todos</button>
+        <button class="pill-btn" data-filter="stl">.STL</button>
+        <button class="pill-btn" data-filter="3mf">.3MF</button>
+      </div>
     </div>
   </div>
 
