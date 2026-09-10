@@ -73,6 +73,9 @@
         <button class="pill-btn active" data-filter="all">Todos</button>
         <button class="pill-btn" data-filter="stl">.STL</button>
         <button class="pill-btn" data-filter="3mf">.3MF</button>
+        <button class="pill-btn pill-btn-duplicates" id="btnFilterDuplicates" data-filter="duplicates" style="display: none;">
+          ⚠️ Duplicados (<span id="duplicatesCountBadge">0</span>)
+        </button>
       </div>
     </div>
   </div>
@@ -140,6 +143,7 @@
         <div class="modal-title-wrap">
           <span class="badge-format" id="modalBadge">STL</span>
           <h3 class="modal-title" id="modalFileName">Nome do Modelo.stl</h3>
+          <span class="modal-duplicate-badge" id="modalDuplicateBadge" style="display: none;">⚠️ Cópia Duplicada</span>
         </div>
         <button class="modal-close-btn" id="modalCloseBtn" title="Fechar visualizador (Esc)">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">

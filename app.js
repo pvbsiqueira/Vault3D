@@ -41,6 +41,8 @@ const subToolbar = document.getElementById('subToolbar');
 const foldersChipsList = document.getElementById('foldersChipsList');
 const btnAddFolderChip = document.getElementById('btnAddFolderChip');
 const fileCountBadge = document.getElementById('fileCountBadge');
+const btnFilterDuplicates = document.getElementById('btnFilterDuplicates');
+const duplicatesCountBadge = document.getElementById('duplicatesCountBadge');
 const searchInput = document.getElementById('searchInput');
 const filterBtns = document.querySelectorAll('.pill-btn');
 
@@ -49,6 +51,7 @@ const viewerModal = document.getElementById('viewerModal');
 const modalCloseBtn = document.getElementById('modalCloseBtn');
 const modalFileName = document.getElementById('modalFileName');
 const modalBadge = document.getElementById('modalBadge');
+const modalDuplicateBadge = document.getElementById('modalDuplicateBadge');
 const modalCanvas = document.getElementById('modalCanvas');
 const btnResetView = document.getElementById('btnResetView');
 const btnToggleRotate = document.getElementById('btnToggleRotate');
@@ -431,9 +434,119 @@ function toggleFavorite(model) {
 }
 
 /**
+ * Gera uma impressão digital única (fingerprint SHA-256) do arquivo.
+ * Para arquivos pequenos (<= 2MB), processa o buffer completo.
+ * Para arquivos grandes (> 2MB), usa amostragem ultra-rápida: tamanho + 64KB início + 64KB meio + 64KB fim.
+ */
+async function computeFileFingerprint(file) {
+  if (!file) return null;
+  try {
+    const CHUNK_SIZE = 64 * 1024; // 64 KB
+    let bufferToHash;
+
+    if (file.size <= 2 * 1024 * 1024) {
+      bufferToHash = await file.arrayBuffer();
+    } else {
+      const slice1 = file.slice(0, CHUNK_SIZE);
+      const mid = Math.floor(file.size / 2);
+      const slice2 = file.slice(mid, mid + CHUNK_SIZE);
+      const slice3 = file.slice(file.size - CHUNK_SIZE, file.size);
+
+      const [buf1, buf2, buf3] = await Promise.all([
+        slice1.arrayBuffer(),
+        slice2.arrayBuffer(),
+        slice3.arrayBuffer()
+      ]);
+
+      const sizeBuf = new ArrayBuffer(8);
+      new DataView(sizeBuf).setBigUint64(0, BigInt(file.size), false);
+
+      const totalLen = 8 + buf1.byteLength + buf2.byteLength + buf3.byteLength;
+      const combined = new Uint8Array(totalLen);
+      combined.set(new Uint8Array(sizeBuf), 0);
+      combined.set(new Uint8Array(buf1), 8);
+      combined.set(new Uint8Array(buf2), 8 + buf1.byteLength);
+      combined.set(new Uint8Array(buf3), 8 + buf1.byteLength + buf2.byteLength);
+
+      bufferToHash = combined.buffer;
+    }
+
+    const hashBuffer = await crypto.subtle.digest('SHA-256', bufferToHash);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  } catch (err) {
+    console.warn('Erro ao calcular fingerprint do arquivo:', file.name, err);
+    return `fallback-${file.size}-${file.name}`;
+  }
+}
+
+/**
+ * Atualiza o status de arquivos duplicados em toda a coleção
+ */
+async function updateDuplicatesState() {
+  const hashMap = new Map();
+
+  // 1. Garantir que todos os modelos tenham seu fingerprint calculado
+  for (const model of state.models) {
+    if (!model.fingerprint && model.file) {
+      model.fingerprint = await computeFileFingerprint(model.file);
+    }
+    if (model.fingerprint) {
+      if (!hashMap.has(model.fingerprint)) {
+        hashMap.set(model.fingerprint, []);
+      }
+      hashMap.get(model.fingerprint).push(model);
+    }
+  }
+
+  // 2. Marcar quais modelos são cópias duplicadas
+  let totalDuplicatesCount = 0;
+  for (const model of state.models) {
+    const list = model.fingerprint ? hashMap.get(model.fingerprint) : [];
+    if (list && list.length > 1) {
+      model.isDuplicate = true;
+      const others = list.filter(m => m.id !== model.id);
+      model.duplicatesCount = others.length;
+      model.duplicateOrigins = others.map(m => `${m.folderName} / ${m.name}`).join(', ');
+      totalDuplicatesCount++;
+    } else {
+      model.isDuplicate = false;
+      model.duplicatesCount = 0;
+      model.duplicateOrigins = '';
+    }
+  }
+
+  // 3. Atualizar botão do filtro de duplicados na barra de ferramentas
+  updateDuplicatesFilterButton(totalDuplicatesCount);
+
+  // 4. Re-renderizar galeria para refletir selos e filtros
+  renderGallery();
+}
+
+/**
+ * Atualiza a visibilidade e o contador da pílula de duplicados no toolbar
+ */
+function updateDuplicatesFilterButton(duplicatesCount) {
+  if (!btnFilterDuplicates || !duplicatesCountBadge) return;
+
+  if (duplicatesCount > 0) {
+    btnFilterDuplicates.style.display = 'inline-flex';
+    duplicatesCountBadge.textContent = duplicatesCount;
+  } else {
+    btnFilterDuplicates.style.display = 'none';
+    if (state.activeFilter === 'duplicates') {
+      state.activeFilter = 'all';
+      filterBtns.forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.filter === 'all');
+      });
+    }
+  }
+}
+
+/**
  * Adiciona uma pasta e seus arquivos 3D à biblioteca existente (suporte a múltiplas pastas)
  */
-function addFilesToLibrary(files, folderName, dirHandle = null) {
+async function addFilesToLibrary(files, folderName, dirHandle = null) {
   if (!files || files.length === 0) {
     showToast(`Nenhum arquivo 3D (.STL ou .3MF) foi encontrado em "${folderName}".`, 'warning');
     return;
@@ -458,7 +571,11 @@ function addFilesToLibrary(files, folderName, dirHandle = null) {
     metadata: null,
     slicerData: null,
     plates: [],
-    loadingThumbnail: false
+    loadingThumbnail: false,
+    fingerprint: null,
+    isDuplicate: false,
+    duplicatesCount: 0,
+    duplicateOrigins: ''
   }));
 
   // Registrar a pasta no estado
@@ -484,6 +601,9 @@ function addFilesToLibrary(files, folderName, dirHandle = null) {
   updateStatsBadge();
   renderGallery();
   processThumbnailQueue();
+
+  // Calcular impressões digitais e detectar duplicatas em background
+  updateDuplicatesState();
 
   showToast(`Pasta "${folderName}" adicionada com ${newModels.length} modelo(s)!`, 'success');
 }
@@ -524,12 +644,14 @@ function removeFolder(folderId) {
     favoritesGrid.innerHTML = '';
     modelsGrid.innerHTML = '';
     if (foldersChipsList) foldersChipsList.innerHTML = '';
+    updateDuplicatesFilterButton(0);
     return;
   }
 
   renderFolderChips();
   updateStatsBadge();
   renderGallery();
+  updateDuplicatesState();
 }
 
 /**
@@ -760,6 +882,11 @@ function createModelCard(model) {
     <div class="card-thumbnail-wrapper">
       <span class="badge-format ${badgeClass}">.${model.type.toUpperCase()}</span>
       ${isSliced ? `<span class="badge-sliced-card">Fatiado</span>` : ''}
+      ${model.isDuplicate ? `
+        <span class="badge-duplicate" title="Arquivo idêntico encontrado em: ${escapeHtml(model.duplicateOrigins)}">
+          ⚠️ Duplicado
+        </span>
+      ` : ''}
       <button class="btn-favorite ${model.isFavorite ? 'active' : ''}" title="${model.isFavorite ? 'Remover dos favoritos' : 'Favoritar modelo'}" aria-label="Favoritar modelo" type="button">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="${model.isFavorite ? '#fbbf24' : 'none'}" stroke="${model.isFavorite ? '#fbbf24' : 'currentColor'}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
@@ -805,6 +932,12 @@ function createModelCard(model) {
           <span class="card-dimensions">${Math.round(model.metadata.dimensions.x)}×${Math.round(model.metadata.dimensions.y)}×${Math.round(model.metadata.dimensions.z)} mm</span>
         ` : ''}
       </div>
+      ${model.isDuplicate ? `
+        <div class="card-duplicate-info" title="Cópia de: ${escapeHtml(model.duplicateOrigins)}">
+          <span class="card-duplicate-icon">⚠️</span>
+          <span>Cópia de: <strong>${escapeHtml(model.duplicateOrigins)}</strong></span>
+        </div>
+      ` : ''}
     </div>
   `;
 
@@ -956,8 +1089,10 @@ function createModelCard(model) {
 function renderGallery() {
   const filtered = state.models
     .filter(model => {
-      // Filtro por tipo
-      if (state.activeFilter !== 'all' && model.type !== state.activeFilter) {
+      // Filtro por tipo ou duplicatas
+      if (state.activeFilter === 'duplicates') {
+        if (!model.isDuplicate) return false;
+      } else if (state.activeFilter !== 'all' && model.type !== state.activeFilter) {
         return false;
       }
       // Filtro por nome
@@ -1232,6 +1367,16 @@ async function openViewerModal(model) {
   modalFileName.textContent = model.name;
   modalBadge.textContent = model.type.toUpperCase();
   modalBadge.className = `badge-format ${model.type}`;
+
+  if (modalDuplicateBadge) {
+    if (model.isDuplicate) {
+      modalDuplicateBadge.style.display = 'inline-flex';
+      modalDuplicateBadge.title = `Arquivo idêntico encontrado em: ${model.duplicateOrigins}`;
+      modalDuplicateBadge.textContent = `⚠️ Cópia Duplicada (${model.duplicatesCount})`;
+    } else {
+      modalDuplicateBadge.style.display = 'none';
+    }
+  }
 
   // Resetar valores enquanto carrega
   modalPlateImg.src = '';
