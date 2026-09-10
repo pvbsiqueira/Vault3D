@@ -1,0 +1,44 @@
+solid piramide_teste
+  facet normal 0 0 -1
+    outer loop
+      vertex 0 0 0
+      vertex 30 30 0
+      vertex 30 0 0
+    endloop
+  endfacet
+  facet normal 0 0 -1
+    outer loop
+      vertex 0 0 0
+      vertex 0 30 0
+      vertex 30 30 0
+    endloop
+  endfacet
+  facet normal 0 -0.8944 0.4472
+    outer loop
+      vertex 0 0 0
+      vertex 30 0 0
+      vertex 15 15 25
+    endloop
+  endfacet
+  facet normal 0.8944 0 0.4472
+    outer loop
+      vertex 30 0 0
+      vertex 30 30 0
+      vertex 15 15 25
+    endloop
+  endfacet
+  facet normal 0 0.8944 0.4472
+    outer loop
+      vertex 30 30 0
+      vertex 0 30 0
+      vertex 15 15 25
+    endloop
+  endfacet
+  facet normal -0.8944 0 0.4472
+    outer loop
+      vertex 0 30 0
+      vertex 0 0 0
+      vertex 15 15 25
+    endloop
+  endfacet
+endsolid piramide_teste

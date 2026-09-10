@@ -1,0 +1,18 @@
+﻿# Sistema Operacional
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.BIN/
+.DS_Store
+
+# IDEs
+.vscode/
+.idea/
+*.suo
+*.user
+
+# Logs e temporarios
+*.log
+*.tmp
+*.bak
+scratch/

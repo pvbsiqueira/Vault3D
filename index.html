@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>3D Print Library - Visualizador & Organizador STL e 3MF</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220%22%20viewBox=%220%200%20100%20100%22><text y=%22.9em%22 font-size=%2290%22>📦</text></svg>">
+</head>
+<body>
+
+  <!-- Barra Superior -->
+  <header class="app-header">
+    <div class="header-container">
+      <div class="brand">
+        <div class="brand-icon">
+          <!-- Ícone Cubo 3D Estilizado -->
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+            <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+            <line x1="12" y1="22.08" x2="12" y2="12"></line>
+          </svg>
+        </div>
+        <div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span class="brand-title">3D Print Library</span>
+            <span class="brand-badge">Local</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <!-- Campo de busca por nome -->
+        <div class="search-box">
+          <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          <input type="text" id="searchInput" class="search-input" placeholder="Buscar modelo por nome...">
+        </div>
+
+        <!-- Botão principal de seleção de pasta -->
+        <button id="btnSelectFolder" class="btn btn-primary" title="Abrir pasta local com arquivos 3D">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+          </svg>
+          <span>Selecionar Pasta</span>
+        </button>
+
+        <!-- Input invisível de fallback para navegadores legados -->
+        <input type="file" id="folderInputFallback" webkitdirectory directory multiple style="display: none;">
+      </div>
+    </div>
+  </header>
+
+  <!-- Sub-barra com caminho ativo e filtros -->
+  <div class="sub-toolbar" id="subToolbar" style="display: none;">
+    <div class="folder-path-display">
+      <span>Pasta:</span>
+      <span class="path-name" id="currentFolderPath">Nenhuma pasta carregada</span>
+      <span id="fileCountBadge" style="color: var(--text-muted); font-size: 0.8rem; margin-left: 6px;">(0 arquivos)</span>
+    </div>
+
+    <!-- Filtro de tipos -->
+    <div class="filter-pills">
+      <button class="pill-btn active" data-filter="all">Todos</button>
+      <button class="pill-btn" data-filter="stl">.STL</button>
+      <button class="pill-btn" data-filter="3mf">.3MF</button>
+    </div>
+  </div>
+
+  <!-- Conteúdo Principal -->
+  <main class="main-content">
+    
+    <!-- Estado Vazio / Dropzone Inicial -->
+    <div class="empty-state" id="dropZone">
+      <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+        <path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"></path>
+        <path d="M12 12v9"></path>
+        <path d="m8 16 4-4 4 4"></path>
+      </svg>
+      <h2 class="empty-title">Nenhum arquivo 3D carregado</h2>
+      <p class="empty-desc">
+        Selecione ou arraste para cá a pasta do seu computador onde estão seus arquivos <strong>.STL</strong> e <strong>.3MF</strong> para visualizar todas as miniaturas instantaneamente.
+      </p>
+      <div class="empty-actions">
+        <button id="btnEmptySelectFolder" class="btn btn-primary">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+          </svg>
+          Escolher Pasta no Meu Computador
+        </button>
+        <button id="btnLoadSample" class="btn btn-secondary" title="Carrega modelos de teste prontos na pasta do projeto">
+          ✨ Testar com Modelos de Exemplo
+        </button>
+      </div>
+    </div>
+
+    <!-- Área de Conteúdo da Galeria -->
+    <div id="galleryContainer" style="display: none;">
+      <!-- Seção Favoritos (exibida quando há itens favoritados) -->
+      <section id="favoritesSection" class="gallery-section" style="display: none;">
+        <div class="section-header">
+          <div class="section-header-left">
+            <span class="section-icon">⭐</span>
+            <h2 class="section-title">Favoritos</h2>
+            <span class="section-badge" id="favoritesCountBadge">0</span>
+          </div>
+        </div>
+        <div class="models-grid" id="favoritesGrid"></div>
+      </section>
+
+      <!-- Seção Todos -->
+      <section id="allSection" class="gallery-section">
+        <div class="section-header" id="allSectionHeader" style="display: none;">
+          <div class="section-header-left">
+            <span class="section-icon">📁</span>
+            <h2 class="section-title">Todos</h2>
+            <span class="section-badge" id="allCountBadge">0</span>
+          </div>
+        </div>
+        <div class="models-grid" id="modelsGrid"></div>
+      </section>
+    </div>
+
+  </main>
+
+  <!-- Modal do Visualizador 3D Interativo -->
+  <div class="modal-overlay" id="viewerModal">
+    <div class="modal-container">
+      <div class="modal-header">
+        <div class="modal-title-wrap">
+          <span class="badge-format" id="modalBadge">STL</span>
+          <h3 class="modal-title" id="modalFileName">Nome do Modelo.stl</h3>
+        </div>
+        <button class="modal-close-btn" id="modalCloseBtn" title="Fechar visualizador (Esc)">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+
+      <div class="modal-content">
+        <!-- Canvas 3D e Vista da Mesa -->
+        <div class="canvas-container" id="canvasContainer">
+          <canvas id="modalCanvas" class="viewer-canvas"></canvas>
+          <img id="modalPlateImg" class="viewer-plate-image" style="display: none;" alt="Mesa de Impressão">
+
+          <!-- Botão Flutuante 'Visualizar 3D' sobre a imagem da mesa no lado esquerdo -->
+          <button class="btn-floating-view" id="btnOpen3DView" style="display: none;" title="Abrir visualização 3D da mesa selecionada">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+              <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+              <line x1="12" y1="22.08" x2="12" y2="12"></line>
+            </svg>
+            Visualizar 3D
+          </button>
+
+          <!-- Botão Flutuante para retornar à foto da mesa quando em modo 3D -->
+          <button class="btn-floating-view btn-back-plate" id="btnBackToPlate" style="display: none;" title="Voltar para a foto da mesa">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+              <circle cx="8.5" cy="8.5" r="1.5"></circle>
+              <polyline points="21 15 16 10 5 21"></polyline>
+            </svg>
+            Ver Foto da Mesa
+          </button>
+
+          <!-- Indicador de carregamento suave da malha 3D -->
+          <div class="viewer-loading-overlay" id="viewerLoadingOverlay" style="display: none;">
+            <div class="spinner"></div>
+            <span id="viewerLoadingText">Processando malha 3D...</span>
+          </div>
+
+          <!-- Barra de ferramentas rápida do visualizador -->
+          <div class="viewer-controls-bar" id="viewerControlsBar">
+            <button class="viewer-btn" id="btnResetView" title="Centralizar e resetar câmera">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
+              Centralizar
+            </button>
+            <button class="viewer-btn" id="btnToggleRotate" title="Pausar / Retomar rotação automática">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+              Auto-Giro
+            </button>
+            <button class="viewer-btn" id="btnToggleWireframe" title="Alternar modo Wireframe">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
+              Malha
+            </button>
+          </div>
+        </div>
+
+        <!-- Painel Lateral: Apenas Mesas de Impressão (Grade 3 por linha) -->
+        <div class="modal-sidebar" id="modalSidebar">
+          <div class="sidebar-section plates-section" id="platesSection">
+            <div class="slicer-header-badge">
+              <h4>Mesas de Impressão (<span id="platesCount">0</span>)</h4>
+              <span class="badge-status-sliced">Multimesa</span>
+            </div>
+            <div class="plates-grid" id="platesList"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Script principal da aplicação como módulo ES -->
+  <script type="module" src="app.js"></script>
+</body>
+</html>
