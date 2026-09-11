@@ -1129,7 +1129,7 @@ function createModelCard(model) {
   card.dataset.id = model.id;
 
   const formattedSize = formatBytes(model.size);
-  const badgeClass = model.type === 'stl' ? 'stl' : '3mf';
+  const badgeClass = model.type === 'stl' ? 'stl format-stl' : '3mf format-3mf';
   const isSliced = model.slicerData && model.slicerData.isSliced;
 
   const dotIdx = model.name.lastIndexOf('.');
@@ -1624,7 +1624,7 @@ async function openViewerModal(model) {
   state.isMeshLoaded = false;
   modalFileName.textContent = model.name;
   modalBadge.textContent = model.type.toUpperCase();
-  modalBadge.className = `badge-format ${model.type}`;
+  modalBadge.className = `badge-format ${model.type} format-${model.type}`;
 
   if (modalDuplicateBadge) {
     if (model.isDuplicate) {
