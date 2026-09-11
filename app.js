@@ -113,6 +113,15 @@ const modalSidebar = document.getElementById('modalSidebar');
 const platesSection = document.getElementById('platesSection');
 const platesCount = document.getElementById('platesCount');
 const platesList = document.getElementById('platesList');
+const modalPathFolder = document.getElementById('modalPathFolder');
+const modalPathName = document.getElementById('modalPathName');
+const modalSidebarInfo = document.getElementById('modalSidebarInfo');
+const modalInfoFormat = document.getElementById('modalInfoFormat');
+const modalInfoSize = document.getElementById('modalInfoSize');
+const modalInfoDimensions = document.getElementById('modalInfoDimensions');
+const modalInfoDimensionsWrap = document.getElementById('modalInfoDimensionsWrap');
+const modalInfoTriangles = document.getElementById('modalInfoTriangles');
+const modalInfoTrianglesWrap = document.getElementById('modalInfoTrianglesWrap');
 
 // Inicialização de Eventos
 function init() {
@@ -1356,7 +1365,11 @@ async function renameModelFile(model, newBaseName) {
 
   // Se o modal estiver aberto exibindo este mesmo modelo, atualizar o título do modal
   if (state.activeModel && state.activeModel.id === model.id) {
-    if (modalFileName) modalFileName.textContent = newFullName;
+    if (modalPathName) {
+      modalPathName.textContent = newFullName;
+    } else if (modalFileName) {
+      modalFileName.textContent = newFullName;
+    }
   }
 
   // Reordenar a lista global após renomear
@@ -2225,7 +2238,7 @@ function setViewerMode(mode) {
 function renderPlatesList(plates) {
   platesList.innerHTML = '';
   if (!plates || plates.length === 0) {
-    if (modalSidebar) modalSidebar.style.display = 'none';
+    if (platesSection) platesSection.style.display = 'none';
     return;
   }
 
@@ -2283,7 +2296,33 @@ async function openViewerModal(model) {
   viewerModal.classList.add('active');
   state.activeModel = model;
   state.isMeshLoaded = false;
-  modalFileName.textContent = model.name;
+
+  // Construir caminho completo da pasta e nome do arquivo
+  const folderPart = model.folderName || '';
+  let relPath = model.path || model.name;
+  let fullDisplayPath = '';
+  if (folderPart) {
+    if (relPath.startsWith(folderPart + '/') || relPath.startsWith(folderPart + '\\')) {
+      fullDisplayPath = relPath.replace(/\\/g, ' / ');
+    } else {
+      fullDisplayPath = `${folderPart} / ${relPath}`.replace(/\\/g, ' / ');
+    }
+  } else {
+    fullDisplayPath = relPath.replace(/\\/g, ' / ');
+  }
+
+  const lastSlashIdx = fullDisplayPath.lastIndexOf(' / ');
+  if (lastSlashIdx !== -1) {
+    const folders = fullDisplayPath.substring(0, lastSlashIdx + 3);
+    const fileName = fullDisplayPath.substring(lastSlashIdx + 3);
+    if (modalPathFolder) modalPathFolder.textContent = folders;
+    if (modalPathName) modalPathName.textContent = fileName;
+  } else {
+    if (modalPathFolder) modalPathFolder.textContent = '';
+    if (modalPathName) modalPathName.textContent = fullDisplayPath;
+  }
+  if (modalFileName) modalFileName.title = fullDisplayPath;
+
   modalBadge.textContent = model.type.toUpperCase();
   modalBadge.className = `badge-format ${model.type} format-${model.type}`;
 
@@ -2315,15 +2354,41 @@ async function openViewerModal(model) {
     }
   }
 
+  // O painel lateral direito (modalSidebar) permanece sempre ativo com o botão flutuante de fatiador
+  if (modalSidebar) modalSidebar.style.display = 'flex';
+
   // Se houver mesas de impressão no arquivo (Bambu / OrcaSlicer)
   if (model.plates && model.plates.length > 0) {
+    if (platesSection) platesSection.style.display = 'flex';
+    if (modalSidebarInfo) modalSidebarInfo.style.display = 'none';
     state.activePlateId = model.plates[0].id;
     renderPlatesList(model.plates);
     selectPlate(model.plates[0]);
     // Abre no modo foto da mesa com o botão flutuante 'Visualizar 3D'
     setViewerMode('plate');
   } else {
-    if (modalSidebar) modalSidebar.style.display = 'none';
+    if (platesSection) platesSection.style.display = 'none';
+    if (modalSidebarInfo) {
+      modalSidebarInfo.style.display = 'block';
+      if (modalInfoFormat) modalInfoFormat.textContent = `.${model.type.toUpperCase()}`;
+      if (modalInfoSize) modalInfoSize.textContent = formatBytes(model.size);
+      if (modalInfoDimensions) {
+        if (model.metadata?.dimensions) {
+          modalInfoDimensions.textContent = `${Math.round(model.metadata.dimensions.x)} × ${Math.round(model.metadata.dimensions.y)} × ${Math.round(model.metadata.dimensions.z)} mm`;
+          if (modalInfoDimensionsWrap) modalInfoDimensionsWrap.style.display = 'flex';
+        } else {
+          if (modalInfoDimensionsWrap) modalInfoDimensionsWrap.style.display = 'none';
+        }
+      }
+      if (modalInfoTriangles) {
+        if (model.metadata?.triangleCount) {
+          modalInfoTriangles.textContent = model.metadata.triangleCount.toLocaleString('pt-BR');
+          if (modalInfoTrianglesWrap) modalInfoTrianglesWrap.style.display = 'flex';
+        } else {
+          if (modalInfoTrianglesWrap) modalInfoTrianglesWrap.style.display = 'none';
+        }
+      }
+    }
     setViewerMode('3d');
   }
 }

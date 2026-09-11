@@ -272,25 +272,19 @@
       <div class="modal-header">
         <div class="modal-title-wrap">
           <span class="badge-format" id="modalBadge">STL</span>
-          <h3 class="modal-title" id="modalFileName">Nome do Modelo.stl</h3>
+          <div class="modal-title-path-wrap">
+            <h3 class="modal-title" id="modalFileName">
+              <span class="modal-path-folder" id="modalPathFolder"></span><span class="modal-path-name" id="modalPathName">Nome do Modelo.stl</span>
+            </h3>
+          </div>
           <span class="modal-duplicate-badge" id="modalDuplicateBadge" style="display: none;">⚠️ Cópia Duplicada</span>
         </div>
-        <div class="modal-header-actions">
-          <button class="btn-modal-slicer" id="btnModalOpenSlicer" title="Abrir este modelo no fatiador" type="button">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
-              <polyline points="2 17 12 22 22 17"></polyline>
-              <polyline points="2 12 12 17 22 12"></polyline>
-            </svg>
-            <span>Abrir no Fatiador</span>
-          </button>
-          <button class="modal-close-btn" id="modalCloseBtn" title="Fechar visualizador (Esc)">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="18" y1="6" x2="6" y2="18"></line>
-              <line x1="6" y1="6" x2="18" y2="18"></line>
-            </svg>
-          </button>
-        </div>
+        <button class="modal-close-btn" id="modalCloseBtn" title="Fechar visualizador (Esc)">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
       </div>
 
       <div class="modal-content">
@@ -342,14 +336,52 @@
           </div>
         </div>
 
-        <!-- Painel Lateral: Apenas Mesas de Impressão (Grade 3 por linha) -->
+        <!-- Painel Lateral: Mesas de Impressão e Botão Fatiador Fixo no Rodapé -->
         <div class="modal-sidebar" id="modalSidebar">
-          <div class="sidebar-section plates-section" id="platesSection">
-            <div class="slicer-header-badge">
-              <h4>Mesas de Impressão (<span id="platesCount">0</span>)</h4>
-              <span class="badge-status-sliced">Multimesa</span>
+          <div class="modal-sidebar-scroll" id="modalSidebarScroll">
+            <div class="sidebar-section plates-section" id="platesSection">
+              <div class="slicer-header-badge">
+                <h4>Mesas de Impressão (<span id="platesCount">0</span>)</h4>
+                <span class="badge-status-sliced">Multimesa</span>
+              </div>
+              <div class="plates-grid" id="platesList"></div>
             </div>
-            <div class="plates-grid" id="platesList"></div>
+            <div class="modal-sidebar-info" id="modalSidebarInfo" style="display: none;">
+              <div class="sidebar-section">
+                <div class="slicer-header-badge">
+                  <h4>Detalhes do Modelo</h4>
+                </div>
+                <div class="modal-info-list">
+                  <div class="info-item">
+                    <span class="info-label">Formato</span>
+                    <span class="info-val" id="modalInfoFormat">-</span>
+                  </div>
+                  <div class="info-item">
+                    <span class="info-label">Tamanho</span>
+                    <span class="info-val" id="modalInfoSize">-</span>
+                  </div>
+                  <div class="info-item" id="modalInfoDimensionsWrap">
+                    <span class="info-label">Dimensões</span>
+                    <span class="info-val" id="modalInfoDimensions">-</span>
+                  </div>
+                  <div class="info-item" id="modalInfoTrianglesWrap">
+                    <span class="info-label">Triângulos</span>
+                    <span class="info-val" id="modalInfoTriangles">-</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <!-- Rodapé Fixo e Flutuante com o Botão Abrir no Fatiador -->
+          <div class="modal-sidebar-footer" id="modalSidebarFooter">
+            <button class="btn-modal-slicer-footer" id="btnModalOpenSlicer" title="Abrir este modelo no fatiador" type="button">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
+                <polyline points="2 17 12 22 22 17"></polyline>
+                <polyline points="2 12 12 17 22 12"></polyline>
+              </svg>
+              <span>Abrir no fatiador</span>
+            </button>
           </div>
         </div>
       </div>
