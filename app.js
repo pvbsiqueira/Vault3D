@@ -93,6 +93,7 @@ const modelsGrid = document.getElementById('modelsGrid');
 // Modal DOM
 const viewerModal = document.getElementById('viewerModal');
 const modalCloseBtn = document.getElementById('modalCloseBtn');
+const btnModalOpenSlicer = document.getElementById('btnModalOpenSlicer');
 const modalFileName = document.getElementById('modalFileName');
 const modalBadge = document.getElementById('modalBadge');
 const modalDuplicateBadge = document.getElementById('modalDuplicateBadge');
@@ -207,6 +208,13 @@ function init() {
 
   // Modal Controls
   modalCloseBtn.addEventListener('click', closeViewerModal);
+  if (btnModalOpenSlicer) {
+    btnModalOpenSlicer.addEventListener('click', () => {
+      if (state.activeModel) {
+        openModelInSlicer(state.activeModel, btnModalOpenSlicer);
+      }
+    });
+  }
   viewerModal.addEventListener('click', (e) => {
     if (e.target === viewerModal) closeViewerModal();
   });
@@ -1359,6 +1367,78 @@ async function renameModelFile(model, newBaseName) {
 }
 
 /**
+ * Envia o modelo 3D para o servidor local abrir diretamente no fatiador instalado
+ */
+async function openModelInSlicer(model, buttonEl) {
+  if (!model) return;
+
+  const originalHtml = buttonEl ? buttonEl.innerHTML : '';
+  if (buttonEl) {
+    buttonEl.classList.add('loading');
+    buttonEl.disabled = true;
+    buttonEl.innerHTML = `
+      <div class="spinner-tiny"></div>
+      <span>Abrindo...</span>
+    `;
+  }
+
+  showToast(`Enviando "${model.name}" para o fatiador...`, 'info');
+
+  try {
+    let file = model.file;
+    if (!file && model.handle && typeof model.handle.getFile === 'function') {
+      try {
+        file = await model.handle.getFile();
+        model.file = file;
+      } catch (e) {
+        console.warn('Handle getFile falhou:', e);
+      }
+    }
+
+    // Se for modelo de exemplo ou URL remota, buscar blob
+    if (!file && model.url) {
+      try {
+        const resp = await fetch(model.url);
+        if (resp.ok) {
+          const blob = await resp.blob();
+          file = new File([blob], model.name, { type: 'application/octet-stream' });
+          model.file = file;
+        }
+      } catch (e) {
+        console.warn('Fetch model.url falhou:', e);
+      }
+    }
+
+    if (!file) {
+      throw new Error('Não foi possível obter os dados do arquivo para o fatiador.');
+    }
+
+    const res = await fetch(`/api/open-slicer?filename=${encodeURIComponent(model.name)}`, {
+      method: 'POST',
+      body: file
+    });
+
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.error || `Servidor retornou erro ${res.status}`);
+    }
+
+    const data = await res.json();
+    const slicerName = data.slicer || 'fatiador';
+    showToast(`"${model.name}" aberto com sucesso no ${slicerName}!`, 'success');
+  } catch (err) {
+    console.error('Erro ao abrir no fatiador:', err);
+    showToast(`Não foi possível abrir no fatiador: ${err.message}`, 'error');
+  } finally {
+    if (buttonEl) {
+      buttonEl.classList.remove('loading');
+      buttonEl.disabled = false;
+      buttonEl.innerHTML = originalHtml;
+    }
+  }
+}
+
+/**
  * Cria e configura um elemento de card para um modelo 3D
  */
 function createModelCard(model) {
@@ -1434,8 +1514,27 @@ function createModelCard(model) {
           <span>Cópia de: <strong>${escapeHtml(model.duplicateOrigins)}</strong></span>
         </div>
       ` : ''}
+      <div class="card-footer-actions">
+        <button class="btn-open-slicer" title="Abrir no fatiador" type="button">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
+            <polyline points="2 17 12 22 22 17"></polyline>
+            <polyline points="2 12 12 17 22 12"></polyline>
+          </svg>
+          <span>Abrir no fatiador</span>
+        </button>
+      </div>
     </div>
   `;
+
+  // Evento de Abrir no Fatiador
+  const btnOpenSlicer = card.querySelector('.btn-open-slicer');
+  if (btnOpenSlicer) {
+    btnOpenSlicer.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openModelInSlicer(model, btnOpenSlicer);
+    });
+  }
 
   // Evento de Favoritar
   const btnFav = card.querySelector('.btn-favorite');
@@ -2457,3 +2556,4 @@ window.saveCachedThumbnail = saveCachedThumbnail;
 window.clearThumbnailCache = clearThumbnailCache;
 window.openFoldersDB = openFoldersDB;
 window.loadModelOnDemand = loadModelOnDemand;
+window.openModelInSlicer = openModelInSlicer;
