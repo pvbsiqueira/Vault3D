@@ -695,11 +695,12 @@ function updateDuplicatesFilterButton(duplicatesCount) {
 }
 
 // ==========================================
-// Persistência de Pastas com IndexedDB
+// Persistência de Pastas e Cache de Thumbnails com IndexedDB
 // ==========================================
 const DB_NAME = 'antigravity_3d_db';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE_FOLDERS = 'folders';
+const STORE_THUMBS = 'thumbnails_cache';
 
 function openFoldersDB() {
   return new Promise((resolve, reject) => {
@@ -709,10 +710,89 @@ function openFoldersDB() {
       if (!db.objectStoreNames.contains(STORE_FOLDERS)) {
         db.createObjectStore(STORE_FOLDERS, { keyPath: 'id' });
       }
+      if (!db.objectStoreNames.contains(STORE_THUMBS)) {
+        db.createObjectStore(STORE_THUMBS, { keyPath: 'key' });
+      }
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
   });
+}
+
+/**
+ * Gera uma chave única e determinística para o arquivo no cache do IndexedDB
+ */
+function getModelCacheKey(model) {
+  const lastMod = model.file?.lastModified || 0;
+  return `${model.folderName || ''}:${model.path || model.name}:${model.size}:${lastMod}`;
+}
+
+/**
+ * Recupera miniatura e metadados persistidos do IndexedDB
+ */
+async function getCachedThumbnail(key) {
+  if (!key) return null;
+  try {
+    const db = await openFoldersDB();
+    if (!db.objectStoreNames.contains(STORE_THUMBS)) return null;
+    const tx = db.transaction(STORE_THUMBS, 'readonly');
+    const store = tx.objectStore(STORE_THUMBS);
+    const req = store.get(key);
+    return new Promise((resolve) => {
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => resolve(null);
+    });
+  } catch (err) {
+    console.warn('Erro ao ler thumbnail do cache IndexedDB:', err);
+    return null;
+  }
+}
+
+/**
+ * Salva miniatura e metadados no cache persistente do IndexedDB
+ */
+async function saveCachedThumbnail(key, data) {
+  if (!key || !data || !data.thumbnailUrl) return false;
+  try {
+    const db = await openFoldersDB();
+    if (!db.objectStoreNames.contains(STORE_THUMBS)) return false;
+    const tx = db.transaction(STORE_THUMBS, 'readwrite');
+    const store = tx.objectStore(STORE_THUMBS);
+    store.put({
+      key,
+      thumbnailUrl: data.thumbnailUrl,
+      metadata: data.metadata || null,
+      slicerData: data.slicerData || null,
+      plates: data.plates || [],
+      cachedAt: Date.now()
+    });
+    return new Promise((resolve) => {
+      tx.oncomplete = () => resolve(true);
+      tx.onerror = () => resolve(false);
+    });
+  } catch (err) {
+    console.warn('Erro ao salvar thumbnail no cache IndexedDB:', err);
+    return false;
+  }
+}
+
+/**
+ * Limpa todo o cache de miniaturas do IndexedDB
+ */
+async function clearThumbnailCache() {
+  try {
+    const db = await openFoldersDB();
+    if (!db.objectStoreNames.contains(STORE_THUMBS)) return true;
+    const tx = db.transaction(STORE_THUMBS, 'readwrite');
+    tx.objectStore(STORE_THUMBS).clear();
+    return new Promise((resolve) => {
+      tx.oncomplete = () => resolve(true);
+      tx.onerror = () => resolve(false);
+    });
+  } catch (err) {
+    console.warn('Erro ao limpar cache de thumbnails:', err);
+    return false;
+  }
 }
 
 async function saveFolderToDB(folderData) {
@@ -1796,18 +1876,36 @@ function setupCardObserver() {
 }
 
 /**
- * Carrega a miniatura e metadados de um modelo estritamente sob demanda
+ * Carrega a miniatura e metadados de um modelo estritamente sob demanda,
+ * verificando primeiramente se já existem persistidos no cache do IndexedDB.
  */
-function loadModelOnDemand(model) {
+async function loadModelOnDemand(model) {
   if (model.thumbnailUrl) {
     updateCardThumbnail(model);
-    return Promise.resolve(model);
+    return model;
   }
 
   if (model.loadingThumbnail) {
-    return Promise.resolve(model);
+    return model;
   }
 
+  // 1. Tentar recuperar instantaneamente do cache do IndexedDB
+  const cacheKey = getModelCacheKey(model);
+  try {
+    const cached = await getCachedThumbnail(cacheKey);
+    if (cached && cached.thumbnailUrl) {
+      model.thumbnailUrl = cached.thumbnailUrl;
+      model.metadata = cached.metadata || null;
+      model.slicerData = cached.slicerData || null;
+      model.plates = cached.plates || [];
+      updateCardThumbnail(model);
+      return model;
+    }
+  } catch (err) {
+    console.warn('Erro ao consultar cache do IndexedDB:', err);
+  }
+
+  // 2. Se não estiver em cache, entra na fila de extração assíncrona
   model.loadingThumbnail = true;
 
   return new Promise((resolve) => {
@@ -1862,9 +1960,26 @@ async function drainThumbQueue() {
 }
 
 /**
- * Extrai o buffer do arquivo e gera a miniatura Three.js/3MF e metadados
+ * Extrai o buffer do arquivo e gera a miniatura Three.js/3MF e metadados,
+ * persistindo o resultado no cache do IndexedDB para as próximas sessões.
  */
 async function extractModelThumbnailAndMeta(model) {
+  if (model.thumbnailUrl) return;
+
+  const cacheKey = getModelCacheKey(model);
+
+  // Checagem rápida antes de processar buffer pesado
+  try {
+    const cached = await getCachedThumbnail(cacheKey);
+    if (cached && cached.thumbnailUrl) {
+      model.thumbnailUrl = cached.thumbnailUrl;
+      model.metadata = cached.metadata || null;
+      model.slicerData = cached.slicerData || null;
+      model.plates = cached.plates || [];
+      return;
+    }
+  } catch (_) {}
+
   if (!model.file && model.handle && typeof model.handle.getFile === 'function') {
     model.file = await model.handle.getFile();
   }
@@ -1884,6 +1999,16 @@ async function extractModelThumbnailAndMeta(model) {
     model.metadata = res.metadata;
     model.slicerData = res.slicerData;
     model.plates = res.plates || [];
+  }
+
+  // Salvar no cache persistente do IndexedDB
+  if (model.thumbnailUrl) {
+    saveCachedThumbnail(cacheKey, {
+      thumbnailUrl: model.thumbnailUrl,
+      metadata: model.metadata,
+      slicerData: model.slicerData,
+      plates: model.plates
+    });
   }
 }
 
@@ -2341,3 +2466,9 @@ window.renderFolderChips = renderFolderChips;
 window.updateStatsBadge = updateStatsBadge;
 window.setNavSection = setNavSection;
 window.loadSampleModels = loadSampleModels;
+window.getModelCacheKey = getModelCacheKey;
+window.getCachedThumbnail = getCachedThumbnail;
+window.saveCachedThumbnail = saveCachedThumbnail;
+window.clearThumbnailCache = clearThumbnailCache;
+window.openFoldersDB = openFoldersDB;
+window.loadModelOnDemand = loadModelOnDemand;
