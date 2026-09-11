@@ -660,8 +660,8 @@ body {
 
 /* Card do Modelo */
 .model-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border-color);
+  background: #141721;
+  border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: var(--radius-lg);
   overflow: hidden;
   transition: var(--transition);
@@ -669,34 +669,35 @@ body {
   flex-direction: column;
   position: relative;
   cursor: pointer;
-  box-shadow: var(--shadow-card);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  padding: 7px;
 }
 
 .model-card:hover {
   transform: translateY(-4px);
-  border-color: #3b82f6;
-  background: var(--bg-card-hover);
-  box-shadow: 0 10px 25px -3px rgba(0, 0, 0, 0.6), 0 0 15px rgba(59, 130, 246, 0.15);
+  border-color: rgba(59, 130, 246, 0.45);
+  background: #1c2232;
+  box-shadow: 0 12px 28px -4px rgba(0, 0, 0, 0.6), 0 0 20px rgba(59, 130, 246, 0.15);
 }
 
 .card-thumbnail-wrapper {
   position: relative;
   width: 100%;
-  aspect-ratio: 1 / 1;
-  background: #0d121f;
+  aspect-ratio: 4 / 3;
+  background: #090d16;
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
 }
 
 .card-thumbnail {
   width: 100%;
   height: 100%;
-  object-fit: contain;
+  object-fit: cover;
+  object-position: center;
   transition: transform 0.3s ease;
-  background: radial-gradient(circle at center, #1b2438 0%, #0d121f 100%);
 }
 
 .model-card:hover .card-thumbnail {
@@ -818,10 +819,10 @@ body {
 }
 
 .card-body {
-  padding: 1rem;
+  padding: 0.65rem 0.4rem 0.35rem;
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
+  gap: 0.35rem;
   flex: 1;
 }
 

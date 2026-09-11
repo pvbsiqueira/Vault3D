@@ -11,8 +11,8 @@ function initOffscreenRenderer() {
   if (sharedRenderer) return;
 
   const canvas = document.createElement('canvas');
-  canvas.width = 320;
-  canvas.height = 320;
+  canvas.width = 400;
+  canvas.height = 300;
 
   sharedRenderer = new THREE.WebGLRenderer({
     canvas,
@@ -20,7 +20,7 @@ function initOffscreenRenderer() {
     alpha: true,
     preserveDrawingBuffer: true
   });
-  sharedRenderer.setSize(320, 320);
+  sharedRenderer.setSize(400, 300);
   sharedRenderer.setPixelRatio(1);
   sharedRenderer.toneMapping = THREE.ACESFilmicToneMapping;
   sharedRenderer.toneMappingExposure = 1.1;
@@ -43,7 +43,7 @@ function initOffscreenRenderer() {
   rimLight.position.set(0, -100, 50);
   sharedScene.add(rimLight);
 
-  sharedCamera = new THREE.PerspectiveCamera(45, 1, 0.1, 1000);
+  sharedCamera = new THREE.PerspectiveCamera(45, 4 / 3, 0.1, 1000);
 
   const material = new THREE.MeshStandardMaterial({
     color: 0x3b82f6,
@@ -86,7 +86,7 @@ export async function generateSTLThumbnail(arrayBuffer) {
   const radius = sphere ? sphere.radius : 10;
 
   // Posicionar a câmera em perspectiva isométrica ajustando ao tamanho
-  const dist = (radius / Math.sin((45 * Math.PI) / 360)) * 1.35;
+  const dist = (radius / Math.sin((45 * Math.PI) / 360)) * 1.15;
   sharedCamera.position.set(dist * 0.7, dist * 0.8, dist * 0.9);
   sharedCamera.lookAt(0, 0, 0);
 
@@ -143,7 +143,7 @@ export async function extract3MFThumbnail(arrayBuffer) {
 
     const sphere = parsed3MF.geometry.boundingSphere;
     const radius = sphere ? sphere.radius : 10;
-    const dist = (radius / Math.sin((45 * Math.PI) / 360)) * 1.35;
+    const dist = (radius / Math.sin((45 * Math.PI) / 360)) * 1.15;
     sharedCamera.position.set(dist * 0.7, dist * 0.8, dist * 0.9);
     sharedCamera.lookAt(0, 0, 0);
 
