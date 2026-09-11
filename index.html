@@ -7,201 +7,267 @@
   <link rel="stylesheet" href="styles.css">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220%22%20viewBox=%220%200%20100%20100%22><text y=%22.9em%22 font-size=%2290%22>📦</text></svg>">
 </head>
-<body>
+<body class="dashboard-body">
 
-  <!-- Barra Superior -->
-  <header class="app-header">
-    <div class="header-container">
-      <div class="brand">
-        <div class="brand-icon">
-          <!-- Ícone Cubo 3D Estilizado -->
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
-            <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
-            <line x1="12" y1="22.08" x2="12" y2="12"></line>
-          </svg>
-        </div>
-        <div>
-          <div style="display: flex; align-items: center; gap: 8px;">
-            <span class="brand-title">3D Print Library</span>
-            <span class="brand-badge">Local</span>
+  <div class="dashboard-layout" id="dashboardLayout">
+    
+    <!-- Sidebar Lateral Esquerda -->
+    <aside class="dashboard-sidebar" id="appSidebar">
+      <!-- Marca do Topo da Sidebar -->
+      <div class="sidebar-header">
+        <div class="brand">
+          <div class="brand-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+              <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+              <line x1="12" y1="22.08" x2="12" y2="12"></line>
+            </svg>
+          </div>
+          <div class="brand-text">
+            <div class="brand-title-wrap">
+              <span class="brand-title">3D Print Library</span>
+              <span class="brand-badge">PRO</span>
+            </div>
+            <span class="brand-sub">Gerenciador STL / 3MF</span>
           </div>
         </div>
       </div>
 
-      <div class="header-actions">
-        <!-- Campo de busca por nome -->
-        <div class="search-box">
-          <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="11" cy="11" r="8"></circle>
-            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-          </svg>
-          <input type="text" id="searchInput" class="search-input" placeholder="Buscar modelo por nome...">
-        </div>
-
-        <!-- Botão principal de adicionar pasta -->
-        <button id="btnSelectFolder" class="btn btn-primary" title="Adicionar pasta local à biblioteca 3D">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <!-- Ação Primária da Sidebar -->
+      <div class="sidebar-actions-wrap">
+        <button id="btnSelectFolder" class="btn btn-primary sidebar-btn-add" title="Adicionar pasta local à biblioteca 3D">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+            <line x1="12" y1="11" x2="12" y2="17"></line>
+            <line x1="9" y1="14" x2="15" y2="14"></line>
           </svg>
           <span>Adicionar Pasta</span>
         </button>
 
-        <!-- Input invisível de fallback para navegadores legados -->
         <input type="file" id="folderInputFallback" webkitdirectory directory multiple style="display: none;">
       </div>
-    </div>
-  </header>
 
-  <!-- Sub-barra com gerenciador de pastas e filtros -->
-  <div class="sub-toolbar" id="subToolbar" style="display: none;">
-    <div class="folders-manager">
-      <div class="folders-chips-list" id="foldersChipsList"></div>
-      <button class="btn-add-folder-chip" id="btnAddFolderChip" title="Adicionar outra pasta à biblioteca">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <line x1="12" y1="5" x2="12" y2="19"></line>
-          <line x1="5" y1="12" x2="19" y2="12"></line>
-        </svg>
-        <span>Adicionar Pasta</span>
-      </button>
-    </div>
+      <!-- Menus e Filtros de Navegação -->
+      <div class="sidebar-scrollable-content">
+        
+        <!-- Seção: Navegação da Biblioteca -->
+        <div class="sidebar-section">
+          <div class="sidebar-section-title">BIBLIOTECA</div>
+          <nav class="sidebar-nav">
+            <button class="sidebar-nav-item active" id="navAllModels" data-section="all" type="button">
+              <span class="nav-icon">📁</span>
+              <span class="nav-label">Todos os Modelos</span>
+              <span class="nav-badge" id="sidebarAllCountBadge">0</span>
+            </button>
+            <button class="sidebar-nav-item" id="navFavorites" data-section="favorites" type="button">
+              <span class="nav-icon">⭐</span>
+              <span class="nav-label">Favoritos</span>
+              <span class="nav-badge" id="sidebarFavoritesCountBadge">0</span>
+            </button>
+            <button class="sidebar-nav-item item-duplicates" id="navDuplicates" data-section="duplicates" type="button" style="display: none;">
+              <span class="nav-icon">⚠️</span>
+              <span class="nav-label">Duplicados</span>
+              <span class="nav-badge badge-warning" id="sidebarDuplicatesCountBadge">0</span>
+            </button>
+          </nav>
+        </div>
 
-    <div class="sub-toolbar-right">
-      <span id="fileCountBadge" class="file-count-badge">(0 arquivos)</span>
-      <!-- Filtro de tipos -->
-      <div class="filter-pills">
-        <button class="pill-btn active" data-filter="all">Todos</button>
-        <button class="pill-btn" data-filter="stl">.STL</button>
-        <button class="pill-btn" data-filter="3mf">.3MF</button>
-        <button class="pill-btn pill-btn-duplicates" id="btnFilterDuplicates" data-filter="duplicates" style="display: none;">
-          ⚠️ Duplicados (<span id="duplicatesCountBadge">0</span>)
-        </button>
+        <!-- Seção: Filtro de Formatos -->
+        <div class="sidebar-section">
+          <div class="sidebar-section-title">FORMATOS</div>
+          <div class="sidebar-format-group">
+            <button class="sidebar-format-btn active pill-btn" data-filter="all" type="button">Todos</button>
+            <button class="sidebar-format-btn pill-btn" data-filter="stl" type="button"><span class="format-dot stl"></span>.STL</button>
+            <button class="sidebar-format-btn pill-btn" data-filter="3mf" type="button"><span class="format-dot tmf"></span>.3MF</button>
+            <button class="sidebar-format-btn pill-btn pill-btn-duplicates" id="btnFilterDuplicates" data-filter="duplicates" type="button" style="display: none;">
+              ⚠️ Duplicados (<span id="duplicatesCountBadge">0</span>)
+            </button>
+          </div>
+        </div>
+
+        <!-- Seção: Pastas Conectadas -->
+        <div class="sidebar-section sidebar-folders-section" id="sidebarFoldersSection">
+          <div class="sidebar-section-header">
+            <div class="sidebar-section-title">PASTAS CONECTADAS</div>
+            <span class="sidebar-folders-count" id="sidebarFoldersCountBadge">0</span>
+          </div>
+          <div class="sidebar-folders-list" id="sidebarFoldersList">
+            <div class="sidebar-folders-empty" id="sidebarFoldersEmpty">Nenhuma pasta conectada</div>
+          </div>
+        </div>
+
       </div>
+
+      <!-- Rodapé da Sidebar: Estatísticas -->
+      <div class="sidebar-footer" id="sidebarStatsWidget">
+        <div class="sidebar-stats-row">
+          <span class="stats-label">Coleção:</span>
+          <span class="stats-val" id="fileCountBadge">0 modelos</span>
+        </div>
+        <div class="sidebar-stats-bars">
+          <span class="stats-badge stl" id="sidebarStlCountBadge">0 STL</span>
+          <span class="stats-badge tmf" id="sidebar3mfCountBadge">0 3MF</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Área Principal do Dashboard -->
+    <div class="dashboard-main">
+      
+      <!-- Topbar do Dashboard -->
+      <header class="dashboard-topbar">
+        <div class="topbar-left">
+          <button class="btn-sidebar-toggle" id="btnSidebarToggle" title="Recolher / Expandir barra lateral" aria-label="Alternar barra lateral" type="button">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="3" y1="12" x2="21" y2="12"></line>
+              <line x1="3" y1="6" x2="21" y2="6"></line>
+              <line x1="3" y1="18" x2="21" y2="18"></line>
+            </svg>
+          </button>
+          <div class="topbar-heading">
+            <h1 class="topbar-title" id="currentViewTitle">Todos os Modelos</h1>
+            <span class="topbar-sub" id="currentViewSub">Visualização de galeria</span>
+          </div>
+        </div>
+
+        <div class="topbar-center">
+          <div class="search-box">
+            <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+            <input type="text" id="searchInput" class="search-input" placeholder="Buscar modelo por nome...">
+          </div>
+        </div>
+
+        <div class="topbar-right">
+          <div class="top-page-size-wrap" id="topPageSizeWrap" style="display: none;">
+            <span class="pagination-label">Cards:</span>
+            <div class="page-size-buttons" id="topPageSizeButtons">
+              <button class="page-size-btn" data-size="50" type="button">50</button>
+              <button class="page-size-btn" data-size="100" type="button">100</button>
+              <button class="page-size-btn" data-size="150" type="button">150</button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <!-- Conteúdo do Dashboard -->
+      <main class="main-content">
+        
+        <!-- Estado Vazio / Dropzone Inicial -->
+        <div class="empty-state" id="dropZone">
+          
+          <!-- Card de Reconexão de Pastas Salvas -->
+          <div class="saved-folders-reconnect-card" id="savedFoldersCard" style="display: none;">
+            <div class="reconnect-header">
+              <div class="reconnect-icon-wrap">⚡</div>
+              <div class="reconnect-info">
+                <h3 class="reconnect-title">Restaurar Biblioteca Salva</h3>
+                <p class="reconnect-subtitle">Você possui <strong id="savedFoldersCount">0</strong> pasta(s) salva(s) prontas para reconexão instantânea:</p>
+              </div>
+            </div>
+            <div class="saved-folders-preview-list" id="savedFoldersPreviewList"></div>
+            <div class="reconnect-actions">
+              <button id="btnReconnectAllFolders" class="btn btn-primary" title="Reconectar e carregar todas as pastas salvas" type="button">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"></path>
+                </svg>
+                <span>Reconectar Pastas Salvas</span>
+              </button>
+              <button id="btnClearSavedFolders" class="btn btn-secondary" title="Limpar histórico de pastas salvas" type="button">
+                Esquecer Pastas
+              </button>
+            </div>
+            <div class="reconnect-divider"><span>ou escolha uma nova pasta abaixo</span></div>
+          </div>
+
+          <div class="empty-state-default" id="emptyStateDefault">
+            <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"></path>
+              <path d="M12 12v9"></path>
+              <path d="m8 16 4-4 4 4"></path>
+            </svg>
+            <h2 class="empty-title">Nenhum arquivo 3D carregado</h2>
+            <p class="empty-desc">
+              Selecione ou arraste para cá a pasta do seu computador onde estão seus arquivos <strong>.STL</strong> e <strong>.3MF</strong> para visualizar todas as miniaturas instantaneamente.
+            </p>
+            <div class="empty-actions">
+              <button id="btnEmptySelectFolder" class="btn btn-primary" type="button">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                </svg>
+                Escolher Pasta no Meu Computador
+              </button>
+              <button id="btnLoadSample" class="btn btn-secondary" title="Carrega modelos de teste prontos na pasta do projeto" type="button">
+                ✨ Testar com Modelos de Exemplo
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Área de Conteúdo da Galeria -->
+        <div id="galleryContainer" style="display: none;">
+          <!-- Seção Favoritos (exibida quando há itens favoritados) -->
+          <section id="favoritesSection" class="gallery-section" style="display: none;">
+            <div class="section-header">
+              <div class="section-header-left">
+                <span class="section-icon">⭐</span>
+                <h2 class="section-title">Favoritos</h2>
+                <span class="section-badge" id="favoritesCountBadge">0</span>
+              </div>
+            </div>
+            <div class="models-grid" id="favoritesGrid"></div>
+          </section>
+
+          <!-- Seção Todos -->
+          <section id="allSection" class="gallery-section">
+            <div class="section-header" id="allSectionHeader" style="display: none;">
+              <div class="section-header-left">
+                <span class="section-icon">📁</span>
+                <h2 class="section-title">Modelos</h2>
+                <span class="section-badge" id="allCountBadge">0</span>
+              </div>
+            </div>
+            <div class="models-grid" id="modelsGrid"></div>
+
+            <!-- Barra de Paginação -->
+            <div class="pagination-bar" id="paginationBar" style="display: none;">
+              <div class="pagination-size-wrap">
+                <span class="pagination-label">Cards por página:</span>
+                <div class="page-size-buttons" id="bottomPageSizeButtons">
+                  <button class="page-size-btn" data-size="50" type="button">50</button>
+                  <button class="page-size-btn" data-size="100" type="button">100</button>
+                  <button class="page-size-btn" data-size="150" type="button">150</button>
+                </div>
+              </div>
+
+              <div class="pagination-info" id="paginationInfo">
+                Mostrando <strong id="paginationRange">0–0</strong> de <strong id="paginationTotal">0</strong> modelos
+              </div>
+
+              <div class="pagination-nav" id="paginationNav">
+                <button class="page-nav-btn" id="btnPagePrev" title="Página anterior" aria-label="Página anterior" type="button">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="15 18 9 12 15 6"></polyline>
+                  </svg>
+                  <span>Anterior</span>
+                </button>
+                <div class="pagination-numbers" id="paginationNumbers"></div>
+                <button class="page-nav-btn" id="btnPageNext" title="Próxima página" aria-label="Próxima página" type="button">
+                  <span>Próxima</span>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="9 18 15 12 9 6"></polyline>
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </section>
+        </div>
+
+      </main>
     </div>
   </div>
-
-  <!-- Conteúdo Principal -->
-  <main class="main-content">
-    
-    <!-- Estado Vazio / Dropzone Inicial -->
-    <div class="empty-state" id="dropZone">
-      
-      <!-- Card de Reconexão de Pastas Salvas (exibido quando há pastas salvas no IndexedDB) -->
-      <div class="saved-folders-reconnect-card" id="savedFoldersCard" style="display: none;">
-        <div class="reconnect-header">
-          <div class="reconnect-icon-wrap">⚡</div>
-          <div class="reconnect-info">
-            <h3 class="reconnect-title">Restaurar Biblioteca Salva</h3>
-            <p class="reconnect-subtitle">Você possui <strong id="savedFoldersCount">0</strong> pasta(s) salva(s) prontas para reconexão instantânea:</p>
-          </div>
-        </div>
-        <div class="saved-folders-preview-list" id="savedFoldersPreviewList"></div>
-        <div class="reconnect-actions">
-          <button id="btnReconnectAllFolders" class="btn btn-primary" title="Reconectar e carregar todas as pastas salvas">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"></path>
-            </svg>
-            <span>Reconectar Pastas Salvas</span>
-          </button>
-          <button id="btnClearSavedFolders" class="btn btn-secondary" title="Limpar histórico de pastas salvas">
-            Esquecer Pastas
-          </button>
-        </div>
-        <div class="reconnect-divider"><span>ou escolha uma nova pasta abaixo</span></div>
-      </div>
-
-      <div class="empty-state-default" id="emptyStateDefault">
-        <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-          <path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"></path>
-          <path d="M12 12v9"></path>
-          <path d="m8 16 4-4 4 4"></path>
-        </svg>
-        <h2 class="empty-title">Nenhum arquivo 3D carregado</h2>
-        <p class="empty-desc">
-          Selecione ou arraste para cá a pasta do seu computador onde estão seus arquivos <strong>.STL</strong> e <strong>.3MF</strong> para visualizar todas as miniaturas instantaneamente.
-        </p>
-        <div class="empty-actions">
-          <button id="btnEmptySelectFolder" class="btn btn-primary">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
-            </svg>
-            Escolher Pasta no Meu Computador
-          </button>
-          <button id="btnLoadSample" class="btn btn-secondary" title="Carrega modelos de teste prontos na pasta do projeto">
-            ✨ Testar com Modelos de Exemplo
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Área de Conteúdo da Galeria -->
-    <div id="galleryContainer" style="display: none;">
-      <!-- Seção Favoritos (exibida quando há itens favoritados) -->
-      <section id="favoritesSection" class="gallery-section" style="display: none;">
-        <div class="section-header">
-          <div class="section-header-left">
-            <span class="section-icon">⭐</span>
-            <h2 class="section-title">Favoritos</h2>
-            <span class="section-badge" id="favoritesCountBadge">0</span>
-          </div>
-        </div>
-        <div class="models-grid" id="favoritesGrid"></div>
-      </section>
-
-      <!-- Seção Todos -->
-      <section id="allSection" class="gallery-section">
-        <div class="section-header" id="allSectionHeader" style="display: none;">
-          <div class="section-header-left">
-            <span class="section-icon">📁</span>
-            <h2 class="section-title">Todos</h2>
-            <span class="section-badge" id="allCountBadge">0</span>
-          </div>
-          <div class="section-header-right" id="topPageSizeWrap" style="display: none;">
-            <span class="pagination-label">Exibir:</span>
-            <div class="page-size-buttons" id="topPageSizeButtons">
-              <button class="page-size-btn" data-size="50">50</button>
-              <button class="page-size-btn" data-size="100">100</button>
-              <button class="page-size-btn" data-size="150">150</button>
-            </div>
-          </div>
-        </div>
-        <div class="models-grid" id="modelsGrid"></div>
-
-        <!-- Barra de Paginação -->
-        <div class="pagination-bar" id="paginationBar" style="display: none;">
-          <div class="pagination-size-wrap">
-            <span class="pagination-label">Cards por página:</span>
-            <div class="page-size-buttons" id="bottomPageSizeButtons">
-              <button class="page-size-btn" data-size="50">50</button>
-              <button class="page-size-btn" data-size="100">100</button>
-              <button class="page-size-btn" data-size="150">150</button>
-            </div>
-          </div>
-
-          <div class="pagination-info" id="paginationInfo">
-            Mostrando <strong id="paginationRange">0–0</strong> de <strong id="paginationTotal">0</strong> modelos
-          </div>
-
-          <div class="pagination-nav" id="paginationNav">
-            <button class="page-nav-btn" id="btnPagePrev" title="Página anterior" aria-label="Página anterior">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="15 18 9 12 15 6"></polyline>
-              </svg>
-              <span>Anterior</span>
-            </button>
-            <div class="pagination-numbers" id="paginationNumbers"></div>
-            <button class="page-nav-btn" id="btnPageNext" title="Próxima página" aria-label="Próxima página">
-              <span>Próxima</span>
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="9 18 15 12 9 6"></polyline>
-              </svg>
-            </button>
-          </div>
-        </div>
-      </section>
-    </div>
-
-  </main>
 
   <!-- Modal do Visualizador 3D Interativo -->
   <div class="modal-overlay" id="viewerModal">

@@ -7,7 +7,8 @@ import { parseSTL } from './stl-parser.js';
 const state = {
   models: [],
   folders: [], // Array de { id, name, handle, count }
-  activeFilter: 'all',
+  activeFilter: 'all', // 'all', 'stl', '3mf', 'duplicates'
+  activeSection: 'all', // 'all', 'favorites', 'duplicates'
   searchQuery: '',
   modalScene: null,
   modalCamera: null,
@@ -31,16 +32,52 @@ const state = {
   })(),
   currentPage: 1,
   filteredModelsCount: 0,
-  currentPageModelIds: new Set(),
-  isProcessingThumbs: false
+  currentPageModelIds: new Set()
 };
 
-// Elementos DOM
+// Elementos DOM da Sidebar & Dashboard
+const appSidebar = document.getElementById('appSidebar');
+const btnSidebarToggle = document.getElementById('btnSidebarToggle');
 const btnSelectFolder = document.getElementById('btnSelectFolder');
-const btnEmptySelectFolder = document.getElementById('btnEmptySelectFolder');
 const folderInputFallback = document.getElementById('folderInputFallback');
-const btnLoadSample = document.getElementById('btnLoadSample');
+const navAllModels = document.getElementById('navAllModels');
+const navFavorites = document.getElementById('navFavorites');
+const navDuplicates = document.getElementById('navDuplicates');
+const sidebarAllCountBadge = document.getElementById('sidebarAllCountBadge');
+const sidebarFavoritesCountBadge = document.getElementById('sidebarFavoritesCountBadge');
+const sidebarDuplicatesCountBadge = document.getElementById('sidebarDuplicatesCountBadge');
+const sidebarFoldersList = document.getElementById('sidebarFoldersList');
+const sidebarFoldersCountBadge = document.getElementById('sidebarFoldersCountBadge');
+const sidebarFoldersEmpty = document.getElementById('sidebarFoldersEmpty');
+const fileCountBadge = document.getElementById('fileCountBadge');
+const sidebarStlCountBadge = document.getElementById('sidebarStlCountBadge');
+const sidebar3mfCountBadge = document.getElementById('sidebar3mfCountBadge');
+
+// Elementos DOM do Topbar & Filtros
+const currentViewTitle = document.getElementById('currentViewTitle');
+const currentViewSub = document.getElementById('currentViewSub');
+const searchInput = document.getElementById('searchInput');
+const filterBtns = document.querySelectorAll('.sidebar-format-btn, .pill-btn');
+const btnFilterDuplicates = document.getElementById('btnFilterDuplicates');
+const duplicatesCountBadge = document.getElementById('duplicatesCountBadge');
+
+// Elementos DOM de Paginação
+const paginationBar = document.getElementById('paginationBar');
+const paginationInfo = document.getElementById('paginationInfo');
+const paginationRange = document.getElementById('paginationRange');
+const paginationTotal = document.getElementById('paginationTotal');
+const paginationNav = document.getElementById('paginationNav');
+const btnPagePrev = document.getElementById('btnPagePrev');
+const btnPageNext = document.getElementById('btnPageNext');
+const paginationNumbers = document.getElementById('paginationNumbers');
+const topPageSizeWrap = document.getElementById('topPageSizeWrap');
+const topPageSizeButtons = document.getElementById('topPageSizeButtons');
+const bottomPageSizeButtons = document.getElementById('bottomPageSizeButtons');
+
+// Elementos DOM da Galeria & Área Principal
 const dropZone = document.getElementById('dropZone');
+const btnEmptySelectFolder = document.getElementById('btnEmptySelectFolder');
+const btnLoadSample = document.getElementById('btnLoadSample');
 const savedFoldersCard = document.getElementById('savedFoldersCard');
 const savedFoldersCount = document.getElementById('savedFoldersCount');
 const savedFoldersPreviewList = document.getElementById('savedFoldersPreviewList');
@@ -54,27 +91,6 @@ const allSection = document.getElementById('allSection');
 const allSectionHeader = document.getElementById('allSectionHeader');
 const allCountBadge = document.getElementById('allCountBadge');
 const modelsGrid = document.getElementById('modelsGrid');
-const subToolbar = document.getElementById('subToolbar');
-const foldersChipsList = document.getElementById('foldersChipsList');
-const btnAddFolderChip = document.getElementById('btnAddFolderChip');
-const fileCountBadge = document.getElementById('fileCountBadge');
-const btnFilterDuplicates = document.getElementById('btnFilterDuplicates');
-const duplicatesCountBadge = document.getElementById('duplicatesCountBadge');
-const searchInput = document.getElementById('searchInput');
-const filterBtns = document.querySelectorAll('.pill-btn');
-
-// Elementos de Paginação
-const paginationBar = document.getElementById('paginationBar');
-const paginationInfo = document.getElementById('paginationInfo');
-const paginationRange = document.getElementById('paginationRange');
-const paginationTotal = document.getElementById('paginationTotal');
-const paginationNav = document.getElementById('paginationNav');
-const btnPagePrev = document.getElementById('btnPagePrev');
-const btnPageNext = document.getElementById('btnPageNext');
-const paginationNumbers = document.getElementById('paginationNumbers');
-const topPageSizeWrap = document.getElementById('topPageSizeWrap');
-const topPageSizeButtons = document.getElementById('topPageSizeButtons');
-const bottomPageSizeButtons = document.getElementById('bottomPageSizeButtons');
 
 // Modal DOM
 const viewerModal = document.getElementById('viewerModal');
@@ -87,7 +103,6 @@ const btnResetView = document.getElementById('btnResetView');
 const btnToggleRotate = document.getElementById('btnToggleRotate');
 const btnToggleWireframe = document.getElementById('btnToggleWireframe');
 
-// Elementos de Mesas de Impressão (Plates) e Modos de Visualização
 // Elementos de Mesas de Impressão (Plates) e Modos de Visualização
 const btnOpen3DView = document.getElementById('btnOpen3DView');
 const btnBackToPlate = document.getElementById('btnBackToPlate');
@@ -102,26 +117,44 @@ const platesList = document.getElementById('platesList');
 
 // Inicialização de Eventos
 function init() {
-  btnSelectFolder.addEventListener('click', handleChooseFolder);
-  btnEmptySelectFolder.addEventListener('click', handleChooseFolder);
-  if (btnAddFolderChip) {
-    btnAddFolderChip.addEventListener('click', handleChooseFolder);
+  if (btnSidebarToggle && appSidebar) {
+    btnSidebarToggle.addEventListener('click', () => {
+      if (window.innerWidth <= 900) {
+        appSidebar.classList.toggle('mobile-open');
+      } else {
+        appSidebar.classList.toggle('collapsed');
+      }
+    });
   }
-  folderInputFallback.addEventListener('change', handleFallbackFileSelect);
-  btnLoadSample.addEventListener('click', loadSampleModels);
+
+  if (btnSelectFolder) btnSelectFolder.addEventListener('click', handleChooseFolder);
+  if (btnEmptySelectFolder) btnEmptySelectFolder.addEventListener('click', handleChooseFolder);
+  if (folderInputFallback) folderInputFallback.addEventListener('change', handleFallbackFileSelect);
+  if (btnLoadSample) btnLoadSample.addEventListener('click', loadSampleModels);
+
+  // Navegação da Barra Lateral (Todos / Favoritos / Duplicados)
+  [navAllModels, navFavorites, navDuplicates].forEach(navBtn => {
+    if (!navBtn) return;
+    navBtn.addEventListener('click', () => {
+      const section = navBtn.dataset.section || 'all';
+      setNavSection(section);
+    });
+  });
 
   // Busca e Filtros
-  searchInput.addEventListener('input', (e) => {
-    state.searchQuery = e.target.value.toLowerCase().trim();
-    state.currentPage = 1;
-    renderGallery();
-  });
+  if (searchInput) {
+    searchInput.addEventListener('input', (e) => {
+      state.searchQuery = e.target.value.toLowerCase().trim();
+      state.currentPage = 1;
+      renderGallery();
+    });
+  }
 
   filterBtns.forEach(btn => {
     btn.addEventListener('click', () => {
       filterBtns.forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
-      state.activeFilter = btn.dataset.filter;
+      state.activeFilter = btn.dataset.filter || 'all';
       state.currentPage = 1;
       renderGallery();
     });
@@ -220,6 +253,33 @@ function init() {
 
   // Verificar e tentar restaurar pastas salvas do IndexedDB
   checkAndRestoreSavedFolders();
+}
+
+/**
+ * Alterna a seção ativa da biblioteca (Todos os Modelos, Favoritos, Duplicados)
+ */
+function setNavSection(section) {
+  state.activeSection = section;
+  state.currentPage = 1;
+
+  [navAllModels, navFavorites, navDuplicates].forEach(btn => {
+    if (btn) btn.classList.toggle('active', btn.dataset.section === section);
+  });
+
+  if (currentViewTitle) {
+    if (section === 'favorites') {
+      currentViewTitle.textContent = 'Favoritos';
+      if (currentViewSub) currentViewSub.textContent = 'Modelos marcados com estrela';
+    } else if (section === 'duplicates') {
+      currentViewTitle.textContent = 'Arquivos Duplicados';
+      if (currentViewSub) currentViewSub.textContent = 'Modelos com conteúdo idêntico na biblioteca';
+    } else {
+      currentViewTitle.textContent = 'Todos os Modelos';
+      if (currentViewSub) currentViewSub.textContent = 'Visualização de galeria';
+    }
+  }
+
+  renderGallery();
 }
 
 /**
@@ -914,12 +974,10 @@ async function addFilesToLibrary(files, folderName, dirHandle = null, persistToD
   // Atualizar visualização para exibir a galeria
   dropZone.style.display = 'none';
   galleryContainer.style.display = 'block';
-  subToolbar.style.display = 'flex';
 
   renderFolderChips();
   updateStatsBadge();
   renderGallery();
-  processThumbnailQueue();
 
   // Calcular impressões digitais e detectar duplicatas em background
   updateDuplicatesState();
@@ -962,10 +1020,11 @@ async function removeFolder(folderId) {
   if (state.folders.length === 0) {
     dropZone.style.display = 'block';
     galleryContainer.style.display = 'none';
-    subToolbar.style.display = 'none';
+    if (topPageSizeWrap) topPageSizeWrap.style.display = 'none';
     favoritesGrid.innerHTML = '';
     modelsGrid.innerHTML = '';
-    if (foldersChipsList) foldersChipsList.innerHTML = '';
+    renderFolderChips();
+    updateStatsBadge();
     updateDuplicatesFilterButton(0);
 
     const remainingSaved = await getAllFoldersFromDB();
@@ -984,43 +1043,84 @@ async function removeFolder(folderId) {
 }
 
 /**
- * Renderiza os chips de pastas conectadas no sub-toolbar
+ * Renderiza a lista de pastas conectadas na barra lateral
  */
 function renderFolderChips() {
-  if (!foldersChipsList) return;
-  foldersChipsList.innerHTML = '';
+  if (!sidebarFoldersList) return;
+  sidebarFoldersList.innerHTML = '';
+
+  if (sidebarFoldersCountBadge) {
+    sidebarFoldersCountBadge.textContent = state.folders.length;
+  }
+
+  if (state.folders.length === 0) {
+    sidebarFoldersList.innerHTML = '<div class="sidebar-folders-empty" id="sidebarFoldersEmpty">Nenhuma pasta conectada</div>';
+    return;
+  }
 
   state.folders.forEach(folder => {
-    const chip = document.createElement('div');
-    chip.className = 'folder-chip';
-    chip.title = `${folder.name} (${folder.count} arquivos)`;
+    const item = document.createElement('div');
+    item.className = 'sidebar-folder-item';
+    item.title = `${folder.name} (${folder.count} arquivos)`;
 
-    chip.innerHTML = `
-      <span class="folder-chip-icon">📁</span>
-      <span class="folder-chip-name">${escapeHtml(folder.name)}</span>
-      <span class="folder-chip-count">(${folder.count})</span>
-      <button class="btn-remove-folder" title="Remover pasta '${escapeHtml(folder.name)}' da biblioteca" aria-label="Remover pasta">
-        &times;
-      </button>
+    item.innerHTML = `
+      <div class="sidebar-folder-left">
+        <span class="folder-item-icon">📁</span>
+        <span class="sidebar-folder-name">${escapeHtml(folder.name)}</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
+        <span class="sidebar-folder-count">(${folder.count})</span>
+        <button class="btn-remove-sidebar-folder" title="Remover pasta '${escapeHtml(folder.name)}' da biblioteca" aria-label="Remover pasta">
+          &times;
+        </button>
+      </div>
     `;
 
-    const btnRemove = chip.querySelector('.btn-remove-folder');
+    const btnRemove = item.querySelector('.btn-remove-sidebar-folder');
     btnRemove.addEventListener('click', (e) => {
       e.stopPropagation();
       removeFolder(folder.id);
     });
 
-    foldersChipsList.appendChild(chip);
+    sidebarFoldersList.appendChild(item);
   });
 }
 
+/**
+ * Atualiza todos os contadores e estatísticas da barra lateral e rodapé
+ */
 function updateStatsBadge() {
-  if (!fileCountBadge) return;
+  const totalModels = state.models.length;
   const stlCount = state.models.filter(m => m.type === 'stl').length;
   const tmfCount = state.models.filter(m => m.type === '3mf').length;
+  const favCount = state.models.filter(m => m.isFavorite).length;
+  const dupCount = state.models.filter(m => m.isDuplicate).length;
   const foldersCount = state.folders.length;
-  const folderText = foldersCount === 1 ? '1 pasta' : `${foldersCount} pastas`;
-  fileCountBadge.textContent = `(${state.models.length} modelos em ${folderText}: ${stlCount} STL, ${tmfCount} 3MF)`;
+
+  if (sidebarAllCountBadge) sidebarAllCountBadge.textContent = totalModels;
+  if (sidebarFavoritesCountBadge) sidebarFavoritesCountBadge.textContent = favCount;
+  if (sidebarDuplicatesCountBadge) sidebarDuplicatesCountBadge.textContent = dupCount;
+  if (duplicatesCountBadge) duplicatesCountBadge.textContent = dupCount;
+
+  if (navDuplicates) {
+    navDuplicates.style.display = dupCount > 0 ? 'flex' : 'none';
+  }
+  if (btnFilterDuplicates) {
+    btnFilterDuplicates.style.display = dupCount > 0 ? 'inline-flex' : 'none';
+  }
+
+  if (fileCountBadge) {
+    fileCountBadge.textContent = `${totalModels} modelo${totalModels === 1 ? '' : 's'}`;
+  }
+  if (sidebarStlCountBadge) {
+    sidebarStlCountBadge.textContent = `${stlCount} STL`;
+  }
+  if (sidebar3mfCountBadge) {
+    sidebar3mfCountBadge.textContent = `${tmfCount} 3MF`;
+  }
+  if (sidebarFoldersCountBadge) {
+    sidebarFoldersCountBadge.textContent = foldersCount;
+  }
 }
 
 /**
@@ -1423,7 +1523,6 @@ function setPageSize(newSize) {
   } catch (e) {}
   updatePageSizeButtonsUI();
   renderGallery();
-  processThumbnailQueue();
 }
 
 /**
@@ -1432,7 +1531,6 @@ function setPageSize(newSize) {
 function goToPage(page) {
   state.currentPage = page;
   renderGallery();
-  processThumbnailQueue();
 
   const target = (allSectionHeader && allSectionHeader.style.display !== 'none')
     ? allSectionHeader
@@ -1548,28 +1646,39 @@ function updatePaginationUI(total, totalPages, startIdx, endIdx) {
 }
 
 /**
- * Renderiza a galeria com suporte a paginação configurável (50, 100, 150),
- * seção de Favoritos e seção Todos
+ * Renderiza a galeria com paginação (50, 100, 150), filtros por formato
+ * e carregamento estritamente sob demanda para cards em tela
  */
 function renderGallery() {
   const filtered = state.models
     .filter(model => {
-      // Filtro por tipo ou duplicatas
+      // 1. Seção da Barra Lateral (Todos, Favoritos, Duplicados)
+      if (state.activeSection === 'favorites' && !model.isFavorite) {
+        return false;
+      }
+      if (state.activeSection === 'duplicates' && !model.isDuplicate) {
+        return false;
+      }
+
+      // 2. Filtro de Formatos (.STL / .3MF / Duplicados)
       if (state.activeFilter === 'duplicates') {
         if (!model.isDuplicate) return false;
       } else if (state.activeFilter !== 'all' && model.type !== state.activeFilter) {
         return false;
       }
-      // Filtro por nome
+
+      // 3. Busca por Nome
       if (state.searchQuery && !model.name.toLowerCase().includes(state.searchQuery)) {
         return false;
       }
+
       return true;
     })
     .sort((a, b) => compareModelNames(a.name, b.name));
 
   favoritesGrid.innerHTML = '';
   modelsGrid.innerHTML = '';
+  setupCardObserver();
 
   state.filteredModelsCount = filtered.length;
 
@@ -1578,35 +1687,44 @@ function renderGallery() {
     allSectionHeader.style.display = 'none';
     if (topPageSizeWrap) topPageSizeWrap.style.display = 'none';
     if (paginationBar) paginationBar.style.display = 'none';
+
+    let emptyMessage = 'Nenhum arquivo corresponde aos filtros aplicados.';
+    if (state.activeSection === 'favorites') {
+      emptyMessage = 'Nenhum modelo favoritado ainda. Clique na estrela ⭐ de qualquer modelo para favoritá-lo!';
+    } else if (state.activeSection === 'duplicates') {
+      emptyMessage = 'Nenhum arquivo duplicado encontrado na sua biblioteca! 🎉';
+    }
+
     modelsGrid.innerHTML = `
-      <div style="grid-column: 1/-1; text-align: center; padding: 3rem; color: var(--text-muted);">
-        Nenhum arquivo corresponde aos filtros aplicados.
+      <div style="grid-column: 1/-1; text-align: center; padding: 4rem 1rem; color: var(--text-muted); font-size: 0.95rem;">
+        ${emptyMessage}
       </div>
     `;
     return;
   }
 
+  // Se estiver na seção "all" e houver favoritos sem busca ativa, exibir faixa de favoritos no topo
   const favorites = filtered.filter(m => m.isFavorite);
-
-  if (favorites.length > 0) {
-    // Exibir seção de Favoritos
+  if (state.activeSection === 'all' && favorites.length > 0 && !state.searchQuery && state.activeFilter === 'all') {
     favoritesSection.style.display = 'block';
     favoritesCountBadge.textContent = favorites.length;
     favorites.forEach(model => {
-      favoritesGrid.appendChild(createModelCard(model));
+      const card = createModelCard(model);
+      favoritesGrid.appendChild(card);
+      if (!model.thumbnailUrl) {
+        if (cardObserver) cardObserver.observe(card);
+        else loadModelOnDemand(model);
+      }
     });
 
-    // Exibir cabeçalho de Todos
     allSectionHeader.style.display = 'flex';
     allCountBadge.textContent = filtered.length;
   } else {
-    // Ocultar seção de Favoritos e exibir cabeçalho de Todos
     favoritesSection.style.display = 'none';
-    allSectionHeader.style.display = filtered.length > 0 ? 'flex' : 'none';
-    allCountBadge.textContent = filtered.length;
+    allSectionHeader.style.display = 'none';
   }
 
-  // Paginação inteligente da seção Todos
+  // Paginação da seção principal
   const totalPages = Math.max(1, Math.ceil(filtered.length / state.pageSize));
   if (state.currentPage > totalPages) {
     state.currentPage = totalPages;
@@ -1619,65 +1737,153 @@ function renderGallery() {
   const endIdx = Math.min(startIdx + state.pageSize, filtered.length);
   const pageModels = filtered.slice(startIdx, endIdx);
 
-  // Mapear IDs dos modelos visíveis na página ativa para priorizar a fila de miniaturas
+  // Mapear IDs dos modelos visíveis na página ativa
   state.currentPageModelIds = new Set(pageModels.map(m => m.id));
 
   // Renderizar somente os cards da fatia paginada no DOM
   pageModels.forEach(model => {
-    modelsGrid.appendChild(createModelCard(model));
+    const card = createModelCard(model);
+    modelsGrid.appendChild(card);
+    if (!model.thumbnailUrl) {
+      if (cardObserver) cardObserver.observe(card);
+      else loadModelOnDemand(model);
+    }
   });
 
-  // Atualizar a barra de paginação e controles
+  // Atualizar barra de navegação de páginas
   updatePaginationUI(filtered.length, totalPages, startIdx, endIdx);
 }
 
+// ==========================================
+// Carregamento Sob Demanda (On-Demand / Lazy Loading)
+// ==========================================
+let cardObserver = null;
+let activeThumbJobs = 0;
+const thumbQueue = [];
+
 /**
- * Fila concorrente para geração de miniaturas com priorização dos cards visíveis na página ativa
+ * Cria ou reseta o IntersectionObserver que dispara o carregamento
+ * somente quando o card entra ou se aproxima do campo de visão da tela
  */
-async function processThumbnailQueue() {
-  if (state.isProcessingThumbs) return;
-  state.isProcessingThumbs = true;
+function setupCardObserver() {
+  if (cardObserver) {
+    cardObserver.disconnect();
+  }
 
-  try {
-    while (true) {
-      const pending = state.models.filter(m => !m.thumbnailUrl && !m.loadingThumbnail);
-      if (pending.length === 0) break;
+  if (!('IntersectionObserver' in window)) {
+    return null;
+  }
 
-      // Priorizar primeiro os modelos que estão atualmente na página ativa na tela!
-      const currentIds = state.currentPageModelIds || new Set();
-      pending.sort((a, b) => {
-        const aVisible = currentIds.has(a.id) ? 0 : 1;
-        const bVisible = currentIds.has(b.id) ? 0 : 1;
-        return aVisible - bVisible;
-      });
-
-      const batch = pending.slice(0, 2);
-      await Promise.all(batch.map(async (model) => {
-        model.loadingThumbnail = true;
-        try {
-          const buffer = await model.file.arrayBuffer();
-          if (model.type === 'stl') {
-            const res = await generateSTLThumbnail(buffer);
-            model.thumbnailUrl = res.thumbnailUrl;
-            model.metadata = res.metadata;
-          } else if (model.type === '3mf') {
-            const res = await extract3MFThumbnail(buffer);
-            model.thumbnailUrl = res.thumbnailUrl;
-            model.metadata = res.metadata;
-            model.slicerData = res.slicerData;
-            model.plates = res.plates || [];
-          }
-        } catch (err) {
-          console.warn(`Erro ao gerar miniatura de ${model.name}:`, err);
-          model.thumbnailUrl = generatePlaceholderThumb(model.name, model.type);
-        } finally {
-          model.loadingThumbnail = false;
-          updateCardThumbnail(model);
+  cardObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        const card = entry.target;
+        cardObserver.unobserve(card);
+        const modelId = card.dataset.id;
+        const model = state.models.find(m => m.id === modelId);
+        if (model && !model.thumbnailUrl && !model.loadingThumbnail) {
+          loadModelOnDemand(model);
         }
-      }));
+      }
+    });
+  }, {
+    root: null, // viewport da janela
+    rootMargin: '200px 0px', // Inicia carregamento 200px antes de entrar na tela para suavidade
+    threshold: 0.01
+  });
+
+  return cardObserver;
+}
+
+/**
+ * Carrega a miniatura e metadados de um modelo estritamente sob demanda
+ */
+function loadModelOnDemand(model) {
+  if (model.thumbnailUrl) {
+    updateCardThumbnail(model);
+    return Promise.resolve(model);
+  }
+
+  if (model.loadingThumbnail) {
+    return Promise.resolve(model);
+  }
+
+  model.loadingThumbnail = true;
+
+  return new Promise((resolve) => {
+    thumbQueue.push({ model, resolve });
+    drainThumbQueue();
+  });
+}
+
+/**
+ * Processador da fila sob demanda com controle de concorrência (máximo 2 simultâneos)
+ */
+async function drainThumbQueue() {
+  const MAX_CONCURRENT_THUMBS = 2;
+
+  while (activeThumbJobs < MAX_CONCURRENT_THUMBS && thumbQueue.length > 0) {
+    // Priorizar itens da página visível no momento
+    if (state.currentPageModelIds && state.currentPageModelIds.size > 0) {
+      thumbQueue.sort((a, b) => {
+        const aVis = state.currentPageModelIds.has(a.model.id) ? 1 : 0;
+        const bVis = state.currentPageModelIds.has(b.model.id) ? 1 : 0;
+        return bVis - aVis;
+      });
     }
-  } finally {
-    state.isProcessingThumbs = false;
+
+    const job = thumbQueue.shift();
+    if (!job) break;
+
+    if (job.model.thumbnailUrl) {
+      job.model.loadingThumbnail = false;
+      updateCardThumbnail(job.model);
+      job.resolve(job.model);
+      continue;
+    }
+
+    activeThumbJobs++;
+
+    (async () => {
+      try {
+        await extractModelThumbnailAndMeta(job.model);
+      } catch (err) {
+        console.warn(`Erro ao carregar miniatura sob demanda para ${job.model.name}:`, err);
+        job.model.thumbnailUrl = generatePlaceholderThumb(job.model.name, job.model.type);
+      } finally {
+        job.model.loadingThumbnail = false;
+        activeThumbJobs--;
+        updateCardThumbnail(job.model);
+        job.resolve(job.model);
+        drainThumbQueue();
+      }
+    })();
+  }
+}
+
+/**
+ * Extrai o buffer do arquivo e gera a miniatura Three.js/3MF e metadados
+ */
+async function extractModelThumbnailAndMeta(model) {
+  if (!model.file && model.handle && typeof model.handle.getFile === 'function') {
+    model.file = await model.handle.getFile();
+  }
+  if (!model.file) {
+    throw new Error('Arquivo não disponível');
+  }
+
+  const buffer = await model.file.arrayBuffer();
+
+  if (model.type === 'stl') {
+    const res = await generateSTLThumbnail(buffer);
+    model.thumbnailUrl = res.thumbnailUrl;
+    model.metadata = res.metadata;
+  } else if (model.type === '3mf') {
+    const res = await extract3MFThumbnail(buffer);
+    model.thumbnailUrl = res.thumbnailUrl;
+    model.metadata = res.metadata;
+    model.slicerData = res.slicerData;
+    model.plates = res.plates || [];
   }
 }
 
@@ -1890,15 +2096,13 @@ async function openViewerModal(model) {
     state.modalMesh = null;
   }
 
-  // Garantir que plates foram extraídos se for 3MF
-  if (model.type === '3mf' && (!model.plates || model.plates.length === 0)) {
+  // Garantir que metadados e mesas foram extraídos se ainda não tiverem sido carregados sob demanda
+  if (!model.thumbnailUrl || (model.type === '3mf' && (!model.plates || model.plates.length === 0))) {
     try {
-      const buffer = await model.file.arrayBuffer();
-      const res = await extract3MFThumbnail(buffer);
-      model.plates = res.plates || [];
-      if (!model.slicerData) model.slicerData = res.slicerData;
+      await extractModelThumbnailAndMeta(model);
+      updateCardThumbnail(model);
     } catch (e) {
-      console.warn('Erro ao extrair metadados e mesas do 3MF:', e);
+      console.warn('Erro ao extrair metadados e mesas do modelo:', e);
     }
   }
 
@@ -2132,3 +2336,8 @@ window.addEventListener('DOMContentLoaded', init);
 window.appState = state;
 window.setPageSize = setPageSize;
 window.goToPage = goToPage;
+window.renderGallery = renderGallery;
+window.renderFolderChips = renderFolderChips;
+window.updateStatsBadge = updateStatsBadge;
+window.setNavSection = setNavSection;
+window.loadSampleModels = loadSampleModels;
