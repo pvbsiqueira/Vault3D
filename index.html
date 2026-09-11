@@ -85,25 +85,52 @@
     
     <!-- Estado Vazio / Dropzone Inicial -->
     <div class="empty-state" id="dropZone">
-      <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-        <path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"></path>
-        <path d="M12 12v9"></path>
-        <path d="m8 16 4-4 4 4"></path>
-      </svg>
-      <h2 class="empty-title">Nenhum arquivo 3D carregado</h2>
-      <p class="empty-desc">
-        Selecione ou arraste para cá a pasta do seu computador onde estão seus arquivos <strong>.STL</strong> e <strong>.3MF</strong> para visualizar todas as miniaturas instantaneamente.
-      </p>
-      <div class="empty-actions">
-        <button id="btnEmptySelectFolder" class="btn btn-primary">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
-          </svg>
-          Escolher Pasta no Meu Computador
-        </button>
-        <button id="btnLoadSample" class="btn btn-secondary" title="Carrega modelos de teste prontos na pasta do projeto">
-          ✨ Testar com Modelos de Exemplo
-        </button>
+      
+      <!-- Card de Reconexão de Pastas Salvas (exibido quando há pastas salvas no IndexedDB) -->
+      <div class="saved-folders-reconnect-card" id="savedFoldersCard" style="display: none;">
+        <div class="reconnect-header">
+          <div class="reconnect-icon-wrap">⚡</div>
+          <div class="reconnect-info">
+            <h3 class="reconnect-title">Restaurar Biblioteca Salva</h3>
+            <p class="reconnect-subtitle">Você possui <strong id="savedFoldersCount">0</strong> pasta(s) salva(s) prontas para reconexão instantânea:</p>
+          </div>
+        </div>
+        <div class="saved-folders-preview-list" id="savedFoldersPreviewList"></div>
+        <div class="reconnect-actions">
+          <button id="btnReconnectAllFolders" class="btn btn-primary" title="Reconectar e carregar todas as pastas salvas">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"></path>
+            </svg>
+            <span>Reconectar Pastas Salvas</span>
+          </button>
+          <button id="btnClearSavedFolders" class="btn btn-secondary" title="Limpar histórico de pastas salvas">
+            Esquecer Pastas
+          </button>
+        </div>
+        <div class="reconnect-divider"><span>ou escolha uma nova pasta abaixo</span></div>
+      </div>
+
+      <div class="empty-state-default" id="emptyStateDefault">
+        <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"></path>
+          <path d="M12 12v9"></path>
+          <path d="m8 16 4-4 4 4"></path>
+        </svg>
+        <h2 class="empty-title">Nenhum arquivo 3D carregado</h2>
+        <p class="empty-desc">
+          Selecione ou arraste para cá a pasta do seu computador onde estão seus arquivos <strong>.STL</strong> e <strong>.3MF</strong> para visualizar todas as miniaturas instantaneamente.
+        </p>
+        <div class="empty-actions">
+          <button id="btnEmptySelectFolder" class="btn btn-primary">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+            </svg>
+            Escolher Pasta no Meu Computador
+          </button>
+          <button id="btnLoadSample" class="btn btn-secondary" title="Carrega modelos de teste prontos na pasta do projeto">
+            ✨ Testar com Modelos de Exemplo
+          </button>
+        </div>
       </div>
     </div>
 

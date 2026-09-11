@@ -29,6 +29,11 @@ const btnEmptySelectFolder = document.getElementById('btnEmptySelectFolder');
 const folderInputFallback = document.getElementById('folderInputFallback');
 const btnLoadSample = document.getElementById('btnLoadSample');
 const dropZone = document.getElementById('dropZone');
+const savedFoldersCard = document.getElementById('savedFoldersCard');
+const savedFoldersCount = document.getElementById('savedFoldersCount');
+const savedFoldersPreviewList = document.getElementById('savedFoldersPreviewList');
+const btnReconnectAllFolders = document.getElementById('btnReconnectAllFolders');
+const btnClearSavedFolders = document.getElementById('btnClearSavedFolders');
 const galleryContainer = document.getElementById('galleryContainer');
 const favoritesSection = document.getElementById('favoritesSection');
 const favoritesGrid = document.getElementById('favoritesGrid');
@@ -129,6 +134,21 @@ function init() {
   if (btnBackToPlate) {
     btnBackToPlate.addEventListener('click', () => setViewerMode('plate'));
   }
+
+  // Botões de reconexão de pastas salvas do IndexedDB
+  if (btnReconnectAllFolders) {
+    btnReconnectAllFolders.addEventListener('click', reconnectAllSavedFolders);
+  }
+  if (btnClearSavedFolders) {
+    btnClearSavedFolders.addEventListener('click', async () => {
+      await clearAllFoldersFromDB();
+      if (savedFoldersCard) savedFoldersCard.style.display = 'none';
+      showToast('Histórico de pastas salvas limpo com sucesso.');
+    });
+  }
+
+  // Verificar e tentar restaurar pastas salvas do IndexedDB
+  checkAndRestoreSavedFolders();
 }
 
 /**
@@ -301,7 +321,7 @@ async function scanWebkitEntry(entry, results, path = '') {
 /**
  * Carrega os modelos de exemplo incluídos para teste imediato
  */
-async function loadSampleModels() {
+async function loadSampleModels(persistToDB = true) {
   btnLoadSample.disabled = true;
   btnLoadSample.textContent = 'Carregando exemplos...';
 
@@ -331,7 +351,7 @@ async function loadSampleModels() {
       showToast(`A pasta de exemplos já está na biblioteca.`, 'info');
       return;
     }
-    addFilesToLibrary(loadedFiles, sampleFolderName);
+    await addFilesToLibrary(loadedFiles, sampleFolderName, null, persistToDB, 'sample-models');
   } catch (err) {
     alert('Erro ao carregar arquivos de exemplo: ' + err.message);
   } finally {
@@ -543,16 +563,233 @@ function updateDuplicatesFilterButton(duplicatesCount) {
   }
 }
 
+// ==========================================
+// Persistência de Pastas com IndexedDB
+// ==========================================
+const DB_NAME = 'antigravity_3d_db';
+const DB_VERSION = 1;
+const STORE_FOLDERS = 'folders';
+
+function openFoldersDB() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+    request.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains(STORE_FOLDERS)) {
+        db.createObjectStore(STORE_FOLDERS, { keyPath: 'id' });
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function saveFolderToDB(folderData) {
+  try {
+    const db = await openFoldersDB();
+    const tx = db.transaction(STORE_FOLDERS, 'readwrite');
+    const store = tx.objectStore(STORE_FOLDERS);
+    store.put({
+      id: folderData.id,
+      name: folderData.name,
+      handle: folderData.handle || null,
+      count: folderData.count || 0,
+      isSample: !!folderData.isSample,
+      savedAt: Date.now()
+    });
+    return new Promise((resolve) => {
+      tx.oncomplete = () => resolve(true);
+      tx.onerror = () => resolve(false);
+    });
+  } catch (err) {
+    console.warn('Erro ao salvar pasta no IndexedDB:', err);
+    return false;
+  }
+}
+
+async function removeFolderFromDB(folderId) {
+  try {
+    const db = await openFoldersDB();
+    const tx = db.transaction(STORE_FOLDERS, 'readwrite');
+    const store = tx.objectStore(STORE_FOLDERS);
+    store.delete(folderId);
+    return new Promise((resolve) => {
+      tx.oncomplete = () => resolve(true);
+      tx.onerror = () => resolve(false);
+    });
+  } catch (err) {
+    console.warn('Erro ao remover pasta do IndexedDB:', err);
+    return false;
+  }
+}
+
+async function clearAllFoldersFromDB() {
+  try {
+    const db = await openFoldersDB();
+    const tx = db.transaction(STORE_FOLDERS, 'readwrite');
+    tx.objectStore(STORE_FOLDERS).clear();
+    return new Promise((resolve) => {
+      tx.oncomplete = () => resolve(true);
+      tx.onerror = () => resolve(false);
+    });
+  } catch (err) {
+    console.warn('Erro ao limpar pastas no IndexedDB:', err);
+    return false;
+  }
+}
+
+async function getAllFoldersFromDB() {
+  try {
+    const db = await openFoldersDB();
+    const tx = db.transaction(STORE_FOLDERS, 'readonly');
+    const store = tx.objectStore(STORE_FOLDERS);
+    const req = store.getAll();
+    return new Promise((resolve) => {
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = () => resolve([]);
+    });
+  } catch (err) {
+    console.warn('Erro ao ler pastas do IndexedDB:', err);
+    return [];
+  }
+}
+
+/**
+ * Verifica no IndexedDB se há pastas salvas de sessões anteriores
+ * e tenta restaurá-las automaticamente ou exibe o card de reconexão.
+ */
+async function checkAndRestoreSavedFolders() {
+  const savedFolders = await getAllFoldersFromDB();
+  if (!savedFolders || savedFolders.length === 0) {
+    if (savedFoldersCard) savedFoldersCard.style.display = 'none';
+    return;
+  }
+
+  // Filtrar pastas válidas
+  const validSaved = savedFolders.filter(f => f.isSample || (f.handle && typeof f.handle.queryPermission === 'function'));
+  if (validSaved.length === 0) {
+    if (savedFoldersCard) savedFoldersCard.style.display = 'none';
+    return;
+  }
+
+  // Verificar se todas as pastas com handle já possuem permissão concedida
+  let allGranted = true;
+  for (const f of validSaved) {
+    if (!f.isSample && f.handle) {
+      try {
+        const perm = await f.handle.queryPermission({ mode: 'read' });
+        if (perm !== 'granted') {
+          allGranted = false;
+        }
+      } catch (_) {
+        allGranted = false;
+      }
+    }
+  }
+
+  // Se todas já tiverem permissão concedida
+  if (allGranted) {
+    for (const f of validSaved) {
+      if (f.isSample) {
+        await loadSampleModels(false);
+      } else if (f.handle) {
+        try {
+          const files = await scanDirectoryHandle(f.handle);
+          await addFilesToLibrary(files, f.name, f.handle, false, f.id);
+        } catch (err) {
+          console.warn('Erro ao restaurar pasta salva:', f.name, err);
+        }
+      }
+    }
+    if (state.folders.length > 0) {
+      showToast(`Biblioteca restaurada com ${state.folders.length} pasta(s) salva(s)! 🚀`, 'success');
+      return;
+    }
+  }
+
+  // Se precisar de gesto do usuário para solicitar permissão, exibe o card de reconexão
+  renderSavedFoldersCard(validSaved);
+}
+
+function renderSavedFoldersCard(savedFolders) {
+  if (!savedFoldersCard) return;
+  savedFoldersCard.style.display = 'block';
+  if (savedFoldersCount) savedFoldersCount.textContent = savedFolders.length;
+
+  if (savedFoldersPreviewList) {
+    savedFoldersPreviewList.innerHTML = '';
+    savedFolders.forEach(f => {
+      const item = document.createElement('div');
+      item.className = 'saved-folder-preview-item';
+      item.innerHTML = `
+        <span class="saved-folder-name">
+          <span>📁</span>
+          <span>${escapeHtml(f.name)}</span>
+        </span>
+        <span class="saved-folder-meta">${f.count ? `~${f.count} modelos` : 'Pasta local'}</span>
+      `;
+      savedFoldersPreviewList.appendChild(item);
+    });
+  }
+}
+
+async function reconnectAllSavedFolders() {
+  const savedFolders = await getAllFoldersFromDB();
+  if (!savedFolders || savedFolders.length === 0) return;
+
+  btnReconnectAllFolders.disabled = true;
+  btnReconnectAllFolders.innerHTML = '<span>Reconectando...</span>';
+
+  let reconnectedCount = 0;
+
+  for (const f of savedFolders) {
+    if (f.isSample) {
+      await loadSampleModels(false);
+      reconnectedCount++;
+    } else if (f.handle) {
+      try {
+        let perm = await f.handle.queryPermission({ mode: 'read' });
+        if (perm !== 'granted') {
+          perm = await f.handle.requestPermission({ mode: 'read' });
+        }
+        if (perm === 'granted') {
+          const files = await scanDirectoryHandle(f.handle);
+          await addFilesToLibrary(files, f.name, f.handle, false, f.id);
+          reconnectedCount++;
+        } else {
+          showToast(`Permissão não concedida para "${f.name}".`, 'warning');
+        }
+      } catch (err) {
+        console.warn('Erro ao reconectar pasta:', f.name, err);
+        showToast(`Não foi possível abrir "${f.name}": ${err.message}`, 'error');
+      }
+    }
+  }
+
+  btnReconnectAllFolders.disabled = false;
+  btnReconnectAllFolders.innerHTML = `
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"></path>
+    </svg>
+    <span>Reconectar Pastas Salvas</span>
+  `;
+
+  if (reconnectedCount > 0) {
+    if (savedFoldersCard) savedFoldersCard.style.display = 'none';
+    showToast(`Biblioteca restaurada com ${reconnectedCount} pasta(s)! ⭐`, 'success');
+  }
+}
+
 /**
  * Adiciona uma pasta e seus arquivos 3D à biblioteca existente (suporte a múltiplas pastas)
  */
-async function addFilesToLibrary(files, folderName, dirHandle = null) {
+async function addFilesToLibrary(files, folderName, dirHandle = null, persistToDB = true, existingFolderId = null) {
   if (!files || files.length === 0) {
     showToast(`Nenhum arquivo 3D (.STL ou .3MF) foi encontrado em "${folderName}".`, 'warning');
     return;
   }
 
-  const folderId = 'folder-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5);
+  const folderId = existingFolderId || ('folder-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5));
   const savedFavs = loadFavorites();
 
   const newModels = files.map((item, index) => ({
@@ -586,6 +823,17 @@ async function addFilesToLibrary(files, folderName, dirHandle = null) {
     count: newModels.length
   });
 
+  // Salvar no IndexedDB se solicitado
+  if (persistToDB) {
+    await saveFolderToDB({
+      id: folderId,
+      name: folderName,
+      handle: dirHandle,
+      count: newModels.length,
+      isSample: folderName.includes('sample_models')
+    });
+  }
+
   // Acrescentar modelos ao acervo global
   state.models.push(...newModels);
 
@@ -611,7 +859,7 @@ async function addFilesToLibrary(files, folderName, dirHandle = null) {
 /**
  * Remove uma pasta específica e todos os seus modelos associados da biblioteca
  */
-function removeFolder(folderId) {
+async function removeFolder(folderId) {
   const folderIndex = state.folders.findIndex(f => f.id === folderId);
   if (folderIndex === -1) return;
 
@@ -629,6 +877,9 @@ function removeFolder(folderId) {
   state.folders.splice(folderIndex, 1);
   state.models = state.models.filter(m => m.folderId !== folderId);
 
+  // Remover do IndexedDB
+  await removeFolderFromDB(folderId);
+
   // Se o modelo ativo no modal pertencia a essa pasta, fechar modal
   if (state.activeModel && state.activeModel.folderId === folderId) {
     closeViewerModal();
@@ -645,6 +896,13 @@ function removeFolder(folderId) {
     modelsGrid.innerHTML = '';
     if (foldersChipsList) foldersChipsList.innerHTML = '';
     updateDuplicatesFilterButton(0);
+
+    const remainingSaved = await getAllFoldersFromDB();
+    if (remainingSaved.length > 0) {
+      renderSavedFoldersCard(remainingSaved);
+    } else if (savedFoldersCard) {
+      savedFoldersCard.style.display = 'none';
+    }
     return;
   }
 
