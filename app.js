@@ -58,8 +58,6 @@ const currentViewTitle = document.getElementById('currentViewTitle');
 const currentViewSub = document.getElementById('currentViewSub');
 const searchInput = document.getElementById('searchInput');
 const filterBtns = document.querySelectorAll('.sidebar-format-btn, .pill-btn');
-const btnFilterDuplicates = document.getElementById('btnFilterDuplicates');
-const duplicatesCountBadge = document.getElementById('duplicatesCountBadge');
 
 // Elementos DOM de Paginação
 const paginationBar = document.getElementById('paginationBar');
@@ -675,22 +673,15 @@ async function updateDuplicatesState() {
 }
 
 /**
- * Atualiza a visibilidade e o contador da pílula de duplicados no toolbar
+ * Atualiza a visibilidade e o contador de duplicados na navegação da sidebar
  */
 function updateDuplicatesFilterButton(duplicatesCount) {
-  if (!btnFilterDuplicates || !duplicatesCountBadge) return;
-
-  if (duplicatesCount > 0) {
-    btnFilterDuplicates.style.display = 'inline-flex';
-    duplicatesCountBadge.textContent = duplicatesCount;
-  } else {
-    btnFilterDuplicates.style.display = 'none';
-    if (state.activeFilter === 'duplicates') {
-      state.activeFilter = 'all';
-      filterBtns.forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.filter === 'all');
-      });
-    }
+  if (sidebarDuplicatesCountBadge) sidebarDuplicatesCountBadge.textContent = duplicatesCount;
+  if (navDuplicates) {
+    navDuplicates.style.display = duplicatesCount > 0 ? 'flex' : 'none';
+  }
+  if (duplicatesCount === 0 && state.activeSection === 'duplicates') {
+    setNavSection('all');
   }
 }
 
@@ -1180,13 +1171,9 @@ function updateStatsBadge() {
   if (sidebarAllCountBadge) sidebarAllCountBadge.textContent = totalModels;
   if (sidebarFavoritesCountBadge) sidebarFavoritesCountBadge.textContent = favCount;
   if (sidebarDuplicatesCountBadge) sidebarDuplicatesCountBadge.textContent = dupCount;
-  if (duplicatesCountBadge) duplicatesCountBadge.textContent = dupCount;
 
   if (navDuplicates) {
     navDuplicates.style.display = dupCount > 0 ? 'flex' : 'none';
-  }
-  if (btnFilterDuplicates) {
-    btnFilterDuplicates.style.display = dupCount > 0 ? 'inline-flex' : 'none';
   }
 
   if (fileCountBadge) {
@@ -1740,10 +1727,8 @@ function renderGallery() {
         return false;
       }
 
-      // 2. Filtro de Formatos (.STL / .3MF / Duplicados)
-      if (state.activeFilter === 'duplicates') {
-        if (!model.isDuplicate) return false;
-      } else if (state.activeFilter !== 'all' && model.type !== state.activeFilter) {
+      // 2. Filtro de Formatos (.STL / .3MF)
+      if (state.activeFilter !== 'all' && model.type !== state.activeFilter) {
         return false;
       }
 
