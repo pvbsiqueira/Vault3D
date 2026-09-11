@@ -67,6 +67,141 @@ function Find-InstalledSlicer {
     return $null
 }
 
+$script:resolvedFolderCache = @{}
+
+function Resolve-ModelDiskPath {
+    param(
+        [string]$folder,
+        [string]$path
+    )
+    
+    $cleanRel = if ($path) { $path.Trim().Replace('/', '\') } else { '' }
+    $cleanFolder = if ($folder) { $folder.Trim() } else { '' }
+
+    # Se a pasta já for um caminho absoluto (ex: C:\...)
+    if ($cleanFolder -match '^[a-zA-Z]:\\') {
+        $combined = if ($cleanRel) { Join-Path $cleanFolder $cleanRel } else { $cleanFolder }
+        $dir = [System.IO.Path]::GetDirectoryName($combined)
+        if ($dir -and -not $dir.EndsWith('\')) { $dir += '\' }
+        return @{
+            success = $true
+            fullPath = $combined
+            folderPath = $dir
+            rootFolder = $cleanFolder
+            fileName = [System.IO.Path]::GetFileName($combined)
+        }
+    }
+
+    # Se já estiver em cache
+    if ($cleanFolder -and $script:resolvedFolderCache.ContainsKey($cleanFolder)) {
+        $root = $script:resolvedFolderCache[$cleanFolder]
+        $sub = $cleanRel
+        if ($sub.StartsWith($cleanFolder + '\', [System.StringComparison]::OrdinalIgnoreCase)) {
+            $sub = $sub.Substring($cleanFolder.Length + 1)
+        } elseif ($sub -eq $cleanFolder) {
+            $sub = ''
+        }
+        $combined = if ($sub) { Join-Path $root $sub } else { $root }
+        $dir = [System.IO.Path]::GetDirectoryName($combined)
+        if ($dir -and -not $dir.EndsWith('\')) { $dir += '\' }
+        return @{
+            success = $true
+            fullPath = $combined
+            folderPath = $dir
+            rootFolder = $root
+            fileName = [System.IO.Path]::GetFileName($combined)
+        }
+    }
+
+    # Modelos de exemplo do projeto
+    if ($cleanFolder -match 'sample_models' -or $cleanRel -match 'sample_models') {
+        $sampleDir = Join-Path $currentDir "sample_models"
+        $fName = [System.IO.Path]::GetFileName($cleanRel)
+        $fullSample = Join-Path $sampleDir $fName
+        $dir = $sampleDir + '\'
+        $script:resolvedFolderCache[$cleanFolder] = $sampleDir
+        return @{
+            success = $true
+            fullPath = $fullSample
+            folderPath = $dir
+            rootFolder = $sampleDir
+            fileName = $fName
+        }
+    }
+
+    $userProf = if ($env:USERPROFILE) { $env:USERPROFILE } else { "C:\Users\eustudio" }
+    $candidateBases = @(
+        (Join-Path $userProf "Downloads"),
+        (Join-Path $userProf "Desktop"),
+        (Join-Path $userProf "Documents"),
+        (Join-Path $userProf "Pictures"),
+        (Join-Path $userProf "OneDrive"),
+        $userProf,
+        $currentDir,
+        "C:\"
+    )
+
+    $foundRoot = $null
+    foreach ($base in $candidateBases) {
+        if (-not (Test-Path $base)) { continue }
+        $check = Join-Path $base $cleanFolder
+        if (Test-Path $check) {
+            $foundRoot = (Get-Item $check).FullName
+            break
+        }
+    }
+
+    if (-not $foundRoot) {
+        $searchBases = @(
+            (Join-Path $userProf "Downloads"),
+            (Join-Path $userProf "Desktop"),
+            (Join-Path $userProf "Documents"),
+            $userProf
+        )
+        foreach ($sb in $searchBases) {
+            if (-not (Test-Path $sb)) { continue }
+            $match = Get-ChildItem -Path $sb -Directory -Filter $cleanFolder -Recurse -Depth 3 -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($match) {
+                $foundRoot = $match.FullName
+                break
+            }
+        }
+    }
+
+    if ($foundRoot) {
+        $script:resolvedFolderCache[$cleanFolder] = $foundRoot
+        $sub = $cleanRel
+        if ($sub.StartsWith($cleanFolder + '\', [System.StringComparison]::OrdinalIgnoreCase)) {
+            $sub = $sub.Substring($cleanFolder.Length + 1)
+        } elseif ($sub -eq $cleanFolder) {
+            $sub = ''
+        }
+        $combined = if ($sub) { Join-Path $foundRoot $sub } else { $foundRoot }
+        $dir = [System.IO.Path]::GetDirectoryName($combined)
+        if ($dir -and -not $dir.EndsWith('\')) { $dir += '\' }
+        return @{
+            success = $true
+            fullPath = $combined
+            folderPath = $dir
+            rootFolder = $foundRoot
+            fileName = [System.IO.Path]::GetFileName($combined)
+        }
+    }
+
+    # Fallback estruturado com drive C:\
+    $fallbackRoot = "C:\Users\eustudio\$cleanFolder"
+    $combined = if ($cleanRel) { Join-Path $fallbackRoot $cleanRel } else { $fallbackRoot }
+    $dir = [System.IO.Path]::GetDirectoryName($combined)
+    if ($dir -and -not $dir.EndsWith('\')) { $dir += '\' }
+    return @{
+        success = $false
+        fullPath = $combined
+        folderPath = $dir
+        rootFolder = $fallbackRoot
+        fileName = [System.IO.Path]::GetFileName($combined)
+    }
+}
+
 while ($listener.IsListening) {
     try {
         $context = $listener.GetContext()
@@ -101,28 +236,50 @@ while ($listener.IsListening) {
             continue
         }
 
+        # Endpoint: GET /api/resolve-path
+        if ($request.Url.LocalPath -eq "/api/resolve-path") {
+            $folder = $request.QueryString["folder"]
+            $path = $request.QueryString["path"]
+            $resolved = Resolve-ModelDiskPath -folder $folder -path $path
+            $jsonBytes = [System.Text.Encoding]::UTF8.GetBytes(($resolved | ConvertTo-Json -Compress))
+            $response.ContentType = "application/json; charset=utf-8"
+            $response.StatusCode = 200
+            $response.ContentLength64 = $jsonBytes.Length
+            $response.OutputStream.Write($jsonBytes, 0, $jsonBytes.Length)
+            $response.Close()
+            continue
+        }
+
         # Endpoint: POST /api/open-slicer
         if ($request.Url.LocalPath -eq "/api/open-slicer") {
             if ($request.HttpMethod -eq "POST") {
                 try {
+                    $directFilePath = $request.QueryString["filePath"]
                     $fileName = $request.QueryString["filename"]
-                    if ([string]::IsNullOrWhiteSpace($fileName)) {
-                        $fileName = "modelo_3d.3mf"
+                    $destPath = $null
+
+                    if (-not [string]::IsNullOrWhiteSpace($directFilePath) -and (Test-Path $directFilePath -PathType Leaf)) {
+                        # Arquivo já existe diretamente no disco (abertura instantânea sem cópia)
+                        $destPath = $directFilePath
+                    } else {
+                        if ([string]::IsNullOrWhiteSpace($fileName)) {
+                            $fileName = "modelo_3d.3mf"
+                        }
+                        $fileName = [System.IO.Path]::GetFileName($fileName)
+
+                        # Diretorio temporario dedicado para o fatiador
+                        $slicerTempDir = Join-Path $env:TEMP "3DPrintLibrary_Slicer"
+                        if (-not (Test-Path $slicerTempDir)) {
+                            New-Item -ItemType Directory -Path $slicerTempDir -Force | Out-Null
+                        }
+
+                        $destPath = Join-Path $slicerTempDir $fileName
+
+                        # Copiar arquivo recebido do stream do navegador
+                        $fileStream = [System.IO.File]::Create($destPath)
+                        $request.InputStream.CopyTo($fileStream)
+                        $fileStream.Close()
                     }
-                    $fileName = [System.IO.Path]::GetFileName($fileName)
-
-                    # Diretorio temporario dedicado para o fatiador
-                    $slicerTempDir = Join-Path $env:TEMP "3DPrintLibrary_Slicer"
-                    if (-not (Test-Path $slicerTempDir)) {
-                        New-Item -ItemType Directory -Path $slicerTempDir -Force | Out-Null
-                    }
-
-                    $destPath = Join-Path $slicerTempDir $fileName
-
-                    # Copiar arquivo recebido do stream do navegador
-                    $fileStream = [System.IO.File]::Create($destPath)
-                    $request.InputStream.CopyTo($fileStream)
-                    $fileStream.Close()
 
                     # Descobrir fatiador instalado ou padrao do Windows
                     $slicerExe = Find-InstalledSlicer

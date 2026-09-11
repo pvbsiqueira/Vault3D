@@ -32,7 +32,8 @@ const state = {
   })(),
   currentPage: 1,
   filteredModelsCount: 0,
-  currentPageModelIds: new Set()
+  currentPageModelIds: new Set(),
+  folderDiskPaths: {}
 };
 
 // Elementos DOM da Sidebar & Dashboard
@@ -122,6 +123,7 @@ const modalInfoDimensions = document.getElementById('modalInfoDimensions');
 const modalInfoDimensionsWrap = document.getElementById('modalInfoDimensionsWrap');
 const modalInfoTriangles = document.getElementById('modalInfoTriangles');
 const modalInfoTrianglesWrap = document.getElementById('modalInfoTrianglesWrap');
+const btnCopyModalPath = document.getElementById('btnCopyModalPath');
 
 // Inicialização de Eventos
 function init() {
@@ -266,8 +268,38 @@ function init() {
     });
   }
 
+  // Copiar caminho completo do arquivo ao clicar no botão ou no título
+  if (btnCopyModalPath) {
+    btnCopyModalPath.addEventListener('click', (e) => {
+      e.stopPropagation();
+      copyModalFullPath();
+    });
+  }
+  if (modalFileName) {
+    modalFileName.addEventListener('click', () => {
+      copyModalFullPath();
+    });
+  }
+
   // Verificar e tentar restaurar pastas salvas do IndexedDB
   checkAndRestoreSavedFolders();
+}
+
+/**
+ * Copia o caminho completo do arquivo no disco para a área de transferência
+ */
+function copyModalFullPath() {
+  if (!state.activeModel) return;
+  const folderText = modalPathFolder ? modalPathFolder.textContent : '';
+  const nameText = modalPathName ? modalPathName.textContent : state.activeModel.name;
+  const fullPath = state.activeModel.fullDiskPath || `${folderText}${nameText}`;
+  if (fullPath) {
+    navigator.clipboard.writeText(fullPath).then(() => {
+      showToast('Caminho copiado para a área de transferência! 📋', 'success');
+    }).catch(() => {
+      showToast(fullPath, 'info');
+    });
+  }
 }
 
 /**
@@ -1042,6 +1074,19 @@ async function addFilesToLibrary(files, folderName, dirHandle = null, persistToD
     count: newModels.length
   });
 
+  // Pré-resolver caminho no disco iniciando em C:\ para agilizar a exibição e tooltips
+  if (files[0]) {
+    fetch(`/api/resolve-path?folder=${encodeURIComponent(folderName)}&path=${encodeURIComponent(files[0].path || files[0].name)}`)
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (data && data.rootFolder) {
+          state.folderDiskPaths[folderName] = data.rootFolder;
+          updateFolderTooltip(folderName, data.rootFolder);
+        }
+      })
+      .catch(() => {});
+  }
+
   // Salvar no IndexedDB se solicitado
   if (persistToDB) {
     await saveFolderToDB({
@@ -1362,6 +1407,9 @@ async function renameModelFile(model, newBaseName) {
       ? model.path.substring(0, model.path.lastIndexOf('/') + 1) + newFullName
       : newFullName;
   }
+  if (model.fullFolderDirectory) {
+    model.fullDiskPath = `${model.fullFolderDirectory}${newFullName}`;
+  }
 
   // Se o modal estiver aberto exibindo este mesmo modelo, atualizar o título do modal
   if (state.activeModel && state.activeModel.id === model.id) {
@@ -1369,6 +1417,9 @@ async function renameModelFile(model, newBaseName) {
       modalPathName.textContent = newFullName;
     } else if (modalFileName) {
       modalFileName.textContent = newFullName;
+    }
+    if (modalFileName && model.fullDiskPath) {
+      modalFileName.title = `${model.fullDiskPath} (Clique para copiar)`;
     }
   }
 
@@ -1426,9 +1477,11 @@ async function openModelInSlicer(model, buttonEl) {
       throw new Error('Não foi possível obter os dados do arquivo para o fatiador.');
     }
 
-    const res = await fetch(`/api/open-slicer?filename=${encodeURIComponent(model.name)}`, {
+    // Se o caminho absoluto no disco já for conhecido, abre diretamente e de forma instantânea
+    const filePathParam = model.fullDiskPath ? `&filePath=${encodeURIComponent(model.fullDiskPath)}` : '';
+    const res = await fetch(`/api/open-slicer?filename=${encodeURIComponent(model.name)}${filePathParam}`, {
       method: 'POST',
-      body: file
+      body: model.fullDiskPath ? undefined : file
     });
 
     if (!res.ok) {
@@ -2290,6 +2343,104 @@ function selectPlate(plate) {
 }
 
 /**
+ * Atualiza o tooltip do item de pasta na barra lateral para exibir o caminho completo no disco
+ */
+function updateFolderTooltip(folderName, diskPath) {
+  if (!sidebarFoldersList) return;
+  const items = sidebarFoldersList.querySelectorAll('.sidebar-folder-item');
+  items.forEach(el => {
+    const nameSpan = el.querySelector('.sidebar-folder-name');
+    if (nameSpan && nameSpan.textContent.trim() === folderName) {
+      el.title = `${folderName}\nCaminho no disco: ${diskPath}`;
+    }
+  });
+}
+
+/**
+ * Formata e exibe o caminho completo do arquivo desde o drive C:\
+ */
+async function updateModalFilePath(model) {
+  if (!model) return;
+
+  const folderName = model.folderName || '';
+  const relPath = (model.path || model.name).replace(/\//g, '\\');
+
+  // 1. Se o modelo já possui o caminho completo no disco cacheado
+  if (model.fullDiskPath && model.fullFolderDirectory) {
+    if (modalPathFolder) modalPathFolder.textContent = model.fullFolderDirectory;
+    if (modalPathName) modalPathName.textContent = model.name;
+    if (modalFileName) modalFileName.title = `${model.fullDiskPath} (Clique para copiar)`;
+    return;
+  }
+
+  // 2. Se já conhecemos a raiz no disco dessa pasta
+  if (state.folderDiskPaths[folderName]) {
+    const rootDir = state.folderDiskPaths[folderName];
+    let sub = relPath;
+    if (sub.toLowerCase().startsWith(folderName.toLowerCase() + '\\')) {
+      sub = sub.substring(folderName.length + 1);
+    } else if (sub.toLowerCase() === folderName.toLowerCase()) {
+      sub = '';
+    }
+    const combined = sub ? `${rootDir}\\${sub}` : rootDir;
+    const lastSlash = combined.lastIndexOf('\\');
+    const folderDir = lastSlash !== -1 ? combined.substring(0, lastSlash + 1) : `${rootDir}\\`;
+    const fName = lastSlash !== -1 ? combined.substring(lastSlash + 1) : model.name;
+
+    model.fullDiskPath = combined;
+    model.fullFolderDirectory = folderDir;
+
+    if (modalPathFolder) modalPathFolder.textContent = folderDir;
+    if (modalPathName) modalPathName.textContent = fName;
+    if (modalFileName) modalFileName.title = `${combined} (Clique para copiar)`;
+    return;
+  }
+
+  // 3. Exibição imediata estimada iniciando em C:\ enquanto consulta o backend
+  let estimatedDir = '';
+  if (folderName.includes('sample_models') || relPath.includes('sample_models')) {
+    estimatedDir = 'C:\\Users\\eustudio\\Desktop\\Projeto\\sample_models\\';
+  } else {
+    estimatedDir = `C:\\Users\\eustudio\\Downloads\\${folderName}\\`;
+  }
+  let sub = relPath;
+  if (sub.toLowerCase().startsWith(folderName.toLowerCase() + '\\')) {
+    sub = sub.substring(folderName.length + 1);
+  }
+  const lastSlash = sub.lastIndexOf('\\');
+  if (lastSlash !== -1) {
+    estimatedDir += sub.substring(0, lastSlash + 1);
+  }
+  if (modalPathFolder) modalPathFolder.textContent = estimatedDir;
+  if (modalPathName) modalPathName.textContent = model.name;
+  if (modalFileName) modalFileName.title = `${estimatedDir}${model.name} (Clique para copiar)`;
+
+  // 4. Consulta assíncrona ao servidor local para obter o caminho 100% real do Windows
+  try {
+    const res = await fetch(`/api/resolve-path?folder=${encodeURIComponent(folderName)}&path=${encodeURIComponent(model.path || model.name)}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.fullPath) {
+        model.fullDiskPath = data.fullPath;
+        model.fullFolderDirectory = data.folderPath;
+        if (data.rootFolder && folderName) {
+          state.folderDiskPaths[folderName] = data.rootFolder;
+          updateFolderTooltip(folderName, data.rootFolder);
+        }
+        // Se este mesmo modelo ainda estiver ativo no modal, atualiza na tela
+        if (state.activeModel && state.activeModel.id === model.id) {
+          if (modalPathFolder) modalPathFolder.textContent = data.folderPath;
+          if (modalPathName) modalPathName.textContent = data.fileName || model.name;
+          if (modalFileName) modalFileName.title = `${data.fullPath} (Clique para copiar)`;
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('Erro ao consultar /api/resolve-path:', err);
+  }
+}
+
+/**
  * Modal Interativo (Three.js + Visualizador de Mesas)
  */
 async function openViewerModal(model) {
@@ -2297,31 +2448,8 @@ async function openViewerModal(model) {
   state.activeModel = model;
   state.isMeshLoaded = false;
 
-  // Construir caminho completo da pasta e nome do arquivo
-  const folderPart = model.folderName || '';
-  let relPath = model.path || model.name;
-  let fullDisplayPath = '';
-  if (folderPart) {
-    if (relPath.startsWith(folderPart + '/') || relPath.startsWith(folderPart + '\\')) {
-      fullDisplayPath = relPath.replace(/\\/g, ' / ');
-    } else {
-      fullDisplayPath = `${folderPart} / ${relPath}`.replace(/\\/g, ' / ');
-    }
-  } else {
-    fullDisplayPath = relPath.replace(/\\/g, ' / ');
-  }
-
-  const lastSlashIdx = fullDisplayPath.lastIndexOf(' / ');
-  if (lastSlashIdx !== -1) {
-    const folders = fullDisplayPath.substring(0, lastSlashIdx + 3);
-    const fileName = fullDisplayPath.substring(lastSlashIdx + 3);
-    if (modalPathFolder) modalPathFolder.textContent = folders;
-    if (modalPathName) modalPathName.textContent = fileName;
-  } else {
-    if (modalPathFolder) modalPathFolder.textContent = '';
-    if (modalPathName) modalPathName.textContent = fullDisplayPath;
-  }
-  if (modalFileName) modalFileName.title = fullDisplayPath;
+  // Construir caminho completo desde C:\
+  updateModalFilePath(model);
 
   modalBadge.textContent = model.type.toUpperCase();
   modalBadge.className = `badge-format ${model.type} format-${model.type}`;
