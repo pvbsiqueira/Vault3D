@@ -156,8 +156,48 @@
             <h2 class="section-title">Todos</h2>
             <span class="section-badge" id="allCountBadge">0</span>
           </div>
+          <div class="section-header-right" id="topPageSizeWrap" style="display: none;">
+            <span class="pagination-label">Exibir:</span>
+            <div class="page-size-buttons" id="topPageSizeButtons">
+              <button class="page-size-btn" data-size="50">50</button>
+              <button class="page-size-btn" data-size="100">100</button>
+              <button class="page-size-btn" data-size="150">150</button>
+            </div>
+          </div>
         </div>
         <div class="models-grid" id="modelsGrid"></div>
+
+        <!-- Barra de Paginação -->
+        <div class="pagination-bar" id="paginationBar" style="display: none;">
+          <div class="pagination-size-wrap">
+            <span class="pagination-label">Cards por página:</span>
+            <div class="page-size-buttons" id="bottomPageSizeButtons">
+              <button class="page-size-btn" data-size="50">50</button>
+              <button class="page-size-btn" data-size="100">100</button>
+              <button class="page-size-btn" data-size="150">150</button>
+            </div>
+          </div>
+
+          <div class="pagination-info" id="paginationInfo">
+            Mostrando <strong id="paginationRange">0–0</strong> de <strong id="paginationTotal">0</strong> modelos
+          </div>
+
+          <div class="pagination-nav" id="paginationNav">
+            <button class="page-nav-btn" id="btnPagePrev" title="Página anterior" aria-label="Página anterior">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="15 18 9 12 15 6"></polyline>
+              </svg>
+              <span>Anterior</span>
+            </button>
+            <div class="pagination-numbers" id="paginationNumbers"></div>
+            <button class="page-nav-btn" id="btnPageNext" title="Próxima página" aria-label="Próxima página">
+              <span>Próxima</span>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="9 18 15 12 9 6"></polyline>
+              </svg>
+            </button>
+          </div>
+        </div>
       </section>
     </div>
 

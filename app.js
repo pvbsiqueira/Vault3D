@@ -20,7 +20,19 @@ const state = {
   activeModel: null,
   activePlateId: 1,
   currentViewerMode: '3d',
-  isMeshLoaded: false
+  isMeshLoaded: false,
+  pageSize: (function() {
+    try {
+      const saved = parseInt(localStorage.getItem('antigravity_page_size'), 10);
+      return [50, 100, 150].includes(saved) ? saved : 50;
+    } catch (e) {
+      return 50;
+    }
+  })(),
+  currentPage: 1,
+  filteredModelsCount: 0,
+  currentPageModelIds: new Set(),
+  isProcessingThumbs: false
 };
 
 // Elementos DOM
@@ -50,6 +62,19 @@ const btnFilterDuplicates = document.getElementById('btnFilterDuplicates');
 const duplicatesCountBadge = document.getElementById('duplicatesCountBadge');
 const searchInput = document.getElementById('searchInput');
 const filterBtns = document.querySelectorAll('.pill-btn');
+
+// Elementos de Paginação
+const paginationBar = document.getElementById('paginationBar');
+const paginationInfo = document.getElementById('paginationInfo');
+const paginationRange = document.getElementById('paginationRange');
+const paginationTotal = document.getElementById('paginationTotal');
+const paginationNav = document.getElementById('paginationNav');
+const btnPagePrev = document.getElementById('btnPagePrev');
+const btnPageNext = document.getElementById('btnPageNext');
+const paginationNumbers = document.getElementById('paginationNumbers');
+const topPageSizeWrap = document.getElementById('topPageSizeWrap');
+const topPageSizeButtons = document.getElementById('topPageSizeButtons');
+const bottomPageSizeButtons = document.getElementById('bottomPageSizeButtons');
 
 // Modal DOM
 const viewerModal = document.getElementById('viewerModal');
@@ -88,6 +113,7 @@ function init() {
   // Busca e Filtros
   searchInput.addEventListener('input', (e) => {
     state.searchQuery = e.target.value.toLowerCase().trim();
+    state.currentPage = 1;
     renderGallery();
   });
 
@@ -96,9 +122,54 @@ function init() {
       filterBtns.forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       state.activeFilter = btn.dataset.filter;
+      state.currentPage = 1;
       renderGallery();
     });
   });
+
+  // Controles de Tamanho de Página (50, 100, 150)
+  [topPageSizeButtons, bottomPageSizeButtons].forEach(container => {
+    if (!container) return;
+    container.addEventListener('click', (e) => {
+      const btn = e.target.closest('.page-size-btn');
+      if (!btn) return;
+      const newSize = parseInt(btn.dataset.size, 10);
+      if ([50, 100, 150].includes(newSize)) {
+        setPageSize(newSize);
+      }
+    });
+  });
+
+  // Navegação de Páginas
+  if (btnPagePrev) {
+    btnPagePrev.addEventListener('click', () => {
+      if (state.currentPage > 1) {
+        goToPage(state.currentPage - 1);
+      }
+    });
+  }
+
+  if (btnPageNext) {
+    btnPageNext.addEventListener('click', () => {
+      const totalPages = Math.max(1, Math.ceil(state.filteredModelsCount / state.pageSize));
+      if (state.currentPage < totalPages) {
+        goToPage(state.currentPage + 1);
+      }
+    });
+  }
+
+  if (paginationNumbers) {
+    paginationNumbers.addEventListener('click', (e) => {
+      const btn = e.target.closest('.page-num-btn:not(.ellipsis)');
+      if (!btn) return;
+      const page = parseInt(btn.dataset.page, 10);
+      if (page && page !== state.currentPage) {
+        goToPage(page);
+      }
+    });
+  }
+
+  updatePageSizeButtonsUI();
 
   // Drag & Drop na Dropzone e na página
   setupDragAndDrop();
@@ -1342,7 +1413,143 @@ function createModelCard(model) {
 }
 
 /**
- * Renderiza a galeria com suporte à seção Favoritos e seção Todos
+ * Altera o limite de cards por página e salva preferência
+ */
+function setPageSize(newSize) {
+  state.pageSize = newSize;
+  state.currentPage = 1;
+  try {
+    localStorage.setItem('antigravity_page_size', String(newSize));
+  } catch (e) {}
+  updatePageSizeButtonsUI();
+  renderGallery();
+  processThumbnailQueue();
+}
+
+/**
+ * Navega para uma página específica
+ */
+function goToPage(page) {
+  state.currentPage = page;
+  renderGallery();
+  processThumbnailQueue();
+
+  const target = (allSectionHeader && allSectionHeader.style.display !== 'none')
+    ? allSectionHeader
+    : modelsGrid;
+  if (target) {
+    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+}
+
+/**
+ * Atualiza o estado ativo de todos os botões de tamanho de página
+ */
+function updatePageSizeButtonsUI() {
+  document.querySelectorAll('.page-size-btn').forEach(btn => {
+    const s = parseInt(btn.dataset.size, 10);
+    if (s === state.pageSize) {
+      btn.classList.add('active');
+    } else {
+      btn.classList.remove('active');
+    }
+  });
+}
+
+/**
+ * Calcula lista de números de páginas com janelamento inteligente (1, 2 ... 7)
+ */
+function getPaginationPageNumbers(current, total) {
+  if (total <= 7) {
+    return Array.from({ length: total }, (_, i) => i + 1);
+  }
+
+  const pages = [];
+  pages.push(1);
+
+  let start = Math.max(2, current - 1);
+  let end = Math.min(total - 1, current + 1);
+
+  if (current <= 3) {
+    end = 4;
+  }
+  if (current >= total - 2) {
+    start = total - 3;
+  }
+
+  if (start > 2) {
+    pages.push('...');
+  }
+
+  for (let i = start; i <= end; i++) {
+    pages.push(i);
+  }
+
+  if (end < total - 1) {
+    pages.push('...');
+  }
+
+  pages.push(total);
+  return pages;
+}
+
+/**
+ * Atualiza os controles visuais da barra de paginação
+ */
+function updatePaginationUI(total, totalPages, startIdx, endIdx) {
+  updatePageSizeButtonsUI();
+
+  if (topPageSizeWrap) {
+    topPageSizeWrap.style.display = total > 0 ? 'flex' : 'none';
+  }
+
+  if (!paginationBar) return;
+
+  if (total === 0) {
+    paginationBar.style.display = 'none';
+    return;
+  }
+
+  paginationBar.style.display = 'flex';
+
+  if (paginationRange) {
+    paginationRange.textContent = total > 0 ? `${startIdx + 1}–${endIdx}` : '0–0';
+  }
+  if (paginationTotal) {
+    paginationTotal.textContent = total;
+  }
+
+  if (btnPagePrev) {
+    btnPagePrev.disabled = state.currentPage <= 1;
+  }
+  if (btnPageNext) {
+    btnPageNext.disabled = state.currentPage >= totalPages;
+  }
+
+  if (paginationNumbers) {
+    paginationNumbers.innerHTML = '';
+    const pages = getPaginationPageNumbers(state.currentPage, totalPages);
+    pages.forEach(p => {
+      const btn = document.createElement('button');
+      if (p === '...') {
+        btn.className = 'page-num-btn ellipsis';
+        btn.textContent = '…';
+        btn.disabled = true;
+      } else {
+        btn.className = `page-num-btn ${p === state.currentPage ? 'active' : ''}`;
+        btn.textContent = p;
+        btn.dataset.page = p;
+        btn.title = `Página ${p}`;
+        btn.setAttribute('aria-label', `Ir para página ${p}`);
+      }
+      paginationNumbers.appendChild(btn);
+    });
+  }
+}
+
+/**
+ * Renderiza a galeria com suporte a paginação configurável (50, 100, 150),
+ * seção de Favoritos e seção Todos
  */
 function renderGallery() {
   const filtered = state.models
@@ -1364,9 +1571,13 @@ function renderGallery() {
   favoritesGrid.innerHTML = '';
   modelsGrid.innerHTML = '';
 
+  state.filteredModelsCount = filtered.length;
+
   if (filtered.length === 0) {
     favoritesSection.style.display = 'none';
     allSectionHeader.style.display = 'none';
+    if (topPageSizeWrap) topPageSizeWrap.style.display = 'none';
+    if (paginationBar) paginationBar.style.display = 'none';
     modelsGrid.innerHTML = `
       <div style="grid-column: 1/-1; text-align: center; padding: 3rem; color: var(--text-muted);">
         Nenhum arquivo corresponde aos filtros aplicados.
@@ -1389,49 +1600,84 @@ function renderGallery() {
     allSectionHeader.style.display = 'flex';
     allCountBadge.textContent = filtered.length;
   } else {
-    // Ocultar seção de Favoritos e cabeçalho de Todos
+    // Ocultar seção de Favoritos e exibir cabeçalho de Todos
     favoritesSection.style.display = 'none';
-    allSectionHeader.style.display = 'none';
+    allSectionHeader.style.display = filtered.length > 0 ? 'flex' : 'none';
+    allCountBadge.textContent = filtered.length;
   }
 
-  // Renderizar a lista completa em Todos
-  filtered.forEach(model => {
+  // Paginação inteligente da seção Todos
+  const totalPages = Math.max(1, Math.ceil(filtered.length / state.pageSize));
+  if (state.currentPage > totalPages) {
+    state.currentPage = totalPages;
+  }
+  if (state.currentPage < 1) {
+    state.currentPage = 1;
+  }
+
+  const startIdx = (state.currentPage - 1) * state.pageSize;
+  const endIdx = Math.min(startIdx + state.pageSize, filtered.length);
+  const pageModels = filtered.slice(startIdx, endIdx);
+
+  // Mapear IDs dos modelos visíveis na página ativa para priorizar a fila de miniaturas
+  state.currentPageModelIds = new Set(pageModels.map(m => m.id));
+
+  // Renderizar somente os cards da fatia paginada no DOM
+  pageModels.forEach(model => {
     modelsGrid.appendChild(createModelCard(model));
   });
+
+  // Atualizar a barra de paginação e controles
+  updatePaginationUI(filtered.length, totalPages, startIdx, endIdx);
 }
 
 /**
- * Fila concorrente para geração de miniaturas sem travar a interface
+ * Fila concorrente para geração de miniaturas com priorização dos cards visíveis na página ativa
  */
 async function processThumbnailQueue() {
-  const pending = state.models.filter(m => !m.thumbnailUrl && !m.loadingThumbnail);
-  const concurrency = 2; // Processar 2 por vez para máxima suavidade
+  if (state.isProcessingThumbs) return;
+  state.isProcessingThumbs = true;
 
-  for (let i = 0; i < pending.length; i += concurrency) {
-    const batch = pending.slice(i, i + concurrency);
-    await Promise.all(batch.map(async (model) => {
-      model.loadingThumbnail = true;
-      try {
-        const buffer = await model.file.arrayBuffer();
-        if (model.type === 'stl') {
-          const res = await generateSTLThumbnail(buffer);
-          model.thumbnailUrl = res.thumbnailUrl;
-          model.metadata = res.metadata;
-        } else if (model.type === '3mf') {
-          const res = await extract3MFThumbnail(buffer);
-          model.thumbnailUrl = res.thumbnailUrl;
-          model.metadata = res.metadata;
-          model.slicerData = res.slicerData;
-          model.plates = res.plates || [];
+  try {
+    while (true) {
+      const pending = state.models.filter(m => !m.thumbnailUrl && !m.loadingThumbnail);
+      if (pending.length === 0) break;
+
+      // Priorizar primeiro os modelos que estão atualmente na página ativa na tela!
+      const currentIds = state.currentPageModelIds || new Set();
+      pending.sort((a, b) => {
+        const aVisible = currentIds.has(a.id) ? 0 : 1;
+        const bVisible = currentIds.has(b.id) ? 0 : 1;
+        return aVisible - bVisible;
+      });
+
+      const batch = pending.slice(0, 2);
+      await Promise.all(batch.map(async (model) => {
+        model.loadingThumbnail = true;
+        try {
+          const buffer = await model.file.arrayBuffer();
+          if (model.type === 'stl') {
+            const res = await generateSTLThumbnail(buffer);
+            model.thumbnailUrl = res.thumbnailUrl;
+            model.metadata = res.metadata;
+          } else if (model.type === '3mf') {
+            const res = await extract3MFThumbnail(buffer);
+            model.thumbnailUrl = res.thumbnailUrl;
+            model.metadata = res.metadata;
+            model.slicerData = res.slicerData;
+            model.plates = res.plates || [];
+          }
+        } catch (err) {
+          console.warn(`Erro ao gerar miniatura de ${model.name}:`, err);
+          model.thumbnailUrl = generatePlaceholderThumb(model.name, model.type);
+        } finally {
+          model.loadingThumbnail = false;
+          updateCardThumbnail(model);
         }
-      } catch (err) {
-        console.warn(`Erro ao gerar miniatura de ${model.name}:`, err);
-        model.thumbnailUrl = generatePlaceholderThumb(model.name, model.type);
-      } finally {
-        model.loadingThumbnail = false;
-        updateCardThumbnail(model);
-      }
-    }));
+      }));
+    }
+  } finally {
+    state.isProcessingThumbs = false;
   }
 }
 
@@ -1881,3 +2127,8 @@ function escapeHtml(str) {
 
 // Inicializar aplicação
 window.addEventListener('DOMContentLoaded', init);
+
+// Exposição para testes e interoperabilidade
+window.appState = state;
+window.setPageSize = setPageSize;
+window.goToPage = goToPage;
