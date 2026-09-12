@@ -191,16 +191,6 @@ const btnConfirmProjectCreation = document.getElementById('btnConfirmProjectCrea
 
 // Inicialização de Eventos
 function init() {
-  if (btnSidebarToggle && appSidebar) {
-    btnSidebarToggle.addEventListener('click', () => {
-      if (window.innerWidth <= 900) {
-        appSidebar.classList.toggle('mobile-open');
-      } else {
-        appSidebar.classList.toggle('collapsed');
-      }
-    });
-  }
-
   if (btnSelectFolder) btnSelectFolder.addEventListener('click', handleChooseFolder);
   if (btnEmptySelectFolder) btnEmptySelectFolder.addEventListener('click', handleChooseFolder);
   if (folderInputFallback) folderInputFallback.addEventListener('change', handleFallbackFileSelect);
