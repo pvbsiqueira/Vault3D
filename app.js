@@ -374,6 +374,12 @@ function init() {
   // Modal Controls
   modalCloseBtn.addEventListener('click', closeViewerModal);
   if (btnModalOpenSlicer) {
+    setupModelDraggable(btnModalOpenSlicer, () => {
+      return (state.activePlate && state.activePlate.model && !state.activePlate.isCustomCover ? state.activePlate.model : null)
+        || (state.activeProject ? (state.activeProject.primaryPart || (state.activeProject.parts && state.activeProject.parts[0])) : null)
+        || state.activeModel;
+    });
+
     btnModalOpenSlicer.addEventListener('click', () => {
       const modelToOpen = (state.activePlate && state.activePlate.model && !state.activePlate.isCustomCover ? state.activePlate.model : null)
         || (state.activeProject ? (state.activeProject.primaryPart || (state.activeProject.parts && state.activeProject.parts[0])) : null)
@@ -381,6 +387,12 @@ function init() {
       if (modelToOpen) {
         openModelInSlicer(modelToOpen, btnModalOpenSlicer);
       }
+    });
+  }
+  if (modalPlateImg) {
+    setupModelDraggable(modalPlateImg, () => {
+      return (state.activePlate && state.activePlate.model && !state.activePlate.isCustomCover ? state.activePlate.model : null)
+        || state.activeModel;
     });
   }
   viewerModal.addEventListener('click', (e) => {
@@ -1856,6 +1868,78 @@ async function renameModelFile(model, newBaseName) {
 }
 
 /**
+ * Configura o comportamento nativo de Arrastar e Soltar (Drag & Drop)
+ * permitindo arrastar o arquivo 3D do navegador para a janela do fatiador ou Windows Explorer
+ */
+function setupModelDraggable(element, getModelFn) {
+  if (!element) return;
+  element.setAttribute('draggable', 'true');
+
+  // Ao pressionar o mouse, pré-carrega o File se necessário
+  element.addEventListener('pointerdown', async () => {
+    const model = typeof getModelFn === 'function' ? getModelFn() : getModelFn;
+    if (!model) return;
+    let target = model;
+    if (model.isProject && (model.primaryPart || (model.parts && model.parts.length > 0))) {
+      target = (state.activePlate && state.activePlate.model && !state.activePlate.isCustomCover)
+        ? state.activePlate.model
+        : (model.primaryPart || model.parts[0]);
+    }
+    if (target && !target.file && target.handle && typeof target.handle.getFile === 'function') {
+      try {
+        target.file = await target.handle.getFile();
+      } catch (_) {}
+    }
+  });
+
+  element.addEventListener('dragstart', (e) => {
+    const model = typeof getModelFn === 'function' ? getModelFn() : getModelFn;
+    if (!model) return;
+
+    let target = model;
+    if (model.isProject && (model.primaryPart || (model.parts && model.parts.length > 0))) {
+      target = (state.activePlate && state.activePlate.model && !state.activePlate.isCustomCover)
+        ? state.activePlate.model
+        : (model.primaryPart || model.parts[0]);
+    }
+
+    const file = target ? target.file : null;
+    const fileName = (target && target.name) || (file && file.name) || 'modelo_3d.3mf';
+    const fullPath = (target && target.fullDiskPath) || (target && target.fullFolderDirectory ? `${target.fullFolderDirectory}${target.name}` : '');
+
+    element.classList.add('is-dragging');
+    e.dataTransfer.effectAllowed = 'copyMove';
+
+    if (file) {
+      if (!target._blobUrl) {
+        target._blobUrl = URL.createObjectURL(file);
+      }
+      const blobUrl = target._blobUrl;
+
+      // 1. DownloadURL nativo do Chromium para arrastar para a janela do fatiador ou Windows Explorer
+      e.dataTransfer.setData('DownloadURL', `application/octet-stream:${fileName}:${blobUrl}`);
+
+      // 2. DataTransfer Items para navegadores / Electron
+      try {
+        if (e.dataTransfer.items) {
+          e.dataTransfer.items.add(file);
+        }
+      } catch (_) {}
+
+      // 3. Fallback text/plain e URI list
+      e.dataTransfer.setData('text/plain', fullPath || fileName);
+      e.dataTransfer.setData('text/uri-list', blobUrl);
+    } else if (fullPath) {
+      e.dataTransfer.setData('text/plain', fullPath);
+    }
+  });
+
+  element.addEventListener('dragend', () => {
+    element.classList.remove('is-dragging');
+  });
+}
+
+/**
  * Envia o modelo 3D para o fatiador instalado na máquina do usuário.
  * Suporta o protocolo nativo vault3d:// (abertura instantânea sem servidor)
  * e também o companion local http://127.0.0.1:3000/api/open-slicer quando ativo.
@@ -1895,8 +1979,6 @@ async function openModelInSlicer(model, buttonEl) {
     `;
   }
 
-  showToast(`Enviando "${modelDisplayName}" para o fatiador...`, 'info');
-
   try {
     // 2. Resolver o caminho completo do arquivo no disco
     const folderName = targetModel.folderName || '';
@@ -1926,7 +2008,6 @@ async function openModelInSlicer(model, buttonEl) {
     }
 
     // 4. Disparar abertura via protocolo nativo do Windows (vault3d://)
-    // Esse método funciona tanto em www.vault3d.com.br quanto localmente sem exigir servidor rodando
     if (fullPath) {
       try {
         const protocolUrl = `vault3d://open?path=${encodeURIComponent(fullPath)}`;
@@ -1964,12 +2045,12 @@ async function openModelInSlicer(model, buttonEl) {
       // Ignora silenciosamente se o servidor local não estiver rodando (o protocolo nativo já foi disparado)
     }
 
-    // 6. Feedback de sucesso ao usuário
-    showToast(`"${modelDisplayName}" enviado para o fatiador! (Caminho copiado)`, 'success');
+    // 6. Feedback de sucesso e orientação amigável ao usuário
+    showToast(`📋 Caminho copiado! Você também pode arrastar este card diretamente para a janela do fatiador.`, 'info');
 
   } catch (err) {
-    console.error('Erro ao abrir no fatiador:', err);
-    showToast(`Não foi possível abrir no fatiador: ${err.message}`, 'error');
+    console.error('Erro ao processar modelo:', err);
+    showToast(`Não foi possível preparar o modelo: ${err.message}`, 'error');
   } finally {
     if (buttonEl) {
       buttonEl.classList.remove('loading');
@@ -2641,17 +2722,20 @@ function createModelCard(model) {
           <span class="card-dimensions" style="color: #c084fc; font-weight: 600;">${model.partsCount} arquivos 3D</span>
         </div>
         <div class="card-footer-actions">
-          <button class="btn-open-slicer" title="Abrir peça principal no fatiador" type="button">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
-              <polyline points="2 17 12 22 22 17"></polyline>
-              <polyline points="2 12 12 17 22 12"></polyline>
+          <button class="btn-open-slicer" draggable="true" title="Arraste para a janela do fatiador ou clique para copiar o caminho" type="button">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M18 11V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v0"></path>
+              <path d="M14 10V4a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v2"></path>
+              <path d="M10 10.5V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v8"></path>
+              <path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"></path>
             </svg>
-            <span>Abrir no fatiador</span>
+            <span>Arrastar para o fatiador</span>
           </button>
         </div>
       </div>
     `;
+
+    setupModelDraggable(card, () => model);
 
     const btnFavorite = card.querySelector('.btn-favorite');
     if (btnFavorite) {
@@ -2663,6 +2747,7 @@ function createModelCard(model) {
 
     const btnSlicer = card.querySelector('.btn-open-slicer');
     if (btnSlicer) {
+      setupModelDraggable(btnSlicer, () => model.primaryPart || model.parts[0]);
       btnSlicer.addEventListener('click', (e) => {
         e.stopPropagation();
         openModelInSlicer(model.primaryPart || model.parts[0], btnSlicer);
@@ -2764,21 +2849,25 @@ function createModelCard(model) {
         </div>
       ` : ''}
       <div class="card-footer-actions">
-        <button class="btn-open-slicer" title="Abrir no fatiador" type="button">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
-            <polyline points="2 17 12 22 22 17"></polyline>
-            <polyline points="2 12 12 17 22 12"></polyline>
+        <button class="btn-open-slicer" draggable="true" title="Arraste para a janela do fatiador ou clique para copiar o caminho" type="button">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 11V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v0"></path>
+            <path d="M14 10V4a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v2"></path>
+            <path d="M10 10.5V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v8"></path>
+            <path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"></path>
           </svg>
-          <span>Abrir no fatiador</span>
+          <span>Arrastar para o fatiador</span>
         </button>
       </div>
     </div>
   `;
 
-  // Evento de Abrir no Fatiador
+  setupModelDraggable(card, () => model);
+
+  // Evento de Abrir no Fatiador / Arrastar
   const btnOpenSlicer = card.querySelector('.btn-open-slicer');
   if (btnOpenSlicer) {
+    setupModelDraggable(btnOpenSlicer, () => model);
     btnOpenSlicer.addEventListener('click', (e) => {
       e.stopPropagation();
       openModelInSlicer(model, btnOpenSlicer);

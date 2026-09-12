@@ -1446,10 +1446,21 @@ body.dashboard-body {
   color: #60a5fa;
   font-size: 0.78rem;
   font-weight: 600;
-  cursor: pointer;
+  cursor: grab;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   user-select: none;
   text-decoration: none;
+}
+
+.btn-open-slicer:active {
+  cursor: grabbing;
+}
+
+.card.is-dragging {
+  opacity: 0.45;
+  transform: scale(0.97);
+  border: 1px dashed #60a5fa !important;
+  box-shadow: 0 12px 28px rgba(37, 99, 235, 0.45);
 }
 
 .btn-open-slicer:hover {
@@ -1508,7 +1519,7 @@ body.dashboard-body {
   color: #ffffff;
   font-size: 0.88rem;
   font-weight: 700;
-  cursor: pointer;
+  cursor: grab;
   box-shadow: 0 4px 14px rgba(37, 99, 235, 0.4);
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   letter-spacing: 0.2px;
