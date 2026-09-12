@@ -10,7 +10,7 @@ const state = {
   models: [],
   folders: [], // Array de { id, name, handle, count }
   activeFilter: 'all', // 'all', 'stl', '3mf', 'duplicates'
-  activeSection: 'all', // 'all', 'favorites', 'duplicates'
+  activeSection: 'all', // 'all', 'projects', 'favorites', 'duplicates'
   searchQuery: '',
   modalScene: null,
   modalCamera: null,
@@ -79,9 +79,11 @@ const btnCloseFolderPermissionModal = document.getElementById('btnCloseFolderPer
 const btnConfirmProceedFolder = document.getElementById('btnConfirmProceedFolder');
 const chkDontShowFolderPermission = document.getElementById('chkDontShowFolderPermission');
 const navAllModels = document.getElementById('navAllModels');
+const navProjects = document.getElementById('navProjects');
 const navFavorites = document.getElementById('navFavorites');
 const navDuplicates = document.getElementById('navDuplicates');
 const sidebarAllCountBadge = document.getElementById('sidebarAllCountBadge');
+const sidebarProjectsCountBadge = document.getElementById('sidebarProjectsCountBadge');
 const sidebarFavoritesCountBadge = document.getElementById('sidebarFavoritesCountBadge');
 const sidebarDuplicatesCountBadge = document.getElementById('sidebarDuplicatesCountBadge');
 const sidebarFoldersList = document.getElementById('sidebarFoldersList');
@@ -221,8 +223,8 @@ function init() {
     });
   }
 
-  // Navegação da Barra Lateral (Todos / Favoritos / Duplicados)
-  [navAllModels, navFavorites, navDuplicates].forEach(navBtn => {
+  // Navegação da Barra Lateral (Todos / Projetos / Favoritos / Duplicados)
+  [navAllModels, navProjects, navFavorites, navDuplicates].forEach(navBtn => {
     if (!navBtn) return;
     navBtn.addEventListener('click', () => {
       const section = navBtn.dataset.section || 'all';
@@ -502,18 +504,21 @@ function copyModalFullPath() {
 }
 
 /**
- * Alterna a seção ativa da biblioteca (Todos os Modelos, Favoritos, Duplicados)
+ * Alterna a seção ativa da biblioteca (Todos os Modelos, Projetos, Favoritos, Duplicados)
  */
 function setNavSection(section) {
   state.activeSection = section;
   state.currentPage = 1;
 
-  [navAllModels, navFavorites, navDuplicates].forEach(btn => {
+  [navAllModels, navProjects, navFavorites, navDuplicates].forEach(btn => {
     if (btn) btn.classList.toggle('active', btn.dataset.section === section);
   });
 
   if (currentViewTitle) {
-    if (section === 'favorites') {
+    if (section === 'projects') {
+      currentViewTitle.textContent = 'Projetos Multi-mesas';
+      if (currentViewSub) currentViewSub.textContent = 'Modelos organizados em projetos com múltiplas peças e mesas';
+    } else if (section === 'favorites') {
       currentViewTitle.textContent = 'Favoritos';
       if (currentViewSub) currentViewSub.textContent = 'Modelos marcados com estrela';
     } else if (section === 'duplicates') {
@@ -1663,6 +1668,7 @@ function updateStatsBadge() {
   const foldersCount = state.folders.length;
 
   if (sidebarAllCountBadge) sidebarAllCountBadge.textContent = totalItems;
+  if (sidebarProjectsCountBadge) sidebarProjectsCountBadge.textContent = projectCount;
   if (sidebarFavoritesCountBadge) sidebarFavoritesCountBadge.textContent = favCount;
   if (sidebarDuplicatesCountBadge) sidebarDuplicatesCountBadge.textContent = dupCount;
 
@@ -3154,7 +3160,10 @@ function renderGallery() {
 
   const filteredUnsorted = allItems
     .filter(item => {
-      // 1. Seção da Barra Lateral (Todos, Favoritos, Duplicados)
+      // 1. Seção da Barra Lateral (Todos, Projetos, Favoritos, Duplicados)
+      if (state.activeSection === 'projects' && !item.isProject) {
+        return false;
+      }
       if (state.activeSection === 'favorites' && !item.isFavorite) {
         return false;
       }
@@ -3204,7 +3213,9 @@ function renderGallery() {
     if (paginationBar) paginationBar.style.display = 'none';
 
     let emptyMessage = 'Nenhum arquivo corresponde aos filtros aplicados.';
-    if (state.activeSection === 'favorites') {
+    if (state.activeSection === 'projects') {
+      emptyMessage = 'Nenhum projeto criado ainda. Selecione arquivos múltiplos na galeria e clique em "Criar Projeto" para agrupá-los!';
+    } else if (state.activeSection === 'favorites') {
       emptyMessage = 'Nenhum modelo favoritado ainda. Clique na estrela ⭐ de qualquer modelo para favoritá-lo!';
     } else if (state.activeSection === 'duplicates') {
       emptyMessage = 'Nenhum arquivo duplicado encontrado na sua biblioteca! 🎉';

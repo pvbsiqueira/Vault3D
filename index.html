@@ -175,6 +175,17 @@
       <!-- Menus e Filtros de Navegação -->
       <div class="sidebar-scrollable-content">
         
+        <!-- Seção: Pastas Conectadas -->
+        <div class="sidebar-section sidebar-folders-section" id="sidebarFoldersSection">
+          <div class="sidebar-section-header">
+            <div class="sidebar-section-title">PASTAS CONECTADAS</div>
+            <span class="sidebar-folders-count" id="sidebarFoldersCountBadge">0</span>
+          </div>
+          <div class="sidebar-folders-list" id="sidebarFoldersList">
+            <div class="sidebar-folders-empty" id="sidebarFoldersEmpty">Nenhuma pasta conectada</div>
+          </div>
+        </div>
+
         <!-- Seção: Navegação da Biblioteca -->
         <div class="sidebar-section">
           <div class="sidebar-section-title">BIBLIOTECA</div>
@@ -183,6 +194,11 @@
               <span class="nav-icon">📁</span>
               <span class="nav-label">Todos os Modelos</span>
               <span class="nav-badge" id="sidebarAllCountBadge">0</span>
+            </button>
+            <button class="sidebar-nav-item" id="navProjects" data-section="projects" type="button">
+              <span class="nav-icon">📦</span>
+              <span class="nav-label">Projetos</span>
+              <span class="nav-badge" id="sidebarProjectsCountBadge">0</span>
             </button>
             <button class="sidebar-nav-item" id="navFavorites" data-section="favorites" type="button">
               <span class="nav-icon">⭐</span>
@@ -204,17 +220,6 @@
             <button class="sidebar-format-btn active pill-btn" data-filter="all" type="button">Todos</button>
             <button class="sidebar-format-btn pill-btn" data-filter="stl" type="button"><span class="format-dot stl"></span>.STL</button>
             <button class="sidebar-format-btn pill-btn" data-filter="3mf" type="button"><span class="format-dot tmf"></span>.3MF</button>
-          </div>
-        </div>
-
-        <!-- Seção: Pastas Conectadas -->
-        <div class="sidebar-section sidebar-folders-section" id="sidebarFoldersSection">
-          <div class="sidebar-section-header">
-            <div class="sidebar-section-title">PASTAS CONECTADAS</div>
-            <span class="sidebar-folders-count" id="sidebarFoldersCountBadge">0</span>
-          </div>
-          <div class="sidebar-folders-list" id="sidebarFoldersList">
-            <div class="sidebar-folders-empty" id="sidebarFoldersEmpty">Nenhuma pasta conectada</div>
           </div>
         </div>
 
