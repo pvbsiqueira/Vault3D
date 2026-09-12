@@ -354,6 +354,29 @@ while ($listener.IsListening) {
             }
         }
 
+        # Endpoint: POST /api/reveal-folder
+        if ($request.Url.LocalPath -eq "/api/reveal-folder") {
+            try {
+                $path = $request.QueryString["filePath"]
+                if ($path -and (Test-Path $path)) {
+                    Start-Process explorer.exe -ArgumentList "/select,`"$path`""
+                }
+                $resObj = @{ success = $true; message = "Windows Explorer aberto!" }
+                $resBytes = [System.Text.Encoding]::UTF8.GetBytes(($resObj | ConvertTo-Json -Compress))
+                $response.ContentType = "application/json; charset=utf-8"
+                $response.StatusCode = 200
+                $response.ContentLength64 = $resBytes.Length
+                $response.OutputStream.Write($resBytes, 0, $resBytes.Length)
+            } catch {
+                $errObj = @{ success = $false; error = $_.Exception.Message }
+                $errBytes = [System.Text.Encoding]::UTF8.GetBytes(($errObj | ConvertTo-Json -Compress))
+                $response.StatusCode = 500
+                $response.OutputStream.Write($errBytes, 0, $errBytes.Length)
+            }
+            $response.Close()
+            continue
+        }
+
         # Endpoint: GET /api/config
         if ($request.Url.LocalPath -eq "/api/config") {
             $configObj = @{

@@ -1426,7 +1426,7 @@ body.dashboard-body {
   color: #ef4444;
 }
 
-/* Rodapé do Card: Ações & Botão Abrir no Fatiador */
+/* Rodapé do Card: Ações & Botão Abrir no Computador */
 .card-footer-actions {
   margin-top: auto;
   padding-top: 0.45rem;
@@ -1446,14 +1446,10 @@ body.dashboard-body {
   color: #60a5fa;
   font-size: 0.78rem;
   font-weight: 600;
-  cursor: grab;
+  cursor: pointer;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   user-select: none;
   text-decoration: none;
-}
-
-.btn-open-slicer:active {
-  cursor: grabbing;
 }
 
 .card.is-dragging {
@@ -1492,7 +1488,7 @@ body.dashboard-body {
   flex-shrink: 0;
 }
 
-/* Modal: Botão Abrir no Fatiador Fixo no Rodapé */
+/* Modal: Botão Abrir no Computador Fixo no Rodapé */
 .modal-sidebar-footer {
   padding: 0.85rem 1rem;
   background: rgba(17, 24, 39, 0.95);
@@ -1519,7 +1515,7 @@ body.dashboard-body {
   color: #ffffff;
   font-size: 0.88rem;
   font-weight: 700;
-  cursor: grab;
+  cursor: pointer;
   box-shadow: 0 4px 14px rgba(37, 99, 235, 0.4);
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   letter-spacing: 0.2px;

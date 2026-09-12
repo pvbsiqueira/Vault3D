@@ -76,16 +76,8 @@ try {
 
     $slicerExe = Find-InstalledSlicer
 
-    if ($slicerExe -and (Test-Path $slicerExe -PathType Leaf)) {
-        $slicerDir = [System.IO.Path]::GetDirectoryName($slicerExe)
-        if ($slicerDir -and (Test-Path $slicerDir -PathType Container)) {
-            Start-Process -FilePath $slicerExe -ArgumentList "`"$targetFile`"" -WorkingDirectory $slicerDir
-        } else {
-            Start-Process -FilePath $slicerExe -ArgumentList "`"$targetFile`""
-        }
-    } else {
-        Start-Process -FilePath $targetFile
-    }
+    Start-Process explorer.exe -ArgumentList "/select,`"$targetFile`""
 
 } catch {
 }
+

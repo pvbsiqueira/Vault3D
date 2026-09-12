@@ -1940,14 +1940,14 @@ function setupModelDraggable(element, getModelFn) {
 }
 
 /**
- * Envia o modelo 3D para o fatiador instalado na máquina do usuário.
+ * Abre o local do modelo 3D no computador do usuário destacando o arquivo no Windows Explorer.
  * Suporta o protocolo nativo vault3d:// (abertura instantânea sem servidor)
- * e também o companion local http://127.0.0.1:3000/api/open-slicer quando ativo.
+ * e também o companion local http://127.0.0.1:3000/api/reveal-folder quando ativo.
  */
 async function openModelInSlicer(model, buttonEl) {
   if (!model) return;
   if (!getAuthenticatedUser()) {
-    showToast('Acesso restrito: faça login com Magic Link para abrir no fatiador.', 'warning');
+    showToast('Acesso restrito: faça login com Magic Link para abrir no computador.', 'warning');
     return;
   }
 
@@ -1964,7 +1964,7 @@ async function openModelInSlicer(model, buttonEl) {
   }
 
   if (!targetModel) {
-    showToast('Nenhum arquivo 3D encontrado para abrir no fatiador.', 'warning');
+    showToast('Nenhum arquivo 3D encontrado para abrir no computador.', 'warning');
     return;
   }
 
@@ -1975,7 +1975,7 @@ async function openModelInSlicer(model, buttonEl) {
     buttonEl.disabled = true;
     buttonEl.innerHTML = `
       <div class="spinner-tiny"></div>
-      <span>Abrindo...</span>
+      <span>Localizando...</span>
     `;
   }
 
@@ -2007,7 +2007,7 @@ async function openModelInSlicer(model, buttonEl) {
       } catch (_) {}
     }
 
-    // 4. Disparar abertura via protocolo nativo do Windows (vault3d://)
+    // 4. Disparar abertura no Windows Explorer via protocolo nativo do Windows (vault3d://)
     if (fullPath) {
       try {
         const protocolUrl = `vault3d://open?path=${encodeURIComponent(fullPath)}`;
@@ -2036,7 +2036,7 @@ async function openModelInSlicer(model, buttonEl) {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 1200);
 
-      await fetch(`${localBase}/api/open-slicer?${params.toString()}`, {
+      await fetch(`${localBase}/api/reveal-folder?${params.toString()}`, {
         method: 'POST',
         signal: controller.signal
       });
@@ -2046,7 +2046,7 @@ async function openModelInSlicer(model, buttonEl) {
     }
 
     // 6. Feedback de sucesso e orientação amigável ao usuário
-    showToast(`📋 Caminho copiado! Você também pode arrastar este card diretamente para a janela do fatiador.`, 'info');
+    showToast(`📁 Abrindo pasta no Windows Explorer com "${modelDisplayName}" selecionado!`, 'success');
 
   } catch (err) {
     console.error('Erro ao processar modelo:', err);
@@ -2722,14 +2722,11 @@ function createModelCard(model) {
           <span class="card-dimensions" style="color: #c084fc; font-weight: 600;">${model.partsCount} arquivos 3D</span>
         </div>
         <div class="card-footer-actions">
-          <button class="btn-open-slicer" draggable="true" title="Arraste para a janela do fatiador ou clique para copiar o caminho" type="button">
+          <button class="btn-open-slicer" title="Abrir pasta no Windows Explorer com este arquivo selecionado" type="button">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M18 11V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v0"></path>
-              <path d="M14 10V4a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v2"></path>
-              <path d="M10 10.5V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v8"></path>
-              <path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"></path>
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
             </svg>
-            <span>Arrastar para o fatiador</span>
+            <span>Abrir no computador</span>
           </button>
         </div>
       </div>
@@ -2849,14 +2846,11 @@ function createModelCard(model) {
         </div>
       ` : ''}
       <div class="card-footer-actions">
-        <button class="btn-open-slicer" draggable="true" title="Arraste para a janela do fatiador ou clique para copiar o caminho" type="button">
+        <button class="btn-open-slicer" title="Abrir pasta no Windows Explorer com este arquivo selecionado" type="button">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M18 11V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v0"></path>
-            <path d="M14 10V4a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v2"></path>
-            <path d="M10 10.5V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v8"></path>
-            <path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"></path>
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
           </svg>
-          <span>Arrastar para o fatiador</span>
+          <span>Abrir no computador</span>
         </button>
       </div>
     </div>
