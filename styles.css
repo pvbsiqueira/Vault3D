@@ -1539,6 +1539,14 @@ body.dashboard-body {
   pointer-events: none;
 }
 
+.btn-open-slicer.btn-copied,
+.btn-modal-slicer-footer.btn-copied {
+  background: rgba(16, 185, 129, 0.16) !important;
+  border-color: rgba(16, 185, 129, 0.6) !important;
+  color: #34d399 !important;
+  box-shadow: 0 0 16px rgba(16, 185, 129, 0.3) !important;
+}
+
 /* Barra de Paginação da Galeria */
 .pagination-bar {
   display: flex;

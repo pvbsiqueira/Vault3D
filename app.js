@@ -1940,14 +1940,39 @@ function setupModelDraggable(element, getModelFn) {
 }
 
 /**
- * Abre o local do modelo 3D no computador do usuário destacando o arquivo no Windows Explorer.
- * Suporta o protocolo nativo vault3d:// (abertura instantânea sem servidor)
- * e também o companion local http://127.0.0.1:3000/api/reveal-folder quando ativo.
+ * Copia texto para a área de transferência de forma compatível com todos os navegadores.
+ */
+async function copyTextToClipboard(text) {
+  if (navigator.clipboard && window.isSecureContext) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch (_) {}
+  }
+  const textArea = document.createElement('textarea');
+  textArea.value = text;
+  textArea.style.position = 'fixed';
+  textArea.style.left = '-9999px';
+  textArea.style.top = '-9999px';
+  document.body.appendChild(textArea);
+  textArea.focus();
+  textArea.select();
+  let ok = false;
+  try {
+    ok = document.execCommand('copy');
+  } catch (_) {}
+  textArea.remove();
+  return ok;
+}
+
+/**
+ * Copia o caminho completo do modelo 3D para a área de transferência do usuário,
+ * permitindo colar instantaneamente no Fatiador (Ctrl+O -> Ctrl+V) ou no Windows Explorer.
  */
 async function openModelInSlicer(model, buttonEl) {
   if (!model) return;
   if (!getAuthenticatedUser()) {
-    showToast('Acesso restrito: faça login com Magic Link para abrir no computador.', 'warning');
+    showToast('Acesso restrito: faça login com Magic Link para copiar o caminho do modelo.', 'warning');
     return;
   }
 
@@ -1964,20 +1989,11 @@ async function openModelInSlicer(model, buttonEl) {
   }
 
   if (!targetModel) {
-    showToast('Nenhum arquivo 3D encontrado para abrir no computador.', 'warning');
+    showToast('Nenhum arquivo 3D encontrado.', 'warning');
     return;
   }
 
   const modelDisplayName = targetModel.name || targetModel.path || 'modelo 3D';
-  const originalHtml = buttonEl ? buttonEl.innerHTML : '';
-  if (buttonEl) {
-    buttonEl.classList.add('loading');
-    buttonEl.disabled = true;
-    buttonEl.innerHTML = `
-      <div class="spinner-tiny"></div>
-      <span>Localizando...</span>
-    `;
-  }
 
   try {
     // 2. Resolver o caminho completo do arquivo no disco
@@ -2000,63 +2016,40 @@ async function openModelInSlicer(model, buttonEl) {
       targetModel.fullFolderDirectory = rootBase + '\\';
     }
 
-    // 3. Copiar o caminho do arquivo para a área de transferência como comodidade imediata
-    if (fullPath && navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
-      try {
-        await navigator.clipboard.writeText(fullPath);
-      } catch (_) {}
+    const textToCopy = fullPath || targetModel.name;
+
+    // 3. Copiar para a área de transferência
+    const copied = await copyTextToClipboard(textToCopy);
+    if (!copied) {
+      throw new Error('Permissão de cópia bloqueada pelo navegador');
     }
 
-    // 4. Disparar abertura no Windows Explorer via protocolo nativo do Windows (vault3d://)
-    if (fullPath) {
-      try {
-        const protocolUrl = `vault3d://open?path=${encodeURIComponent(fullPath)}`;
-        const a = document.createElement('a');
-        a.href = protocolUrl;
-        a.style.display = 'none';
-        document.body.appendChild(a);
-        a.click();
-        setTimeout(() => a.remove(), 1000);
-      } catch (eProto) {
-        console.warn('Falha ao disparar protocolo vault3d://:', eProto);
+    // 4. Feedback visual no botão que foi clicado
+    if (buttonEl) {
+      if (!buttonEl.dataset.origHtml) {
+        buttonEl.dataset.origHtml = buttonEl.innerHTML;
       }
+      buttonEl.classList.add('btn-copied');
+      buttonEl.innerHTML = `
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="20 6 9 17 4 12"></polyline>
+        </svg>
+        <span>Caminho copiado!</span>
+      `;
+      setTimeout(() => {
+        buttonEl.classList.remove('btn-copied');
+        if (buttonEl.dataset.origHtml) {
+          buttonEl.innerHTML = buttonEl.dataset.origHtml;
+        }
+      }, 2200);
     }
 
-    // 5. Tentar adicionalmente a API do servidor local se estiver ativo (sem quebrar se offline ou 404)
-    try {
-      const isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
-      const localBase = isLocalHost ? '' : 'http://127.0.0.1:3000';
-
-      const params = new URLSearchParams();
-      params.set('filename', targetModel.name || 'modelo_3d.3mf');
-      if (targetModel.folderName) params.set('folder', targetModel.folderName);
-      if (targetModel.path) params.set('path', targetModel.path);
-      if (fullPath) params.set('filePath', fullPath);
-
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 1200);
-
-      await fetch(`${localBase}/api/reveal-folder?${params.toString()}`, {
-        method: 'POST',
-        signal: controller.signal
-      });
-      clearTimeout(timeoutId);
-    } catch (_) {
-      // Ignora silenciosamente se o servidor local não estiver rodando (o protocolo nativo já foi disparado)
-    }
-
-    // 6. Feedback de sucesso e orientação amigável ao usuário
-    showToast(`📁 Abrindo pasta no Windows Explorer com "${modelDisplayName}" selecionado!`, 'success');
+    // 5. Toast orientativo e rápido
+    showToast(`📋 Caminho copiado! Pressione Ctrl+V no seu fatiador ou Windows Explorer.`, 'success');
 
   } catch (err) {
-    console.error('Erro ao processar modelo:', err);
-    showToast(`Não foi possível preparar o modelo: ${err.message}`, 'error');
-  } finally {
-    if (buttonEl) {
-      buttonEl.classList.remove('loading');
-      buttonEl.disabled = false;
-      buttonEl.innerHTML = originalHtml;
-    }
+    console.error('Erro ao copiar caminho do modelo:', err);
+    showToast(`Não foi possível copiar o caminho: ${err.message}`, 'error');
   }
 }
 
@@ -2722,11 +2715,12 @@ function createModelCard(model) {
           <span class="card-dimensions" style="color: #c084fc; font-weight: 600;">${model.partsCount} arquivos 3D</span>
         </div>
         <div class="card-footer-actions">
-          <button class="btn-open-slicer" title="Abrir pasta no Windows Explorer com este arquivo selecionado" type="button">
+          <button class="btn-open-slicer" title="Copiar caminho para colar no fatiador ou Windows Explorer" type="button">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
             </svg>
-            <span>Abrir no computador</span>
+            <span>Copiar caminho</span>
           </button>
         </div>
       </div>
@@ -2846,11 +2840,12 @@ function createModelCard(model) {
         </div>
       ` : ''}
       <div class="card-footer-actions">
-        <button class="btn-open-slicer" title="Abrir pasta no Windows Explorer com este arquivo selecionado" type="button">
+        <button class="btn-open-slicer" title="Copiar caminho para colar no fatiador ou Windows Explorer" type="button">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
           </svg>
-          <span>Abrir no computador</span>
+          <span>Copiar caminho</span>
         </button>
       </div>
     </div>
