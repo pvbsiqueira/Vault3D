@@ -262,12 +262,6 @@ function init() {
     });
   }
 
-  // Modo de Seleção Múltipla & Criação de Projetos
-  if (btnToggleSelect) {
-    btnToggleSelect.addEventListener('click', () => {
-      setSelectionMode(!state.isSelectionMode);
-    });
-  }
 
   if (btnSelectAllVisible) {
     btnSelectAllVisible.addEventListener('click', toggleSelectAllVisible);
