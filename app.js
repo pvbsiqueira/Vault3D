@@ -404,6 +404,15 @@ function init() {
   if (btnBackToPlate) {
     btnBackToPlate.addEventListener('click', () => setViewerMode('plate'));
   }
+  if (modalPlateImg) {
+    modalPlateImg.addEventListener('error', () => {
+      if (state.activeModel && state.activeModel.thumbnailUrl && modalPlateImg.src !== state.activeModel.thumbnailUrl) {
+        modalPlateImg.src = state.activeModel.thumbnailUrl;
+      } else {
+        modalPlateImg.style.display = 'none';
+      }
+    });
+  }
 
   // Botões de reconexão de pastas salvas do IndexedDB
   if (btnReconnectAllFolders) {
@@ -3303,22 +3312,24 @@ async function drainThumbQueue() {
  * Extrai o buffer do arquivo e gera a miniatura Three.js/3MF e metadados,
  * persistindo o resultado no cache do IndexedDB para as próximas sessões.
  */
-async function extractModelThumbnailAndMeta(model) {
-  if (model.thumbnailUrl) return;
+async function extractModelThumbnailAndMeta(model, forceExtractPlates = false) {
+  if (model.thumbnailUrl && !forceExtractPlates) return;
 
   const cacheKey = getModelCacheKey(model);
 
-  // Checagem rápida antes de processar buffer pesado
-  try {
-    const cached = await getCachedThumbnail(cacheKey);
-    if (cached && cached.thumbnailUrl) {
-      model.thumbnailUrl = cached.thumbnailUrl;
-      model.metadata = cached.metadata || null;
-      model.slicerData = cached.slicerData || null;
-      model.plates = cached.plates || [];
-      return;
-    }
-  } catch (_) {}
+  // Checagem rápida antes de processar buffer pesado (se não estiver forçando extração de mesas)
+  if (!forceExtractPlates) {
+    try {
+      const cached = await getCachedThumbnail(cacheKey);
+      if (cached && cached.thumbnailUrl) {
+        model.thumbnailUrl = cached.thumbnailUrl;
+        model.metadata = cached.metadata || null;
+        model.slicerData = cached.slicerData || null;
+        model.plates = cached.plates || [];
+        return;
+      }
+    } catch (_) {}
+  }
 
   if (!model.file && model.handle && typeof model.handle.getFile === 'function') {
     model.file = await model.handle.getFile();
@@ -3335,7 +3346,7 @@ async function extractModelThumbnailAndMeta(model) {
     model.metadata = res.metadata;
   } else if (model.type === '3mf') {
     const res = await extract3MFThumbnail(buffer);
-    model.thumbnailUrl = res.thumbnailUrl;
+    model.thumbnailUrl = res.thumbnailUrl || model.thumbnailUrl;
     model.metadata = res.metadata;
     model.slicerData = res.slicerData;
     model.plates = res.plates || [];
@@ -3568,7 +3579,50 @@ function renderPlatesList(plates) {
   });
 }
 
-function selectPlate(plate) {
+/**
+ * Extrai a imagem da mesa sob demanda diretamente do arquivo .3MF se não estiver em cache
+ */
+async function extractPlateImageOnDemand(model, plateId) {
+  try {
+    if (!model.file && model.handle && typeof model.handle.getFile === 'function') {
+      try {
+        model.file = await model.handle.getFile();
+      } catch (errH) {
+        console.warn('Falha ao obter arquivo para extração da mesa:', errH);
+      }
+    }
+    if (!model.file) return null;
+
+    const buffer = await model.file.arrayBuffer();
+    const zip = await JSZip.loadAsync(buffer);
+
+    let imgFile = zip.file(`Metadata/plate_${plateId}.png`) ||
+                  zip.file(new RegExp(`(^|[\\\/])Metadata[\\\/]plate_${plateId}\\.png$`, 'i'))?.[0];
+
+    if (!imgFile) {
+      imgFile = zip.file(`Metadata/top_${plateId}.png`) ||
+                zip.file(new RegExp(`(^|[\\\/])Metadata[\\\/]top_${plateId}\\.png$`, 'i'))?.[0];
+    }
+    if (!imgFile) {
+      imgFile = zip.file(`Metadata/pick_${plateId}.png`) ||
+                zip.file(new RegExp(`(^|[\\\/])Metadata[\\\/]pick_${plateId}\\.png$`, 'i'))?.[0];
+    }
+    if (!imgFile) {
+      imgFile = zip.file(`Metadata/plate_no_light_${plateId}.png`) ||
+                zip.file(new RegExp(`(^|[\\\/])Metadata[\\\/]plate_no_light_${plateId}\\.png$`, 'i'))?.[0];
+    }
+
+    if (imgFile) {
+      const b64 = await imgFile.async('base64');
+      return `data:image/png;base64,${b64}`;
+    }
+  } catch (err) {
+    console.warn(`Erro ao extrair imagem da mesa ${plateId} sob demanda:`, err);
+  }
+  return null;
+}
+
+async function selectPlate(plate) {
   state.activePlateId = plate.id;
   state.activePlate = plate;
 
@@ -3587,7 +3641,9 @@ function selectPlate(plate) {
       modalBadge.className = 'badge-format project format-3mf';
     }
 
-    modalPlateImg.src = plate.imageUrl;
+    if (plate.imageUrl) {
+      modalPlateImg.src = plate.imageUrl;
+    }
 
     if (state.currentViewerMode === '3d') {
       if (state.activeModel) loadModelIntoModal(state.activeModel, 1);
@@ -3628,8 +3684,35 @@ function selectPlate(plate) {
     return;
   }
 
-  if (plate.imageUrl) {
-    modalPlateImg.src = plate.imageUrl;
+  // Modelo 3MF com múltiplas mesas (ex: Bambu / OrcaSlicer)
+  let imgToUse = plate.imageUrl;
+
+  // Se a mesa ainda não possui imagem, extrair sob demanda do arquivo 3MF
+  if (!imgToUse && state.activeModel) {
+    imgToUse = await extractPlateImageOnDemand(state.activeModel, plate.id);
+    if (imgToUse) {
+      plate.imageUrl = imgToUse;
+      const cardEl = document.querySelector(`.plate-square-card[data-plate-id="${plate.id}"]`);
+      if (cardEl) {
+        const placeholder = cardEl.querySelector('.plate-square-placeholder');
+        if (placeholder) {
+          const newImg = document.createElement('img');
+          newImg.className = 'plate-square-img';
+          newImg.src = imgToUse;
+          newImg.alt = plate.name;
+          placeholder.replaceWith(newImg);
+        }
+      }
+    }
+  }
+
+  // Fallback seguro para a miniatura geral do modelo
+  if (!imgToUse && state.activeModel) {
+    imgToUse = state.activeModel.thumbnailUrl || '';
+  }
+
+  if (imgToUse) {
+    modalPlateImg.src = imgToUse;
   }
 
   // Se já estiver visualizando em 3D, carrega a malha 3D da nova mesa selecionada
@@ -3747,12 +3830,28 @@ async function openViewerModal(model) {
     return;
   }
 
+  // 1. Limpeza e reset síncrono completo do DOM para evitar qualquer vestígio do modelo anterior
+  if (modalPathName) modalPathName.textContent = model.name || '';
+  if (modalPathFolder) modalPathFolder.textContent = '';
+  if (modalPlateImg) {
+    modalPlateImg.src = '';
+    modalPlateImg.style.display = 'none';
+  }
+  if (modalCanvas) modalCanvas.style.display = 'none';
+  if (platesList) platesList.innerHTML = '';
+  if (platesSection) platesSection.style.display = 'none';
+  if (modalSidebarInfo) modalSidebarInfo.style.display = 'none';
+  if (btnOpen3DView) btnOpen3DView.style.display = 'none';
+  if (btnBackToPlate) btnBackToPlate.style.display = 'none';
+  if (viewerControlsBar) viewerControlsBar.style.display = 'none';
+  if (modalDuplicateBadge) modalDuplicateBadge.style.display = 'none';
+
   viewerModal.classList.add('active');
   state.activeModel = model;
+  state.activePlate = null;
+  state.activePlateId = 1;
   state.isMeshLoaded = false;
 
-  // Resetar valores enquanto carrega
-  modalPlateImg.src = '';
   if (state.modalMesh) {
     state.modalScene.remove(state.modalMesh);
     if (state.modalMesh.geometry) state.modalMesh.geometry.dispose();
@@ -3774,8 +3873,6 @@ async function openViewerModal(model) {
         modalDuplicateBadge.style.display = 'inline-flex';
         modalDuplicateBadge.title = `Arquivos duplicados detectados neste projeto`;
         modalDuplicateBadge.textContent = `⚠️ Cópias Duplicadas (${dupParts.length})`;
-      } else {
-        modalDuplicateBadge.style.display = 'none';
       }
     }
 
@@ -3784,7 +3881,7 @@ async function openViewerModal(model) {
     if (modalSidebarInfo) modalSidebarInfo.style.display = 'none';
 
     renderPlatesList(model.plates);
-    if (model.plates.length > 0) {
+    if (model.plates && model.plates.length > 0) {
       state.activePlateId = model.plates[0].id;
       selectPlate(model.plates[0]);
     }
@@ -3805,22 +3902,25 @@ async function openViewerModal(model) {
       modalDuplicateBadge.style.display = 'inline-flex';
       modalDuplicateBadge.title = `Arquivo idêntico encontrado em: ${model.duplicateOrigins}`;
       modalDuplicateBadge.textContent = `⚠️ Cópia Duplicada (${model.duplicatesCount})`;
-    } else {
-      modalDuplicateBadge.style.display = 'none';
     }
   }
 
-  // Garantir que metadados e mesas foram extraídos se ainda não tiverem sido carregados sob demanda
-  if (!model.thumbnailUrl || (model.type === '3mf' && (!model.plates || model.plates.length === 0))) {
+  // Se o arquivo for 3MF e não tiver mesas ou se faltar foto em alguma mesa, extrair mesas sob demanda
+  const needsPlateExtraction = model.type === '3mf' && (
+    !model.plates || 
+    model.plates.length === 0 || 
+    model.plates.some(p => !p.imageUrl && !p.isCustomCover)
+  );
+
+  if (!model.thumbnailUrl || needsPlateExtraction) {
     try {
-      await extractModelThumbnailAndMeta(model);
+      await extractModelThumbnailAndMeta(model, needsPlateExtraction);
       updateCardThumbnail(model);
     } catch (e) {
       console.warn('Erro ao extrair metadados e mesas do modelo:', e);
     }
   }
 
-  // O painel lateral direito (modalSidebar) permanece sempre ativo com o botão flutuante de fatiador
   if (modalSidebar) modalSidebar.style.display = 'flex';
 
   // Se houver mesas de impressão no arquivo (Bambu / OrcaSlicer)
@@ -3830,7 +3930,6 @@ async function openViewerModal(model) {
     state.activePlateId = model.plates[0].id;
     renderPlatesList(model.plates);
     selectPlate(model.plates[0]);
-    // Abre no modo foto da mesa com o botão flutuante 'Visualizar 3D'
     setViewerMode('plate');
   } else {
     if (platesSection) platesSection.style.display = 'none';
@@ -4075,11 +4174,29 @@ function closeViewerModal() {
   state.activeProject = null;
   state.activePlate = null;
   state.activeModel = null;
+  state.activePlateId = 1;
+
   if (state.modalMesh) {
     state.modalScene.remove(state.modalMesh);
     if (state.modalMesh.geometry) state.modalMesh.geometry.dispose();
     state.modalMesh = null;
   }
+
+  // Resetar completamente todo o DOM do modal para não reter vestígios
+  if (modalPathName) modalPathName.textContent = '';
+  if (modalPathFolder) modalPathFolder.textContent = '';
+  if (platesList) platesList.innerHTML = '';
+  if (platesSection) platesSection.style.display = 'none';
+  if (modalSidebarInfo) modalSidebarInfo.style.display = 'none';
+  if (modalPlateImg) {
+    modalPlateImg.src = '';
+    modalPlateImg.style.display = 'none';
+  }
+  if (modalCanvas) modalCanvas.style.display = 'none';
+  if (btnOpen3DView) btnOpen3DView.style.display = 'none';
+  if (btnBackToPlate) btnBackToPlate.style.display = 'none';
+  if (viewerControlsBar) viewerControlsBar.style.display = 'none';
+  if (viewerLoadingOverlay) viewerLoadingOverlay.style.display = 'none';
 }
 
 // Utilitários

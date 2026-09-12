@@ -581,9 +581,9 @@ export async function parse3MFGeometry(input, targetPlateId = null) {
 export async function extract3MFPlates(zip) {
   const plates = [];
   
-  // Buscar todas as imagens de mesa Metadata/plate_*.png
-  const plateImages = zip.file(/^Metadata\/plate_\d+\.png$/i);
-  const plateJsons = zip.file(/^Metadata\/plate_\d+\.json$/i);
+  // Buscar todas as imagens de mesa Metadata/plate_*.png ou arquivos de configuração
+  const plateImages = zip.file(/^Metadata[\\\/]plate_\d+\.png$/i);
+  const plateJsons = zip.file(/^Metadata[\\\/]plate_\d+\.json$/i);
 
   const plateIndices = new Set();
   for (const f of plateImages) {
@@ -593,6 +593,21 @@ export async function extract3MFPlates(zip) {
   for (const f of plateJsons) {
     const match = f.name.match(/plate_(\d+)\.json$/i);
     if (match) plateIndices.add(parseInt(match[1], 10));
+  }
+
+  // Verificar se há plates listados em Metadata/model_settings.config
+  const settingsFile = zip.file('Metadata/model_settings.config') ||
+                       zip.file(/^Metadata[\\\/]model_settings\.config$/i)?.[0];
+  if (settingsFile) {
+    try {
+      const configText = await settingsFile.async('string');
+      const plateMatches = configText.match(/<metadata\s+[^>]*?key=["']plater_id["']\s+[^>]*?value=["'](\d+)["']/gi) ||
+                           configText.match(/<metadata\s+[^>]*?value=["'](\d+)["']\s+[^>]*?key=["']plater_id["']/gi) || [];
+      for (const pm of plateMatches) {
+        const vm = pm.match(/value=["'](\d+)["']/i);
+        if (vm) plateIndices.add(parseInt(vm[1], 10));
+      }
+    } catch (_) {}
   }
 
   const sortedIndices = Array.from(plateIndices).sort((a, b) => a - b);
@@ -605,18 +620,38 @@ export async function extract3MFPlates(zip) {
     let filamentType = null;
     let imageUrl = null;
 
-    // 1. Imagem da mesa de impressão
-    const imgMatch = zip.file(new RegExp(`^Metadata\/plate_${index}\\.png$`, 'i'));
-    if (imgMatch && imgMatch.length > 0) {
-      const b64 = await imgMatch[0].async('base64');
-      imageUrl = `data:image/png;base64,${b64}`;
+    // 1. Imagem da mesa de impressão com múltiplas tentativas de nome
+    let imgFile = zip.file(`Metadata/plate_${index}.png`) ||
+                  zip.file(new RegExp(`(^|[\\\/])Metadata[\\\/]plate_${index}\\.png$`, 'i'))?.[0];
+
+    if (!imgFile) {
+      imgFile = zip.file(`Metadata/top_${index}.png`) ||
+                zip.file(new RegExp(`(^|[\\\/])Metadata[\\\/]top_${index}\\.png$`, 'i'))?.[0];
+    }
+    if (!imgFile) {
+      imgFile = zip.file(`Metadata/pick_${index}.png`) ||
+                zip.file(new RegExp(`(^|[\\\/])Metadata[\\\/]pick_${index}\\.png$`, 'i'))?.[0];
+    }
+    if (!imgFile) {
+      imgFile = zip.file(`Metadata/plate_no_light_${index}.png`) ||
+                zip.file(new RegExp(`(^|[\\\/])Metadata[\\\/]plate_no_light_${index}\\.png$`, 'i'))?.[0];
+    }
+
+    if (imgFile) {
+      try {
+        const b64 = await imgFile.async('base64');
+        imageUrl = `data:image/png;base64,${b64}`;
+      } catch (errImg) {
+        console.warn(`Erro ao converter imagem da mesa ${index} para base64:`, errImg);
+      }
     }
 
     // 2. Metadados específicos desta mesa (JSON do Bambu/Orca)
-    const jsonMatch = zip.file(new RegExp(`^Metadata\/plate_${index}\\.json$`, 'i'));
-    if (jsonMatch && jsonMatch.length > 0) {
+    const jsonFile = zip.file(`Metadata/plate_${index}.json`) ||
+                     zip.file(new RegExp(`(^|[\\\/])Metadata[\\\/]plate_${index}\\.json$`, 'i'))?.[0];
+    if (jsonFile) {
       try {
-        const text = await jsonMatch[0].async('string');
+        const text = await jsonFile.async('string');
         const data = JSON.parse(text);
         if (data.name && data.name.trim()) name = data.name.trim();
         if (data.prediction > 0) {

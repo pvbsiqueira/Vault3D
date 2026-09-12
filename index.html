@@ -477,7 +477,7 @@
         <!-- Canvas 3D e Vista da Mesa -->
         <div class="canvas-container" id="canvasContainer">
           <canvas id="modalCanvas" class="viewer-canvas"></canvas>
-          <img id="modalPlateImg" class="viewer-plate-image" style="display: none;" alt="Mesa de Impressão">
+          <img id="modalPlateImg" class="viewer-plate-image" style="display: none;" alt="Mesa de Impressão" onerror="this.style.display='none'">
 
           <!-- Botão Flutuante 'Visualizar 3D' sobre a imagem da mesa no lado esquerdo -->
           <button class="btn-floating-view" id="btnOpen3DView" style="display: none;" title="Abrir visualização 3D da mesa selecionada">
