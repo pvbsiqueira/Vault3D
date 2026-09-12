@@ -444,5 +444,7 @@ export async function initAuth(onAuthenticated) {
  * Retorna o usuário autenticado atualmente ou null
  */
 export function getAuthenticatedUser() {
+  if (window.mockAuthUser) return window.mockAuthUser;
   return currentUser;
 }
+window.getAuthenticatedUser = getAuthenticatedUser;

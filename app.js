@@ -1,6 +1,7 @@
 import * as THREE from 'https://esm.sh/three@0.160.0';
 import { OrbitControls } from 'https://esm.sh/three@0.160.0/examples/jsm/controls/OrbitControls.js';
 import { generateSTLThumbnail, extract3MFThumbnail, parse3MFGeometry } from './thumbnail-generator.js';
+import JSZip from 'https://esm.sh/jszip@3.10.1';
 import { parseSTL } from './stl-parser.js';
 import { initAuth, getAuthenticatedUser } from './auth.js';
 
@@ -406,6 +407,8 @@ function init() {
   }
   if (modalPlateImg) {
     modalPlateImg.addEventListener('error', () => {
+      const currentSrc = modalPlateImg.getAttribute('src');
+      if (!currentSrc || currentSrc === '') return;
       if (state.activeModel && state.activeModel.thumbnailUrl && modalPlateImg.src !== state.activeModel.thumbnailUrl) {
         modalPlateImg.src = state.activeModel.thumbnailUrl;
       } else {
@@ -3830,49 +3833,50 @@ async function openViewerModal(model) {
     return;
   }
 
-  // 1. Limpeza e reset síncrono completo do DOM para evitar qualquer vestígio do modelo anterior
-  if (modalPathName) modalPathName.textContent = model.name || '';
-  if (modalPathFolder) modalPathFolder.textContent = '';
-  if (modalPlateImg) {
-    modalPlateImg.src = '';
-    modalPlateImg.style.display = 'none';
-  }
-  if (modalCanvas) modalCanvas.style.display = 'none';
-  if (platesList) platesList.innerHTML = '';
-  if (platesSection) platesSection.style.display = 'none';
-  if (modalSidebarInfo) modalSidebarInfo.style.display = 'none';
-  if (btnOpen3DView) btnOpen3DView.style.display = 'none';
-  if (btnBackToPlate) btnBackToPlate.style.display = 'none';
-  if (viewerControlsBar) viewerControlsBar.style.display = 'none';
-  if (modalDuplicateBadge) modalDuplicateBadge.style.display = 'none';
-
-  viewerModal.classList.add('active');
+  // 1. Vincular modelo ativo no estado
   state.activeModel = model;
   state.activePlate = null;
   state.activePlateId = 1;
   state.isMeshLoaded = false;
 
   if (state.modalMesh) {
-    state.modalScene.remove(state.modalMesh);
+    if (state.modalScene) state.modalScene.remove(state.modalMesh);
     if (state.modalMesh.geometry) state.modalMesh.geometry.dispose();
     state.modalMesh = null;
   }
 
-  // Se o item for um Projeto consolidado multi-peças
+  // 2. Atualizar cabeçalho do modal imediatamente
+  if (modalPathName) modalPathName.textContent = model.name || '';
+  if (modalPathFolder) modalPathFolder.textContent = '';
+  updateModalFilePath(model);
+
+  if (modalDuplicateBadge) {
+    if (model.isDuplicate) {
+      modalDuplicateBadge.style.display = 'inline-flex';
+      modalDuplicateBadge.title = `Arquivo idêntico encontrado em: ${model.duplicateOrigins}`;
+      modalDuplicateBadge.textContent = `⚠️ Cópia Duplicada (${model.duplicatesCount})`;
+    } else {
+      modalDuplicateBadge.style.display = 'none';
+    }
+  }
+
+  // 3. Caso seja um Projeto consolidado multi-peças
   if (model.isProject) {
     state.activeProject = model;
-    const firstPart = model.primaryPart || model.parts[0];
-    updateModalFilePath(firstPart);
+    const firstPart = model.primaryPart || (model.parts && model.parts[0]);
+    if (firstPart) updateModalFilePath(firstPart);
 
     modalBadge.textContent = 'PROJETO';
     modalBadge.className = 'badge-format project format-3mf';
 
     if (modalDuplicateBadge) {
-      const dupParts = model.parts.filter(p => p.isDuplicate);
+      const dupParts = model.parts ? model.parts.filter(p => p.isDuplicate) : [];
       if (dupParts.length > 0) {
         modalDuplicateBadge.style.display = 'inline-flex';
         modalDuplicateBadge.title = `Arquivos duplicados detectados neste projeto`;
         modalDuplicateBadge.textContent = `⚠️ Cópias Duplicadas (${dupParts.length})`;
+      } else {
+        modalDuplicateBadge.style.display = 'none';
       }
     }
 
@@ -3886,45 +3890,21 @@ async function openViewerModal(model) {
       selectPlate(model.plates[0]);
     }
     setViewerMode('plate');
+    viewerModal.classList.add('active');
     return;
   }
 
   state.activeProject = null;
 
-  // Construir caminho completo desde C:\
-  updateModalFilePath(model);
-
   modalBadge.textContent = model.type.toUpperCase();
   modalBadge.className = `badge-format ${model.type} format-${model.type}`;
 
-  if (modalDuplicateBadge) {
-    if (model.isDuplicate) {
-      modalDuplicateBadge.style.display = 'inline-flex';
-      modalDuplicateBadge.title = `Arquivo idêntico encontrado em: ${model.duplicateOrigins}`;
-      modalDuplicateBadge.textContent = `⚠️ Cópia Duplicada (${model.duplicatesCount})`;
-    }
-  }
-
-  // Se o arquivo for 3MF e não tiver mesas ou se faltar foto em alguma mesa, extrair mesas sob demanda
-  const needsPlateExtraction = model.type === '3mf' && (
-    !model.plates || 
-    model.plates.length === 0 || 
-    model.plates.some(p => !p.imageUrl && !p.isCustomCover)
-  );
-
-  if (!model.thumbnailUrl || needsPlateExtraction) {
-    try {
-      await extractModelThumbnailAndMeta(model, needsPlateExtraction);
-      updateCardThumbnail(model);
-    } catch (e) {
-      console.warn('Erro ao extrair metadados e mesas do modelo:', e);
-    }
-  }
-
   if (modalSidebar) modalSidebar.style.display = 'flex';
 
-  // Se houver mesas de impressão no arquivo (Bambu / OrcaSlicer)
-  if (model.plates && model.plates.length > 0) {
+  // 4. Exibição imediata: se já possui mesas ou se é modelo convencional
+  const hasPlates = model.plates && model.plates.length > 0;
+
+  if (hasPlates) {
     if (platesSection) platesSection.style.display = 'flex';
     if (modalSidebarInfo) modalSidebarInfo.style.display = 'none';
     state.activePlateId = model.plates[0].id;
@@ -3932,6 +3912,7 @@ async function openViewerModal(model) {
     selectPlate(model.plates[0]);
     setViewerMode('plate');
   } else {
+    // Modelo comum (sem mesas ou STL)
     if (platesSection) platesSection.style.display = 'none';
     if (modalSidebarInfo) {
       modalSidebarInfo.style.display = 'block';
@@ -3954,7 +3935,61 @@ async function openViewerModal(model) {
         }
       }
     }
-    setViewerMode('3d');
+
+    // Se já tiver miniatura oficial de capa, exibe de imediato enquanto prepara 3D
+    if (model.thumbnailUrl) {
+      modalPlateImg.src = model.thumbnailUrl;
+      modalPlateImg.style.display = 'block';
+      if (modalCanvas) modalCanvas.style.display = 'none';
+      if (viewerControlsBar) viewerControlsBar.style.display = 'none';
+      if (btnOpen3DView) btnOpen3DView.style.display = 'inline-flex';
+      if (btnBackToPlate) btnBackToPlate.style.display = 'none';
+      state.currentViewerMode = 'plate';
+    } else {
+      setViewerMode('3d');
+    }
+  }
+
+  // Abre o modal na tela de imediato com dados e layout 100% visíveis
+  viewerModal.classList.add('active');
+
+  // 5. Se o arquivo for 3MF e não tiver mesas ou se faltar foto em alguma mesa, extrair mesas sob demanda em background
+  const needsPlateExtraction = model.type === '3mf' && (
+    !model.plates || 
+    model.plates.length === 0 || 
+    model.plates.some(p => !p.imageUrl && !p.isCustomCover)
+  );
+
+  if (!model.thumbnailUrl || needsPlateExtraction) {
+    (async () => {
+      try {
+        await extractModelThumbnailAndMeta(model, needsPlateExtraction);
+        updateCardThumbnail(model);
+
+        // Se este mesmo modelo ainda estiver ativo no modal, atualiza os dados na tela
+        if (state.activeModel && state.activeModel.id === model.id) {
+          if (model.plates && model.plates.length > 0) {
+            if (platesSection) platesSection.style.display = 'flex';
+            if (modalSidebarInfo) modalSidebarInfo.style.display = 'none';
+            renderPlatesList(model.plates);
+            if (!state.activePlate) {
+              selectPlate(model.plates[0]);
+            }
+          } else {
+            if (modalInfoDimensions && model.metadata?.dimensions) {
+              modalInfoDimensions.textContent = `${Math.round(model.metadata.dimensions.x)} × ${Math.round(model.metadata.dimensions.y)} × ${Math.round(model.metadata.dimensions.z)} mm`;
+              if (modalInfoDimensionsWrap) modalInfoDimensionsWrap.style.display = 'flex';
+            }
+            if (modalInfoTriangles && model.metadata?.triangleCount) {
+              modalInfoTriangles.textContent = model.metadata.triangleCount.toLocaleString('pt-BR');
+              if (modalInfoTrianglesWrap) modalInfoTrianglesWrap.style.display = 'flex';
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('Erro ao extrair metadados e mesas do modelo em background:', e);
+      }
+    })();
   }
 }
 
@@ -4177,19 +4212,14 @@ function closeViewerModal() {
   state.activePlateId = 1;
 
   if (state.modalMesh) {
-    state.modalScene.remove(state.modalMesh);
+    if (state.modalScene) state.modalScene.remove(state.modalMesh);
     if (state.modalMesh.geometry) state.modalMesh.geometry.dispose();
     state.modalMesh = null;
   }
 
-  // Resetar completamente todo o DOM do modal para não reter vestígios
-  if (modalPathName) modalPathName.textContent = '';
-  if (modalPathFolder) modalPathFolder.textContent = '';
-  if (platesList) platesList.innerHTML = '';
-  if (platesSection) platesSection.style.display = 'none';
-  if (modalSidebarInfo) modalSidebarInfo.style.display = 'none';
+  // Limpar a imagem com segurança sem disparar evento de erro por src vazio
   if (modalPlateImg) {
-    modalPlateImg.src = '';
+    modalPlateImg.removeAttribute('src');
     modalPlateImg.style.display = 'none';
   }
   if (modalCanvas) modalCanvas.style.display = 'none';
@@ -4243,3 +4273,5 @@ window.sortModels = sortModels;
 window.confirmCreateProject = confirmCreateProject;
 window.dissolveCustomProject = dissolveCustomProject;
 window.applyCustomProjects = applyCustomProjects;
+window.openViewerModal = openViewerModal;
+window.closeViewerModal = closeViewerModal;
