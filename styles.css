@@ -700,8 +700,8 @@ body.dashboard-body {
 /* Selo de Duplicata no Card */
 .badge-duplicate {
   position: absolute;
-  top: 8px;
-  left: 8px;
+  top: 38px;
+  left: 10px;
   z-index: 3;
   display: inline-flex;
   align-items: center;
@@ -1092,8 +1092,8 @@ body.dashboard-body {
 
 .badge-format {
   position: absolute;
-  top: 10px;
-  left: 10px;
+  bottom: 8px;
+  right: 8px;
   padding: 3px 7px;
   font-size: 0.68rem;
   font-weight: 800;
@@ -1104,10 +1104,17 @@ body.dashboard-body {
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
 }
 
+.badge-format.project {
+  bottom: auto;
+  right: auto;
+  top: 10px;
+  left: 10px;
+}
+
 .badge-sliced-card {
   position: absolute;
   top: 10px;
-  left: 62px;
+  left: 38px;
   padding: 3px 7px;
   font-size: 0.68rem;
   font-weight: 700;
@@ -1184,29 +1191,7 @@ body.dashboard-body {
   box-shadow: 0 0 10px var(--accent-3mf-glow);
 }
 
-.card-quick-preview {
-  position: absolute;
-  bottom: 8px;
-  right: 8px;
-  background: rgba(15, 23, 42, 0.85);
-  backdrop-filter: blur(8px);
-  border: 1px solid var(--border-color);
-  color: var(--text-primary);
-  font-size: 0.72rem;
-  padding: 4px 8px;
-  border-radius: var(--radius-sm);
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  opacity: 0;
-  transform: translateY(4px);
-  transition: var(--transition);
-}
 
-.model-card:hover .card-quick-preview {
-  opacity: 1;
-  transform: translateY(0);
-}
 
 .card-body {
   padding: 0.65rem 0.4rem 0.35rem;
@@ -2296,7 +2281,7 @@ body.dashboard-body {
    Modo de Seleção Múltipla & Projetos Manuais
    ========================================== */
 
-/* Checkbox no Card de Modelo */
+/* Checkbox no Card de Modelo - Sempre Visível e Ativa */
 .card-select-checkbox {
   position: absolute;
   top: 10px;
@@ -2304,30 +2289,36 @@ body.dashboard-body {
   width: 22px;
   height: 22px;
   border-radius: 6px;
-  background: rgba(15, 23, 42, 0.75);
+  background: rgba(15, 23, 42, 0.8);
   backdrop-filter: blur(8px);
-  border: 2px solid rgba(255, 255, 255, 0.35);
+  border: 2px solid rgba(255, 255, 255, 0.45);
   cursor: pointer;
   z-index: 6;
-  display: none;
+  display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.15s ease;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
 }
 
-.selection-mode-active .card-select-checkbox {
-  display: flex;
+.model-card:hover .card-select-checkbox:not(.checked) {
+  border-color: #a78bfa;
+  background: rgba(30, 41, 59, 0.95);
+  box-shadow: 0 0 10px rgba(167, 139, 250, 0.4);
+  transform: scale(1.08);
 }
 
 .card-select-checkbox:hover {
-  border-color: #a78bfa;
-  background: rgba(30, 41, 59, 0.9);
-  transform: scale(1.1);
+  border-color: #c084fc !important;
+  background: rgba(124, 58, 237, 0.3) !important;
+  transform: scale(1.15) !important;
 }
 
+.card-select-checkbox.checked,
 .model-card.is-selected .card-select-checkbox {
-  background: #7c3aed;
-  border-color: #c084fc;
+  background: #7c3aed !important;
+  border-color: #c084fc !important;
+  box-shadow: 0 0 12px rgba(124, 58, 237, 0.6) !important;
 }
 
 .card-select-checkbox svg {
@@ -2335,6 +2326,7 @@ body.dashboard-body {
   color: #ffffff;
 }
 
+.card-select-checkbox.checked svg,
 .model-card.is-selected .card-select-checkbox svg {
   display: block;
 }

@@ -2692,13 +2692,6 @@ function createModelCard(model) {
             </div>
           `
         }
-        <div class="card-quick-preview">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="10"></circle>
-            <polygon points="10 8 16 12 10 16 10 8"></polygon>
-          </svg>
-          Explorar ${model.partsCount} Mesas
-        </div>
       </div>
       <div class="card-body">
         <div class="card-title-row">
@@ -2798,13 +2791,6 @@ function createModelCard(model) {
           </div>
         `
       }
-      <div class="card-quick-preview">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="10"></circle>
-          <polygon points="10 8 16 12 10 16 10 8"></polygon>
-        </svg>
-        Girar 3D
-      </div>
     </div>
     <div class="card-body">
       <div class="card-title-row">
