@@ -1,4 +1,4 @@
-﻿# 🧊 3D Print Library & Viewer (STL & 3MF)
+# 🧊 Vault3D - Viewer & Gerenciador (STL & 3MF)
 
 Uma plataforma web moderna, rápida e 100% client-side para organizar, inspecionar e visualizar arquivos de impressão 3D (**STL** e **3MF**) diretamente do computador, sem a necessidade de abrir softwares fatiadores pesados.
 

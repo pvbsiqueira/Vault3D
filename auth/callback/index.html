@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Verificando Acesso - Vault3D</title>
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220%22%20viewBox=%220%200%20100%20100%22><text y=%22.9em%22 font-size=%2290%22>⚡</text></svg>">
+  <style>
+    body.callback-body {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: radial-gradient(circle at 50% 20%, #151e34 0%, #0b0f19 80%);
+      color: #e2e8f0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      margin: 0;
+      padding: 20px;
+    }
+
+    .callback-card {
+      background: rgba(18, 24, 39, 0.9);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border-radius: 20px;
+      padding: 40px 32px;
+      width: 100%;
+      max-width: 480px;
+      text-align: center;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5), 0 0 30px rgba(99, 102, 241, 0.15);
+      animation: fadeInCard 0.4s ease-out;
+    }
+
+    @keyframes fadeInCard {
+      from { opacity: 0; transform: translateY(12px) scale(0.98); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    .callback-icon-wrap {
+      width: 68px;
+      height: 68px;
+      margin: 0 auto 24px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(99, 102, 241, 0.12);
+      border: 1px solid rgba(99, 102, 241, 0.3);
+      position: relative;
+    }
+
+    .callback-spinner {
+      width: 36px;
+      height: 36px;
+      border: 3px solid rgba(99, 102, 241, 0.2);
+      border-top-color: #6366f1;
+      border-radius: 50%;
+      animation: spin 0.9s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .callback-icon-success {
+      display: none;
+      color: #10b981;
+    }
+
+    .callback-icon-error {
+      display: none;
+      color: #ef4444;
+    }
+
+    .callback-title {
+      font-size: 1.4rem;
+      font-weight: 700;
+      margin: 0 0 10px;
+      color: #ffffff;
+      letter-spacing: -0.01em;
+    }
+
+    .callback-desc {
+      font-size: 0.95rem;
+      color: #94a3b8;
+      line-height: 1.5;
+      margin: 0 0 24px;
+      white-space: pre-line;
+    }
+
+    .callback-actions {
+      display: none;
+      margin-top: 20px;
+    }
+
+    .btn-return-login {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      width: 100%;
+      box-sizing: border-box;
+      padding: 12px 20px;
+      background: linear-gradient(135deg, #6366f1, #4f46e5);
+      color: #ffffff;
+      text-decoration: none;
+      border-radius: 10px;
+      font-weight: 600;
+      font-size: 0.95rem;
+      transition: all 0.2s ease;
+      box-shadow: 0 4px 15px rgba(99, 102, 241, 0.3);
+    }
+
+    .btn-return-login:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 20px rgba(99, 102, 241, 0.45);
+    }
+  </style>
+</head>
+<body class="callback-body">
+
+  <div class="callback-card" id="callbackCard">
+    <div class="callback-icon-wrap" id="iconWrap">
+      <div class="callback-spinner" id="spinner"></div>
+      
+      <!-- Ícone de Sucesso -->
+      <svg class="callback-icon-success" id="iconSuccess" width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+        <polyline points="22 4 12 14.01 9 11.01"></polyline>
+      </svg>
+
+      <!-- Ícone de Erro -->
+      <svg class="callback-icon-error" id="iconError" width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"></circle>
+        <line x1="12" y1="8" x2="12" y2="12"></line>
+        <line x1="12" y1="16" x2="12.01" y2="16"></line>
+      </svg>
+    </div>
+
+    <h2 class="callback-title" id="callbackTitle">Confirmando Acesso...</h2>
+    <p class="callback-desc" id="callbackDesc">Aguarde um instante enquanto validamos seu link mágico de autenticação.</p>
+
+    <div class="callback-actions" id="callbackActions">
+      <a href="/" class="btn-return-login">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="19" y1="12" x2="5" y2="12"></line>
+          <polyline points="12 19 5 12 12 5"></polyline>
+        </svg>
+        <span>Voltar para o Início</span>
+      </a>
+    </div>
+  </div>
+
+  <script type="module">
+    import { getSupabase, exchangeCodeForSession, getCurrentSession, verifyTokenHash } from '/supabase-client.js';
+
+    const iconWrap = document.getElementById('iconWrap');
+    const spinner = document.getElementById('spinner');
+    const iconSuccess = document.getElementById('iconSuccess');
+    const iconError = document.getElementById('iconError');
+    const titleEl = document.getElementById('callbackTitle');
+    const descEl = document.getElementById('callbackDesc');
+    const actionsEl = document.getElementById('callbackActions');
+
+    let isCompleted = false;
+
+    function showSuccess(message = 'Login validado com sucesso! Redirecionando para o seu acervo...') {
+      if (isCompleted) return;
+      isCompleted = true;
+
+      spinner.style.display = 'none';
+      iconError.style.display = 'none';
+      iconSuccess.style.display = 'block';
+      iconWrap.style.background = 'rgba(16, 185, 129, 0.15)';
+      iconWrap.style.borderColor = 'rgba(16, 185, 129, 0.4)';
+      titleEl.textContent = 'Acesso Autorizado!';
+      descEl.textContent = message;
+      actionsEl.style.display = 'none';
+
+      setTimeout(() => {
+        window.location.replace('/');
+      }, 800);
+    }
+
+    function showError(message) {
+      if (isCompleted) return;
+
+      spinner.style.display = 'none';
+      iconSuccess.style.display = 'none';
+      iconError.style.display = 'block';
+      iconWrap.style.background = 'rgba(239, 68, 68, 0.15)';
+      iconWrap.style.borderColor = 'rgba(239, 68, 68, 0.4)';
+      titleEl.textContent = 'Não foi possível entrar';
+      descEl.textContent = message || 'O link mágico pode ter expirado ou já foi utilizado. Solicite um novo link.';
+      actionsEl.style.display = 'block';
+    }
+
+    async function handleAuthCallback() {
+      try {
+        const supabase = await getSupabase();
+        if (!supabase) {
+          showError('O Supabase ainda não foi configurado nesta aplicação.');
+          return;
+        }
+
+        // 1. Escutar imediatamente evento de autenticação do Supabase
+        supabase.auth.onAuthStateChange((event, session) => {
+          if (session) {
+            showSuccess();
+          }
+        });
+
+        // 2. Verificar se uma sessão já existe ou foi recuperada
+        const { data: initialCheck } = await getCurrentSession();
+        if (initialCheck?.session) {
+          showSuccess();
+          return;
+        }
+
+        const url = new URL(window.location.href);
+        const code = url.searchParams.get('code');
+        const tokenHash = url.searchParams.get('token_hash');
+        const type = url.searchParams.get('type') || 'email';
+        const error = url.searchParams.get('error');
+        const errorDescription = url.searchParams.get('error_description');
+
+        if (error || errorDescription) {
+          showError(errorDescription || 'Erro retornado pelo servidor de autenticação.');
+          return;
+        }
+
+        // 3. Se veio token_hash
+        if (tokenHash) {
+          try {
+            const { data, error: tokenErr } = await verifyTokenHash(tokenHash, type);
+            if (!tokenErr && data?.session) {
+              showSuccess();
+              return;
+            }
+          } catch (e) {
+            console.warn('Erro ao validar token_hash:', e);
+          }
+        }
+
+        // 4. Se veio código PKCE
+        if (code) {
+          try {
+            const { data, error: exchangeError } = await exchangeCodeForSession(code);
+            if (!exchangeError && data?.session) {
+              showSuccess();
+              return;
+            }
+          } catch (err) {
+            console.warn('exchangeCodeForSession tentado:', err);
+          }
+
+          // Verificar se o cliente Supabase já processou o código em paralelo
+          const { data: checkAfterCode } = await getCurrentSession();
+          if (checkAfterCode?.session) {
+            showSuccess();
+            return;
+          }
+        }
+
+        // 5. Verificar tokens no hash da URL (#access_token=...)
+        if (window.location.hash && window.location.hash.includes('access_token')) {
+          // Aguarda um instante para o cliente Supabase processar o fragmento
+          await new Promise(r => setTimeout(r, 600));
+          const { data: hashSession } = await getCurrentSession();
+          if (hashSession?.session) {
+            showSuccess();
+            return;
+          }
+        }
+
+        // 6. Aguardar timeout de segurança antes de exibir mensagem de erro amigável
+        setTimeout(async () => {
+          if (!isCompleted) {
+            const { data: finalSession } = await getCurrentSession();
+            if (finalSession?.session) {
+              showSuccess();
+            } else {
+              showError(
+                'Este link de acesso expirou ou foi aberto em um navegador diferente do qual solicitou o login.\n\n' +
+                '💡 Dica: Você também pode digitar o código de 6 dígitos recebido no e-mail diretamente na tela inicial!'
+              );
+            }
+          }
+        }, 2200);
+
+      } catch (err) {
+        console.error('Exceção no processamento do callback:', err);
+        showError(err.message || 'Ocorreu um erro inesperado ao processar sua autenticação.');
+      }
+    }
+
+    handleAuthCallback();
+  </script>
+</body>
+</html>

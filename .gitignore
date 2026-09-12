@@ -1,4 +1,4 @@
-﻿# Sistema Operacional
+# Sistema Operacional
 Thumbs.db
 ehthumbs.db
 Desktop.ini
@@ -16,3 +16,9 @@ Desktop.ini
 *.tmp
 *.bak
 scratch/
+
+# Variaveis de ambiente
+.env
+.env.local
+.env.*.local
+

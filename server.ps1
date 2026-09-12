@@ -14,7 +14,7 @@ try {
 }
 
 Write-Host "====================================================" -ForegroundColor Cyan
-Write-Host "  3D Print Library - Servidor Local Ativo" -ForegroundColor Green
+Write-Host "  Vault3D - Servidor Local Ativo" -ForegroundColor Green
 Write-Host "  Acesse: $baseAddress" -ForegroundColor Yellow
 Write-Host "  Pressione Ctrl+C para encerrar quando desejar." -ForegroundColor DarkGray
 Write-Host "====================================================" -ForegroundColor Cyan
@@ -255,29 +255,59 @@ while ($listener.IsListening) {
             if ($request.HttpMethod -eq "POST") {
                 try {
                     $directFilePath = $request.QueryString["filePath"]
-                    $fileName = $request.QueryString["filename"]
+                    $folder = $request.QueryString["folder"]
+                    $path = $request.QueryString["path"]
+                    $rawFileName = $request.QueryString["filename"]
+                    $fileName = if (-not [string]::IsNullOrWhiteSpace($rawFileName)) { [System.Uri]::UnescapeDataString($rawFileName) } else { "modelo_3d.3mf" }
                     $destPath = $null
 
                     if (-not [string]::IsNullOrWhiteSpace($directFilePath) -and (Test-Path $directFilePath -PathType Leaf)) {
                         # Arquivo já existe diretamente no disco (abertura instantânea sem cópia)
                         $destPath = $directFilePath
-                    } else {
+                    } elseif (-not [string]::IsNullOrWhiteSpace($folder) -or -not [string]::IsNullOrWhiteSpace($path)) {
+                        # Tenta resolver o caminho real no disco antes de recorrer ao upload
+                        $targetLookup = if (-not [string]::IsNullOrWhiteSpace($path)) { $path } else { $fileName }
+                        $resolved = Resolve-ModelDiskPath -folder $folder -path $targetLookup
+                        if ($resolved.success -and -not [string]::IsNullOrWhiteSpace($resolved.fullPath) -and (Test-Path $resolved.fullPath -PathType Leaf)) {
+                            $destPath = $resolved.fullPath
+                        }
+                    }
+
+                    if (-not $destPath) {
+                        # Sanitizar nome de arquivo para caracteres inválidos do Windows
+                        $invalidChars = [System.IO.Path]::GetInvalidFileNameChars()
+                        foreach ($ch in $invalidChars) {
+                            $fileName = $fileName.Replace($ch, '_')
+                        }
+                        $fileName = [System.IO.Path]::GetFileName($fileName)
                         if ([string]::IsNullOrWhiteSpace($fileName)) {
                             $fileName = "modelo_3d.3mf"
                         }
-                        $fileName = [System.IO.Path]::GetFileName($fileName)
 
                         # Diretorio temporario dedicado para o fatiador
-                        $slicerTempDir = Join-Path $env:TEMP "3DPrintLibrary_Slicer"
+                        $slicerTempDir = Join-Path $env:TEMP "Vault3D_Slicer"
                         if (-not (Test-Path $slicerTempDir)) {
                             New-Item -ItemType Directory -Path $slicerTempDir -Force | Out-Null
                         }
 
                         $destPath = Join-Path $slicerTempDir $fileName
 
-                        # Copiar arquivo recebido do stream do navegador
-                        $fileStream = [System.IO.File]::Create($destPath)
-                        $request.InputStream.CopyTo($fileStream)
+                        # Se o arquivo já existir e estiver bloqueado por outro processo (ex: fatiador aberto), gera nome alternativo
+                        $fileStream = $null
+                        try {
+                            $fileStream = [System.IO.File]::Create($destPath)
+                        } catch {
+                            $baseName = [System.IO.Path]::GetFileNameWithoutExtension($fileName)
+                            $ext = [System.IO.Path]::GetExtension($fileName)
+                            $randomSuffix = [System.IO.Path]::GetRandomFileName().Substring(0, 4)
+                            $destPath = Join-Path $slicerTempDir "${baseName}_${randomSuffix}${ext}"
+                            $fileStream = [System.IO.File]::Create($destPath)
+                        }
+
+                        # Copiar arquivo recebido do stream do navegador (se enviado no corpo)
+                        if ($request.ContentLength64 -gt 0) {
+                            $request.InputStream.CopyTo($fileStream)
+                        }
                         $fileStream.Close()
                     }
 
@@ -286,7 +316,12 @@ while ($listener.IsListening) {
                     $slicerName = if ($slicerExe) { [System.IO.Path]::GetFileNameWithoutExtension($slicerExe) } else { "Fatiador Padrao" }
 
                     if ($slicerExe -and (Test-Path $slicerExe -PathType Leaf)) {
-                        Start-Process -FilePath $slicerExe -ArgumentList "`"$destPath`""
+                        $slicerDir = [System.IO.Path]::GetDirectoryName($slicerExe)
+                        if ($slicerDir -and (Test-Path $slicerDir -PathType Container)) {
+                            Start-Process -FilePath $slicerExe -ArgumentList "`"$destPath`"" -WorkingDirectory $slicerDir
+                        } else {
+                            Start-Process -FilePath $slicerExe -ArgumentList "`"$destPath`""
+                        }
                     } else {
                         Start-Process -FilePath $destPath
                     }
@@ -318,6 +353,41 @@ while ($listener.IsListening) {
             }
         }
 
+        # Endpoint: GET /api/config
+        if ($request.Url.LocalPath -eq "/api/config") {
+            $configObj = @{
+                NEXT_PUBLIC_SUPABASE_URL = ""
+                NEXT_PUBLIC_SUPABASE_ANON_KEY = ""
+            }
+
+            $envPath = Join-Path $currentDir ".env"
+            if (Test-Path $envPath -PathType Leaf) {
+                $lines = Get-Content -Path $envPath
+                foreach ($line in $lines) {
+                    $trimmed = $line.Trim()
+                    if ($trimmed.StartsWith("#") -or [string]::IsNullOrWhiteSpace($trimmed)) { continue }
+                    if ($trimmed -match '^([^=]+)=(.*)$') {
+                        $k = $matches[1].Trim()
+                        $v = $matches[2].Trim()
+                        if ($k -eq "NEXT_PUBLIC_SUPABASE_URL") {
+                            $configObj["NEXT_PUBLIC_SUPABASE_URL"] = $v
+                        }
+                        if ($k -eq "NEXT_PUBLIC_SUPABASE_ANON_KEY") {
+                            $configObj["NEXT_PUBLIC_SUPABASE_ANON_KEY"] = $v
+                        }
+                    }
+                }
+            }
+
+            $jsonBytes = [System.Text.Encoding]::UTF8.GetBytes(($configObj | ConvertTo-Json -Compress))
+            $response.ContentType = "application/json; charset=utf-8"
+            $response.ContentLength64 = $jsonBytes.Length
+            $response.AddHeader("Cache-Control", "no-cache")
+            $response.OutputStream.Write($jsonBytes, 0, $jsonBytes.Length)
+            $response.Close()
+            continue
+        }
+
         # Servir Arquivos Estaticos
         $relPath = [System.Uri]::UnescapeDataString($request.Url.LocalPath.TrimStart('/'))
         if ([string]::IsNullOrWhiteSpace($relPath)) {
@@ -327,6 +397,14 @@ while ($listener.IsListening) {
         # Sanitizar caminho para evitar directory traversal
         $relPath = $relPath.Replace('/', '\')
         $localFilePath = [System.IO.Path]::GetFullPath((Join-Path $currentDir $relPath))
+
+        # Se for um diretorio, verificar se existe index.html dentro dele
+        if (Test-Path $localFilePath -PathType Container) {
+            $dirIndex = Join-Path $localFilePath "index.html"
+            if (Test-Path $dirIndex -PathType Leaf) {
+                $localFilePath = $dirIndex
+            }
+        }
 
         if ($localFilePath.StartsWith($currentDir, [System.StringComparison]::OrdinalIgnoreCase) -and (Test-Path $localFilePath -PathType Leaf)) {
             $ext = [System.IO.Path]::GetExtension($localFilePath).ToLower()

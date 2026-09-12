@@ -2,6 +2,7 @@ import * as THREE from 'https://esm.sh/three@0.160.0';
 import { OrbitControls } from 'https://esm.sh/three@0.160.0/examples/jsm/controls/OrbitControls.js';
 import { generateSTLThumbnail, extract3MFThumbnail, parse3MFGeometry } from './thumbnail-generator.js';
 import { parseSTL } from './stl-parser.js';
+import { initAuth, getAuthenticatedUser } from './auth.js';
 
 // Estado global da aplicação
 const state = {
@@ -20,6 +21,8 @@ const state = {
   isWireframe: false,
   activeModel: null,
   activePlateId: 1,
+  activePlate: null,
+  activeProject: null,
   currentViewerMode: '3d',
   isMeshLoaded: false,
   pageSize: (function() {
@@ -33,7 +36,28 @@ const state = {
   currentPage: 1,
   filteredModelsCount: 0,
   currentPageModelIds: new Set(),
-  folderDiskPaths: {}
+  folderDiskPaths: {},
+  isSelectionMode: false,
+  selectedModelIds: new Set(),
+  selectedCoverKey: null,
+  selectedCustomCoverUrl: null,
+  sortOrder: (function() {
+    try {
+      const saved = localStorage.getItem('antigravity_sort_order');
+      const valid = ['date_desc', 'date_asc', 'name_asc', 'name_desc', 'size_desc', 'size_asc'];
+      return valid.includes(saved) ? saved : 'date_desc';
+    } catch (e) {
+      return 'date_desc';
+    }
+  })(),
+  customProjects: (() => {
+    try {
+      const saved = localStorage.getItem('antigravity_custom_projects');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  })()
 };
 
 // Elementos DOM da Sidebar & Dashboard
@@ -41,6 +65,11 @@ const appSidebar = document.getElementById('appSidebar');
 const btnSidebarToggle = document.getElementById('btnSidebarToggle');
 const btnSelectFolder = document.getElementById('btnSelectFolder');
 const folderInputFallback = document.getElementById('folderInputFallback');
+const folderPermissionModal = document.getElementById('folderPermissionModal');
+const folderPermissionBackdrop = document.getElementById('folderPermissionBackdrop');
+const btnCloseFolderPermissionModal = document.getElementById('btnCloseFolderPermissionModal');
+const btnConfirmProceedFolder = document.getElementById('btnConfirmProceedFolder');
+const chkDontShowFolderPermission = document.getElementById('chkDontShowFolderPermission');
 const navAllModels = document.getElementById('navAllModels');
 const navFavorites = document.getElementById('navFavorites');
 const navDuplicates = document.getElementById('navDuplicates');
@@ -59,6 +88,8 @@ const currentViewTitle = document.getElementById('currentViewTitle');
 const currentViewSub = document.getElementById('currentViewSub');
 const searchInput = document.getElementById('searchInput');
 const filterBtns = document.querySelectorAll('.sidebar-format-btn, .pill-btn');
+const sortControlWrap = document.getElementById('sortControlWrap');
+const selectSortOrder = document.getElementById('selectSortOrder');
 
 // Elementos DOM de Paginação
 const paginationBar = document.getElementById('paginationBar');
@@ -72,6 +103,8 @@ const paginationNumbers = document.getElementById('paginationNumbers');
 const topPageSizeWrap = document.getElementById('topPageSizeWrap');
 const topPageSizeButtons = document.getElementById('topPageSizeButtons');
 const bottomPageSizeButtons = document.getElementById('bottomPageSizeButtons');
+const btnModeProjects = document.getElementById('btnModeProjects');
+const btnModeFiles = document.getElementById('btnModeFiles');
 
 // Elementos DOM da Galeria & Área Principal
 const dropZone = document.getElementById('dropZone');
@@ -125,6 +158,27 @@ const modalInfoTriangles = document.getElementById('modalInfoTriangles');
 const modalInfoTrianglesWrap = document.getElementById('modalInfoTrianglesWrap');
 const btnCopyModalPath = document.getElementById('btnCopyModalPath');
 
+// Seleção Múltipla & Projetos Manuais DOM
+const btnToggleSelect = document.getElementById('btnToggleSelect');
+const selectionActionBar = document.getElementById('selectionActionBar');
+const selectionCountBadge = document.getElementById('selectionCountBadge');
+const selectionCountText = document.getElementById('selectionCountText');
+const btnSelectAllVisible = document.getElementById('btnSelectAllVisible');
+const btnOpenCreateProjectModal = document.getElementById('btnOpenCreateProjectModal');
+const btnCancelSelection = document.getElementById('btnCancelSelection');
+const createProjectModal = document.getElementById('createProjectModal');
+const createProjectBackdrop = document.getElementById('createProjectBackdrop');
+const btnCloseCreateProjectModal = document.getElementById('btnCloseCreateProjectModal');
+const inputProjectName = document.getElementById('inputProjectName');
+const projectModalCount = document.getElementById('projectModalCount');
+const projectModalSize = document.getElementById('projectModalSize');
+const projectModalPartsList = document.getElementById('projectModalPartsList');
+const projectCoverSection = document.getElementById('projectCoverSection');
+const projectCoverHint = document.getElementById('projectCoverHint');
+const projectCoverGrid = document.getElementById('projectCoverGrid');
+const btnCancelProjectCreation = document.getElementById('btnCancelProjectCreation');
+const btnConfirmProjectCreation = document.getElementById('btnConfirmProjectCreation');
+
 // Inicialização de Eventos
 function init() {
   if (btnSidebarToggle && appSidebar) {
@@ -141,6 +195,23 @@ function init() {
   if (btnEmptySelectFolder) btnEmptySelectFolder.addEventListener('click', handleChooseFolder);
   if (folderInputFallback) folderInputFallback.addEventListener('change', handleFallbackFileSelect);
   if (btnLoadSample) btnLoadSample.addEventListener('click', loadSampleModels);
+
+  // Eventos do Modal Informativo de Permissão de Pasta
+  if (btnCloseFolderPermissionModal) {
+    btnCloseFolderPermissionModal.addEventListener('click', closeFolderPermissionModal);
+  }
+  if (folderPermissionBackdrop) {
+    folderPermissionBackdrop.addEventListener('click', closeFolderPermissionModal);
+  }
+  if (btnConfirmProceedFolder) {
+    btnConfirmProceedFolder.addEventListener('click', () => {
+      if (chkDontShowFolderPermission && chkDontShowFolderPermission.checked) {
+        localStorage.setItem('hide_folder_permission_notice', 'true');
+      }
+      closeFolderPermissionModal();
+      proceedWithDirectoryPicker();
+    });
+  }
 
   // Navegação da Barra Lateral (Todos / Favoritos / Duplicados)
   [navAllModels, navFavorites, navDuplicates].forEach(navBtn => {
@@ -183,6 +254,81 @@ function init() {
     });
   });
 
+  // Seletor de Ordenação (Data, Nome, Tamanho)
+  if (selectSortOrder) {
+    selectSortOrder.value = state.sortOrder;
+    selectSortOrder.addEventListener('change', (e) => {
+      setSortOrder(e.target.value);
+    });
+  }
+
+  // Modo de Seleção Múltipla & Criação de Projetos
+  if (btnToggleSelect) {
+    btnToggleSelect.addEventListener('click', () => {
+      setSelectionMode(!state.isSelectionMode);
+    });
+  }
+
+  if (btnSelectAllVisible) {
+    btnSelectAllVisible.addEventListener('click', toggleSelectAllVisible);
+  }
+
+  const btnUploadProjectCover = document.getElementById('btnUploadProjectCover');
+  const inputCustomCoverFile = document.getElementById('inputCustomCoverFile');
+  if (btnUploadProjectCover && inputCustomCoverFile) {
+    btnUploadProjectCover.addEventListener('click', () => {
+      inputCustomCoverFile.click();
+    });
+    inputCustomCoverFile.addEventListener('change', (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const customUrl = ev.target.result;
+        state.selectedCustomCoverUrl = customUrl;
+        state.selectedCoverKey = '__custom__';
+        addCustomCoverCardToPicker(customUrl, file.name);
+        showToast(`Foto "${file.name}" carregada para a capa do projeto! 🖼️`, 'success');
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  if (btnOpenCreateProjectModal) {
+    btnOpenCreateProjectModal.addEventListener('click', openCreateProjectModal);
+  }
+
+  if (btnCancelSelection) {
+    btnCancelSelection.addEventListener('click', clearSelection);
+  }
+
+  if (btnCloseCreateProjectModal) {
+    btnCloseCreateProjectModal.addEventListener('click', closeCreateProjectModal);
+  }
+
+  if (btnCancelProjectCreation) {
+    btnCancelProjectCreation.addEventListener('click', closeCreateProjectModal);
+  }
+
+  if (createProjectBackdrop) {
+    createProjectBackdrop.addEventListener('click', closeCreateProjectModal);
+  }
+
+  if (btnConfirmProjectCreation) {
+    btnConfirmProjectCreation.addEventListener('click', confirmCreateProject);
+  }
+
+  if (inputProjectName) {
+    inputProjectName.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        confirmCreateProject();
+      } else if (e.key === 'Escape') {
+        closeCreateProjectModal();
+      }
+    });
+  }
+
   // Navegação de Páginas
   if (btnPagePrev) {
     btnPagePrev.addEventListener('click', () => {
@@ -221,8 +367,11 @@ function init() {
   modalCloseBtn.addEventListener('click', closeViewerModal);
   if (btnModalOpenSlicer) {
     btnModalOpenSlicer.addEventListener('click', () => {
-      if (state.activeModel) {
-        openModelInSlicer(state.activeModel, btnModalOpenSlicer);
+      const modelToOpen = (state.activePlate && state.activePlate.model && !state.activePlate.isCustomCover ? state.activePlate.model : null)
+        || (state.activeProject ? (state.activeProject.primaryPart || (state.activeProject.parts && state.activeProject.parts[0])) : null)
+        || state.activeModel;
+      if (modelToOpen) {
+        openModelInSlicer(modelToOpen, btnModalOpenSlicer);
       }
     });
   }
@@ -281,8 +430,27 @@ function init() {
     });
   }
 
-  // Verificar e tentar restaurar pastas salvas do IndexedDB
-  checkAndRestoreSavedFolders();
+  // Inicializar Autenticação com Supabase / Magic Link
+  initAuth((user) => {
+    // Restaurar biblioteca salva apenas quando usuário estiver autenticado
+    checkAndRestoreSavedFolders();
+  });
+
+  // Resetar estado e visualização da biblioteca ao desconectar
+  window.addEventListener('app:reset-library', () => {
+    state.models = [];
+    state.folders = [];
+    state.currentPage = 1;
+    if (dropZone) dropZone.style.display = 'block';
+    if (galleryContainer) galleryContainer.style.display = 'none';
+    if (topPageSizeWrap) topPageSizeWrap.style.display = 'none';
+    if (sortControlWrap) sortControlWrap.style.display = 'none';
+    if (favoritesGrid) favoritesGrid.innerHTML = '';
+    if (modelsGrid) modelsGrid.innerHTML = '';
+    renderFolderChips();
+    updateStatsBadge();
+    updateDuplicatesFilterButton(0);
+  });
 }
 
 /**
@@ -329,15 +497,39 @@ function setNavSection(section) {
   renderGallery();
 }
 
+function openFolderPermissionModal() {
+  if (folderPermissionModal) {
+    folderPermissionModal.style.display = 'flex';
+  }
+}
+
+function closeFolderPermissionModal() {
+  if (folderPermissionModal) {
+    folderPermissionModal.style.display = 'none';
+  }
+}
+
 /**
- * Abre o seletor de pasta usando File System Access API nativo (Chrome/Edge)
- * ou recorre ao input clássico com suporte a diretório
+ * Ponto de entrada ao clicar em "Adicionar Pasta"
+ * Se o aviso prévio não tiver sido ocultado pelo usuário, exibe a explicação primeiro
  */
 async function handleChooseFolder() {
+  const dontShow = localStorage.getItem('hide_folder_permission_notice') === 'true';
+  if (dontShow) {
+    proceedWithDirectoryPicker();
+  } else {
+    openFolderPermissionModal();
+  }
+}
+
+/**
+ * Executa a seleção da pasta no navegador
+ */
+async function proceedWithDirectoryPicker() {
   if ('showDirectoryPicker' in window) {
     try {
       const dirHandle = await window.showDirectoryPicker({ mode: 'read' });
-      if (state.folders.some(f => f.name === dirHandle.name)) {
+      if (state.folders.some(f => f.name.toLowerCase() === dirHandle.name.toLowerCase())) {
         showToast(`A pasta "${dirHandle.name}" já está na biblioteca.`, 'warning');
         return;
       }
@@ -368,6 +560,7 @@ async function scanDirectoryHandle(dirHandle, path = '') {
           file,
           name: entry.name,
           size: file.size,
+          lastModified: file.lastModified || Date.now(),
           type: ext,
           path: path ? `${path}/${entry.name}` : entry.name,
           handle: entry,
@@ -400,6 +593,7 @@ function handleFallbackFileSelect(e) {
       file,
       name: file.name,
       size: file.size,
+      lastModified: file.lastModified || Date.now(),
       type: file.name.split('.').pop().toLowerCase(),
       path: file.webkitRelativePath || file.name
     }));
@@ -452,7 +646,15 @@ function setupDragAndDrop() {
           const ext = handle.name.split('.').pop().toLowerCase();
           if (ext === 'stl' || ext === '3mf') {
             const f = await handle.getFile();
-            files.push({ file: f, name: handle.name, size: f.size, type: ext, path: handle.name, handle });
+            files.push({
+              file: f,
+              name: handle.name,
+              size: f.size,
+              lastModified: f.lastModified || Date.now(),
+              type: ext,
+              path: handle.name,
+              handle
+            });
           }
         }
       } else {
@@ -483,6 +685,7 @@ async function scanWebkitEntry(entry, results, path = '') {
         file,
         name: entry.name,
         size: file.size,
+        lastModified: file.lastModified || Date.now(),
         type: ext,
         path: path ? `${path}/${entry.name}` : entry.name
       });
@@ -504,10 +707,11 @@ async function loadSampleModels(persistToDB = true) {
   btnLoadSample.textContent = 'Carregando exemplos...';
 
   try {
+    const sampleBaseTime = Date.now() - 3600000;
     const samples = [
-      { name: 'cubo_calibracao_20mm.stl', url: './sample_models/cubo_calibracao_20mm.stl', type: 'stl' },
-      { name: 'piramide_teste.stl', url: './sample_models/piramide_teste.stl', type: 'stl' },
-      { name: 'caixa_organizadora_fatiada.3mf', url: './sample_models/caixa_organizadora_fatiada.3mf', type: '3mf' }
+      { name: 'cubo_calibracao_20mm.stl', url: './sample_models/cubo_calibracao_20mm.stl', type: 'stl', lastModified: sampleBaseTime },
+      { name: 'piramide_teste.stl', url: './sample_models/piramide_teste.stl', type: 'stl', lastModified: sampleBaseTime - 60000 },
+      { name: 'caixa_organizadora_fatiada.3mf', url: './sample_models/caixa_organizadora_fatiada.3mf', type: '3mf', lastModified: sampleBaseTime - 120000 }
     ];
 
     const loadedFiles = [];
@@ -519,6 +723,7 @@ async function loadSampleModels(persistToDB = true) {
         file,
         name: sample.name,
         size: blob.size,
+        lastModified: sample.lastModified,
         type: sample.type,
         path: sample.name
       });
@@ -586,6 +791,76 @@ function compareModelNames(nameA, nameB) {
   return nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' });
 }
 
+/**
+ * Altera o critério de ordenação da galeria, atualiza o select e persiste no localStorage
+ */
+function setSortOrder(newOrder) {
+  const valid = ['date_desc', 'date_asc', 'name_asc', 'name_desc', 'size_desc', 'size_asc'];
+  if (!valid.includes(newOrder)) return;
+
+  state.sortOrder = newOrder;
+  try {
+    localStorage.setItem('antigravity_sort_order', newOrder);
+  } catch (e) {}
+
+  if (selectSortOrder && selectSortOrder.value !== newOrder) {
+    selectSortOrder.value = newOrder;
+  }
+
+  state.currentPage = 1;
+  renderGallery();
+
+  const labels = {
+    date_desc: 'Mais recentes primeiro 📅',
+    date_asc: 'Mais antigos primeiro 📅',
+    name_asc: 'Nome (A → Z) 🔤',
+    name_desc: 'Nome (Z → A) 🔤',
+    size_desc: 'Maior tamanho primeiro 📦',
+    size_asc: 'Menor tamanho primeiro 📦'
+  };
+  showToast(`Ordenado por: ${labels[newOrder] || newOrder}`, 'info');
+}
+
+/**
+ * Ordena a lista de modelos de acordo com o critério ativo no state.sortOrder
+ */
+function sortModels(items, sortOrder = state.sortOrder) {
+  return items.slice().sort((a, b) => {
+    switch (sortOrder) {
+      case 'date_asc': { // Mais antigos primeiro
+        const dateA = a.lastModified || (a.file && a.file.lastModified) || 0;
+        const dateB = b.lastModified || (b.file && b.file.lastModified) || 0;
+        if (dateA !== dateB) return dateA - dateB;
+        return compareModelNames(a.name, b.name);
+      }
+      case 'date_desc': { // Mais recentes primeiro (Padrão)
+        const dateA = a.lastModified || (a.file && a.file.lastModified) || 0;
+        const dateB = b.lastModified || (b.file && b.file.lastModified) || 0;
+        if (dateA !== dateB) return dateB - dateA;
+        return compareModelNames(a.name, b.name);
+      }
+      case 'name_desc': { // Z -> A
+        return compareModelNames(b.name, a.name);
+      }
+      case 'size_desc': { // Maior tamanho primeiro
+        const sizeA = a.size || 0;
+        const sizeB = b.size || 0;
+        if (sizeA !== sizeB) return sizeB - sizeA;
+        return compareModelNames(a.name, b.name);
+      }
+      case 'size_asc': { // Menor tamanho primeiro
+        const sizeA = a.size || 0;
+        const sizeB = b.size || 0;
+        if (sizeA !== sizeB) return sizeA - sizeB;
+        return compareModelNames(a.name, b.name);
+      }
+      case 'name_asc': // A -> Z
+      default:
+        return compareModelNames(a.name, b.name);
+    }
+  });
+}
+
 const FAVORITES_STORAGE_KEY = 'antigravity_3d_library_favorites';
 
 /**
@@ -618,14 +893,33 @@ function saveFavorites(favSet) {
 function toggleFavorite(model) {
   const favs = loadFavorites();
   const key = model.name;
-  if (favs.has(key)) {
-    favs.delete(key);
-    model.isFavorite = false;
-    showToast(`"${model.name}" removido dos favoritos.`);
+  if (model.isProject) {
+    const isFav = favs.has(key);
+    if (isFav) {
+      favs.delete(key);
+      model.isFavorite = false;
+      if (model.parts) {
+        model.parts.forEach(p => { favs.delete(p.name); p.isFavorite = false; });
+      }
+      showToast(`Projeto "${model.name}" removido dos favoritos.`);
+    } else {
+      favs.add(key);
+      model.isFavorite = true;
+      if (model.parts) {
+        model.parts.forEach(p => { favs.add(p.name); p.isFavorite = true; });
+      }
+      showToast(`Projeto "${model.name}" adicionado aos favoritos! ⭐`, 'success');
+    }
   } else {
-    favs.add(key);
-    model.isFavorite = true;
-    showToast(`"${model.name}" adicionado aos favoritos! ⭐`, 'success');
+    if (favs.has(key)) {
+      favs.delete(key);
+      model.isFavorite = false;
+      showToast(`"${model.name}" removido dos favoritos.`);
+    } else {
+      favs.add(key);
+      model.isFavorite = true;
+      showToast(`"${model.name}" adicionado aos favoritos! ⭐`, 'success');
+    }
   }
   saveFavorites(favs);
   renderGallery();
@@ -840,14 +1134,26 @@ async function saveFolderToDB(folderData) {
     const db = await openFoldersDB();
     const tx = db.transaction(STORE_FOLDERS, 'readwrite');
     const store = tx.objectStore(STORE_FOLDERS);
-    store.put({
-      id: folderData.id,
-      name: folderData.name,
-      handle: folderData.handle || null,
-      count: folderData.count || 0,
-      isSample: !!folderData.isSample,
-      savedAt: Date.now()
-    });
+
+    // Evitar duplicar registros para o mesmo nome de pasta
+    const getAllReq = store.getAll();
+    getAllReq.onsuccess = () => {
+      const all = getAllReq.result || [];
+      for (const item of all) {
+        if (item.name && folderData.name && item.name.toLowerCase() === folderData.name.toLowerCase() && item.id !== folderData.id) {
+          store.delete(item.id);
+        }
+      }
+      store.put({
+        id: folderData.id,
+        name: folderData.name,
+        handle: folderData.handle || null,
+        count: folderData.count || 0,
+        isSample: !!folderData.isSample,
+        savedAt: Date.now()
+      });
+    };
+
     return new Promise((resolve) => {
       tx.oncomplete = () => resolve(true);
       tx.onerror = () => resolve(false);
@@ -896,7 +1202,20 @@ async function getAllFoldersFromDB() {
     const store = tx.objectStore(STORE_FOLDERS);
     const req = store.getAll();
     return new Promise((resolve) => {
-      req.onsuccess = () => resolve(req.result || []);
+      req.onsuccess = () => {
+        const raw = req.result || [];
+        // Deduplicar pastas salvas por nome
+        const unique = [];
+        const seenNames = new Set();
+        for (const item of raw) {
+          const key = (item.name || '').trim().toLowerCase();
+          if (key && !seenNames.has(key)) {
+            seenNames.add(key);
+            unique.push(item);
+          }
+        }
+        resolve(unique);
+      };
       req.onerror = () => resolve([]);
     });
   } catch (err) {
@@ -905,61 +1224,85 @@ async function getAllFoldersFromDB() {
   }
 }
 
+let isRestoringSavedFolders = false;
+
 /**
  * Verifica no IndexedDB se há pastas salvas de sessões anteriores
  * e tenta restaurá-las automaticamente ou exibe o card de reconexão.
  */
 async function checkAndRestoreSavedFolders() {
-  const savedFolders = await getAllFoldersFromDB();
-  if (!savedFolders || savedFolders.length === 0) {
-    if (savedFoldersCard) savedFoldersCard.style.display = 'none';
-    return;
-  }
+  if (isRestoringSavedFolders) return;
+  isRestoringSavedFolders = true;
 
-  // Filtrar pastas válidas
-  const validSaved = savedFolders.filter(f => f.isSample || (f.handle && typeof f.handle.queryPermission === 'function'));
-  if (validSaved.length === 0) {
-    if (savedFoldersCard) savedFoldersCard.style.display = 'none';
-    return;
-  }
-
-  // Verificar se todas as pastas com handle já possuem permissão concedida
-  let allGranted = true;
-  for (const f of validSaved) {
-    if (!f.isSample && f.handle) {
-      try {
-        const perm = await f.handle.queryPermission({ mode: 'read' });
-        if (perm !== 'granted') {
-          allGranted = false;
-        }
-      } catch (_) {
-        allGranted = false;
-      }
-    }
-  }
-
-  // Se todas já tiverem permissão concedida
-  if (allGranted) {
-    for (const f of validSaved) {
-      if (f.isSample) {
-        await loadSampleModels(false);
-      } else if (f.handle) {
-        try {
-          const files = await scanDirectoryHandle(f.handle);
-          await addFilesToLibrary(files, f.name, f.handle, false, f.id);
-        } catch (err) {
-          console.warn('Erro ao restaurar pasta salva:', f.name, err);
-        }
-      }
-    }
-    if (state.folders.length > 0) {
-      showToast(`Biblioteca restaurada com ${state.folders.length} pasta(s) salva(s)! 🚀`, 'success');
+  try {
+    const savedFolders = await getAllFoldersFromDB();
+    if (!savedFolders || savedFolders.length === 0) {
+      if (savedFoldersCard) savedFoldersCard.style.display = 'none';
       return;
     }
-  }
 
-  // Se precisar de gesto do usuário para solicitar permissão, exibe o card de reconexão
-  renderSavedFoldersCard(validSaved);
+    // Filtrar pastas válidas
+    const validSaved = savedFolders.filter(f => f.isSample || (f.handle && typeof f.handle.queryPermission === 'function'));
+    if (validSaved.length === 0) {
+      if (savedFoldersCard) savedFoldersCard.style.display = 'none';
+      return;
+    }
+
+    // Se todas as pastas salvas já estão na memória e os modelos já foram carregados, não duplicar!
+    const allAlreadyLoaded = validSaved.every(f => 
+      state.folders.some(sf => sf.id === f.id || (sf.name && sf.name.toLowerCase() === f.name.toLowerCase()))
+    );
+    if (allAlreadyLoaded && state.models.length > 0) {
+      if (savedFoldersCard) savedFoldersCard.style.display = 'none';
+      return;
+    }
+
+    // Verificar se todas as pastas com handle já possuem permissão concedida
+    let allGranted = true;
+    for (const f of validSaved) {
+      if (!f.isSample && f.handle) {
+        try {
+          const perm = await f.handle.queryPermission({ mode: 'read' });
+          if (perm !== 'granted') {
+            allGranted = false;
+          }
+        } catch (_) {
+          allGranted = false;
+        }
+      }
+    }
+
+    // Se todas já tiverem permissão concedida
+    if (allGranted) {
+      for (const f of validSaved) {
+        // Pular se a pasta já estiver carregada no estado
+        if (state.folders.some(sf => sf.id === f.id || (sf.name && sf.name.toLowerCase() === f.name.toLowerCase()))) {
+          continue;
+        }
+
+        if (f.isSample) {
+          await loadSampleModels(false);
+        } else if (f.handle) {
+          try {
+            const files = await scanDirectoryHandle(f.handle);
+            await addFilesToLibrary(files, f.name, f.handle, false, f.id);
+          } catch (err) {
+            console.warn('Erro ao restaurar pasta salva:', f.name, err);
+          }
+        }
+      }
+      if (state.folders.length > 0) {
+        if (savedFoldersCard) savedFoldersCard.style.display = 'none';
+        showToast(`Biblioteca restaurada com ${state.folders.length} pasta(s) salva(s)! 📂`, 'success');
+        return;
+      }
+    }
+
+    // Se precisar de gesto do usuário para solicitar permissão, exibe o card de reconexão
+    renderSavedFoldersCard(validSaved);
+  } finally {
+    isRestoringSavedFolders = false;
+  }
 }
 
 function renderSavedFoldersCard(savedFolders) {
@@ -994,6 +1337,10 @@ async function reconnectAllSavedFolders() {
   let reconnectedCount = 0;
 
   for (const f of savedFolders) {
+    // Pular se já estiver conectada
+    if (state.folders.some(sf => sf.id === f.id || (sf.name && sf.name.toLowerCase() === f.name.toLowerCase()))) {
+      continue;
+    }
     if (f.isSample) {
       await loadSampleModels(false);
       reconnectedCount++;
@@ -1050,6 +1397,7 @@ async function addFilesToLibrary(files, folderName, dirHandle = null, persistToD
     file: item.file,
     name: item.name,
     size: item.size,
+    lastModified: item.lastModified || (item.file && item.file.lastModified) || Date.now(),
     type: item.type,
     path: item.path,
     handle: item.handle || null,
@@ -1065,6 +1413,19 @@ async function addFilesToLibrary(files, folderName, dirHandle = null, persistToD
     duplicatesCount: 0,
     duplicateOrigins: ''
   }));
+
+  // Evitar duplicar pasta se já existir com o mesmo nome ou ID
+  const existingFolderIndex = state.folders.findIndex(f => 
+    (existingFolderId && f.id === existingFolderId) || 
+    (f.name && f.name.toLowerCase() === folderName.toLowerCase())
+  );
+
+  if (existingFolderIndex !== -1) {
+    const existing = state.folders[existingFolderIndex];
+    // Limpar modelos antigos dessa pasta para evitar duplicatas em memória
+    state.models = state.models.filter(m => m.folderId !== existing.id);
+    state.folders.splice(existingFolderIndex, 1);
+  }
 
   // Registrar a pasta no estado
   state.folders.push({
@@ -1154,6 +1515,7 @@ async function removeFolder(folderId) {
     dropZone.style.display = 'block';
     galleryContainer.style.display = 'none';
     if (topPageSizeWrap) topPageSizeWrap.style.display = 'none';
+    if (sortControlWrap) sortControlWrap.style.display = 'none';
     favoritesGrid.innerHTML = '';
     modelsGrid.innerHTML = '';
     renderFolderChips();
@@ -1223,14 +1585,17 @@ function renderFolderChips() {
  * Atualiza todos os contadores e estatísticas da barra lateral e rodapé
  */
 function updateStatsBadge() {
-  const totalModels = state.models.length;
+  const displayItems = applyCustomProjects(state.models);
+  const totalItems = displayItems.length;
+  const projectCount = displayItems.filter(m => m.isProject).length;
+  const totalFiles = state.models.length;
   const stlCount = state.models.filter(m => m.type === 'stl').length;
   const tmfCount = state.models.filter(m => m.type === '3mf').length;
-  const favCount = state.models.filter(m => m.isFavorite).length;
+  const favCount = displayItems.filter(m => m.isFavorite).length;
   const dupCount = state.models.filter(m => m.isDuplicate).length;
   const foldersCount = state.folders.length;
 
-  if (sidebarAllCountBadge) sidebarAllCountBadge.textContent = totalModels;
+  if (sidebarAllCountBadge) sidebarAllCountBadge.textContent = totalItems;
   if (sidebarFavoritesCountBadge) sidebarFavoritesCountBadge.textContent = favCount;
   if (sidebarDuplicatesCountBadge) sidebarDuplicatesCountBadge.textContent = dupCount;
 
@@ -1239,8 +1604,13 @@ function updateStatsBadge() {
   }
 
   if (fileCountBadge) {
-    fileCountBadge.textContent = `${totalModels} modelo${totalModels === 1 ? '' : 's'}`;
+    if (projectCount > 0) {
+      fileCountBadge.textContent = `${totalItems} itens (${projectCount} projeto${projectCount === 1 ? '' : 's'}, ${totalFiles} arquivos)`;
+    } else {
+      fileCountBadge.textContent = `${totalFiles} modelo${totalFiles === 1 ? '' : 's'}`;
+    }
   }
+
   if (sidebarStlCountBadge) {
     sidebarStlCountBadge.textContent = `${stlCount} STL`;
   }
@@ -1435,7 +1805,29 @@ async function renameModelFile(model, newBaseName) {
  */
 async function openModelInSlicer(model, buttonEl) {
   if (!model) return;
+  if (!getAuthenticatedUser()) {
+    showToast('Acesso restrito: faça login com Magic Link para abrir no fatiador.', 'warning');
+    return;
+  }
 
+  // 1. Resolver o modelo real caso seja um Projeto consolidado
+  let targetModel = model;
+  if (model.isProject) {
+    if (state.activePlate && state.activePlate.model && !state.activePlate.isCustomCover) {
+      targetModel = state.activePlate.model;
+    } else if (model.primaryPart) {
+      targetModel = model.primaryPart;
+    } else if (model.parts && model.parts.length > 0) {
+      targetModel = model.parts[0];
+    }
+  }
+
+  if (!targetModel) {
+    showToast('Nenhum arquivo 3D encontrado para abrir no fatiador.', 'warning');
+    return;
+  }
+
+  const modelDisplayName = targetModel.name || targetModel.path || 'modelo 3D';
   const originalHtml = buttonEl ? buttonEl.innerHTML : '';
   if (buttonEl) {
     buttonEl.classList.add('loading');
@@ -1446,42 +1838,65 @@ async function openModelInSlicer(model, buttonEl) {
     `;
   }
 
-  showToast(`Enviando "${model.name}" para o fatiador...`, 'info');
+  showToast(`Enviando "${modelDisplayName}" para o fatiador...`, 'info');
 
   try {
-    let file = model.file;
-    if (!file && model.handle && typeof model.handle.getFile === 'function') {
+    // 2. Tentar recuperar o objeto File em memória ou via Handle se disponível
+    let file = targetModel.file;
+    if (!file && targetModel.handle && typeof targetModel.handle.getFile === 'function') {
       try {
-        file = await model.handle.getFile();
-        model.file = file;
+        file = await targetModel.handle.getFile();
+        targetModel.file = file;
       } catch (e) {
         console.warn('Handle getFile falhou:', e);
       }
     }
 
     // Se for modelo de exemplo ou URL remota, buscar blob
-    if (!file && model.url) {
+    if (!file && targetModel.url) {
       try {
-        const resp = await fetch(model.url);
+        const resp = await fetch(targetModel.url);
         if (resp.ok) {
           const blob = await resp.blob();
-          file = new File([blob], model.name, { type: 'application/octet-stream' });
-          model.file = file;
+          file = new File([blob], targetModel.name, { type: 'application/octet-stream' });
+          targetModel.file = file;
         }
       } catch (e) {
-        console.warn('Fetch model.url falhou:', e);
+        console.warn('Fetch targetModel.url falhou:', e);
       }
     }
 
-    if (!file) {
-      throw new Error('Não foi possível obter os dados do arquivo para o fatiador.');
+    // 3. Se ainda não temos file nem fullDiskPath, consultar /api/resolve-path no servidor
+    if (!targetModel.fullDiskPath && (targetModel.folderName || targetModel.path)) {
+      try {
+        const resPath = await fetch(`/api/resolve-path?folder=${encodeURIComponent(targetModel.folderName || '')}&path=${encodeURIComponent(targetModel.path || targetModel.name || '')}`);
+        if (resPath.ok) {
+          const pathData = await resPath.json();
+          if (pathData && pathData.fullPath) {
+            targetModel.fullDiskPath = pathData.fullPath;
+            targetModel.fullFolderDirectory = pathData.folderPath;
+          }
+        }
+      } catch (e) {
+        console.warn('Pré-resolução de caminho no servidor falhou:', e);
+      }
     }
 
-    // Se o caminho absoluto no disco já for conhecido, abre diretamente e de forma instantânea
-    const filePathParam = model.fullDiskPath ? `&filePath=${encodeURIComponent(model.fullDiskPath)}` : '';
-    const res = await fetch(`/api/open-slicer?filename=${encodeURIComponent(model.name)}${filePathParam}`, {
+    // 4. Se não há arquivo em memória e nem caminho em disco resolvido, notificar o usuário
+    if (!file && !targetModel.fullDiskPath) {
+      throw new Error('Não foi possível obter os dados do arquivo para o fatiador. Tente reconectar a pasta.');
+    }
+
+    // 5. Montar query string completa para o servidor
+    const params = new URLSearchParams();
+    params.set('filename', targetModel.name || 'modelo_3d.3mf');
+    if (targetModel.folderName) params.set('folder', targetModel.folderName);
+    if (targetModel.path) params.set('path', targetModel.path);
+    if (targetModel.fullDiskPath) params.set('filePath', targetModel.fullDiskPath);
+
+    const res = await fetch(`/api/open-slicer?${params.toString()}`, {
       method: 'POST',
-      body: model.fullDiskPath ? undefined : file
+      body: targetModel.fullDiskPath ? undefined : file
     });
 
     if (!res.ok) {
@@ -1491,7 +1906,7 @@ async function openModelInSlicer(model, buttonEl) {
 
     const data = await res.json();
     const slicerName = data.slicer || 'fatiador';
-    showToast(`"${model.name}" aberto com sucesso no ${slicerName}!`, 'success');
+    showToast(`"${modelDisplayName}" aberto com sucesso no ${slicerName}!`, 'success');
   } catch (err) {
     console.error('Erro ao abrir no fatiador:', err);
     showToast(`Não foi possível abrir no fatiador: ${err.message}`, 'error');
@@ -1505,16 +1920,719 @@ async function openModelInSlicer(model, buttonEl) {
 }
 
 /**
- * Cria e configura um elemento de card para um modelo 3D
+ * Salva os projetos customizados definidos pelo usuário no localStorage
+ */
+function saveCustomProjects() {
+  try {
+    localStorage.setItem('antigravity_custom_projects', JSON.stringify(state.customProjects));
+  } catch (e) {
+    console.warn('Erro ao salvar projetos customizados:', e);
+  }
+}
+
+/**
+ * Aplica os projetos manuais criados pelo usuário sobre a lista de modelos.
+ * ZERO Falsos Positivos:
+ * - Apenas os arquivos que o usuário agrupou explicitamente são combinados em projetos.
+ * - Todos os demais modelos permanecem 100% individuais e intactos.
+ */
+function applyCustomProjects(rawModels) {
+  if (!state.customProjects || state.customProjects.length === 0) {
+    return rawModels;
+  }
+
+  const assignedModelIds = new Set();
+  const resultItems = [];
+
+  for (const project of state.customProjects) {
+    const projectParts = rawModels.filter(m => {
+      if (assignedModelIds.has(m.id)) return false;
+      const isMatch = project.fileKeys.some(key => 
+        m.name === key || m.path === key || (m.path && m.path.endsWith('/' + key))
+      );
+      return isMatch;
+    });
+
+    if (projectParts.length > 0) {
+      projectParts.forEach(p => assignedModelIds.add(p.id));
+      const projEntity = createProjectEntity(project.name, projectParts, project.id, project.coverKey, project.customCoverUrl);
+      projEntity.customProjectId = project.id;
+      if (project.createdAt && project.createdAt > (projEntity.lastModified || 0)) {
+        projEntity.lastModified = project.createdAt;
+      }
+      resultItems.push(projEntity);
+    }
+  }
+
+  // Manter todos os modelos não associados a nenhum projeto como itens avulsos normais
+  for (const model of rawModels) {
+    if (!assignedModelIds.has(model.id)) {
+      resultItems.push(model);
+    }
+  }
+
+  return resultItems;
+}
+
+/**
+ * Ativa ou desativa o modo de seleção múltipla na galeria
+ */
+function setSelectionMode(active) {
+  state.isSelectionMode = active;
+  document.body.classList.toggle('selection-mode-active', active);
+
+  if (btnToggleSelect) {
+    btnToggleSelect.classList.toggle('active', active);
+    const span = btnToggleSelect.querySelector('span');
+    if (span) span.textContent = active ? 'Concluir' : 'Selecionar';
+  }
+
+  if (!active) {
+    state.selectedModelIds.clear();
+  }
+
+  updateSelectionBarUI();
+
+  // Atualizar visual dos cards
+  document.querySelectorAll('.model-card').forEach(card => {
+    const isSel = state.selectedModelIds.has(card.dataset.id);
+    card.classList.toggle('is-selected', isSel);
+    const chk = card.querySelector('.card-select-checkbox');
+    if (chk) chk.classList.toggle('checked', isSel);
+  });
+}
+
+/**
+ * Alterna a seleção de um modelo individual
+ */
+function toggleModelSelection(modelId) {
+  if (state.selectedModelIds.has(modelId)) {
+    state.selectedModelIds.delete(modelId);
+  } else {
+    state.selectedModelIds.add(modelId);
+  }
+
+  if (!state.isSelectionMode && state.selectedModelIds.size > 0) {
+    setSelectionMode(true);
+  } else {
+    updateSelectionBarUI();
+    const card = document.querySelector(`.model-card[data-id="${modelId}"]`);
+    if (card) {
+      const isSel = state.selectedModelIds.has(modelId);
+      card.classList.toggle('is-selected', isSel);
+      const chk = card.querySelector('.card-select-checkbox');
+      if (chk) chk.classList.toggle('checked', isSel);
+    }
+  }
+}
+
+/**
+ * Verifica se todos os modelos visíveis que podem ser selecionados já estão selecionados
+ */
+function areAllVisibleSelected() {
+  if (!state.currentDisplayItems || state.currentDisplayItems.length === 0) return false;
+  const selectable = state.currentDisplayItems.filter(item => !item.isProject);
+  if (selectable.length === 0) return false;
+  return selectable.every(item => state.selectedModelIds.has(item.id));
+}
+
+/**
+ * Alterna entre selecionar todos os visíveis ou desselecionar todos os visíveis
+ */
+function toggleSelectAllVisible() {
+  if (!state.currentDisplayItems || state.currentDisplayItems.length === 0) return;
+  const selectable = state.currentDisplayItems.filter(item => !item.isProject);
+  if (selectable.length === 0) {
+    showToast('Nenhum arquivo avulso disponível para seleção.', 'info');
+    return;
+  }
+
+  const allSelected = selectable.every(item => state.selectedModelIds.has(item.id));
+
+  if (allSelected) {
+    // Desselecionar todos os visíveis
+    selectable.forEach(item => {
+      state.selectedModelIds.delete(item.id);
+    });
+    showToast('Arquivos visíveis desmarcados.', 'info');
+  } else {
+    // Selecionar todos os visíveis
+    selectable.forEach(item => {
+      state.selectedModelIds.add(item.id);
+    });
+    showToast(`${state.selectedModelIds.size} arquivos selecionados!`, 'info');
+  }
+
+  if (state.selectedModelIds.size === 0) {
+    setSelectionMode(false);
+  } else {
+    if (!state.isSelectionMode) {
+      state.isSelectionMode = true;
+      document.body.classList.add('selection-mode-active');
+      if (btnToggleSelect) {
+        btnToggleSelect.classList.add('active');
+        const span = btnToggleSelect.querySelector('span');
+        if (span) span.textContent = 'Concluir';
+      }
+    }
+    updateSelectionBarUI();
+    document.querySelectorAll('.model-card').forEach(card => {
+      const isSel = state.selectedModelIds.has(card.dataset.id);
+      card.classList.toggle('is-selected', isSel);
+      const chk = card.querySelector('.card-select-checkbox');
+      if (chk) chk.classList.toggle('checked', isSel);
+    });
+  }
+}
+
+/**
+ * Seleciona todos os modelos atualmente visíveis na galeria filtrada (compatibilidade)
+ */
+function selectAllVisible() {
+  toggleSelectAllVisible();
+}
+
+/**
+ * Limpa toda a seleção e oculta a barra flutuante
+ */
+function clearSelection() {
+  state.selectedModelIds.clear();
+  setSelectionMode(false);
+}
+
+/**
+ * Atualiza o badge e visibilidade da barra de ação flutuante
+ */
+function updateSelectionBarUI() {
+  const count = state.selectedModelIds.size;
+  if (count > 0) {
+    if (selectionActionBar) selectionActionBar.style.display = 'flex';
+    if (selectionCountBadge) selectionCountBadge.textContent = count;
+    if (selectionCountText) {
+      selectionCountText.textContent = count === 1 ? 'arquivo selecionado' : 'arquivos selecionados';
+    }
+  } else {
+    if (selectionActionBar) selectionActionBar.style.display = 'none';
+  }
+
+  // Atualiza o botão Selecionar / Desselecionar visíveis dinamicamente
+  if (btnSelectAllVisible) {
+    const allSelected = areAllVisibleSelected();
+    const span = btnSelectAllVisible.querySelector('span');
+    if (span) {
+      span.textContent = allSelected ? 'Desselecionar visíveis' : 'Selecionar visíveis';
+    }
+    btnSelectAllVisible.title = allSelected 
+      ? 'Desmarcar todos os modelos visíveis na página' 
+      : 'Selecionar todos os modelos visíveis na página/busca';
+    btnSelectAllVisible.classList.toggle('is-deselect', allSelected);
+  }
+}
+
+/**
+ * Abre o modal para definir o nome e confirmar a criação do projeto
+ */
+function openCreateProjectModal() {
+  if (state.selectedModelIds.size < 2) {
+    showToast('Selecione pelo menos 2 arquivos para criar um projeto.', 'warning');
+    return;
+  }
+
+  const selectedModels = state.models.filter(m => state.selectedModelIds.has(m.id));
+  if (selectedModels.length === 0) return;
+
+  // Sugerir nome baseado na busca ativa ou prefixo comum
+  let suggestedName = '';
+  if (state.searchQuery && state.searchQuery.length >= 2) {
+    suggestedName = state.searchQuery.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+  } else {
+    const first = selectedModels[0].name;
+    const match = first.match(/^([A-Za-z0-9\s]{4,})[_-]/);
+    if (match) {
+      suggestedName = match[1].replace(/_/g, ' ').trim();
+    } else {
+      const dot = first.lastIndexOf('.');
+      suggestedName = dot !== -1 ? first.substring(0, dot) : first;
+    }
+  }
+
+  if (inputProjectName) {
+    inputProjectName.value = suggestedName;
+  }
+  if (projectModalCount) {
+    projectModalCount.textContent = `${selectedModels.length} arquivos`;
+  }
+  const totalSize = selectedModels.reduce((acc, m) => acc + (m.size || 0), 0);
+  if (projectModalSize) {
+    projectModalSize.textContent = formatBytes(totalSize);
+  }
+
+  if (projectModalPartsList) {
+    projectModalPartsList.innerHTML = '';
+    selectedModels.forEach(m => {
+      const row = document.createElement('div');
+      row.className = 'project-part-item';
+      row.innerHTML = `
+        <span>📄 ${escapeHtml(m.name)}</span>
+        <span style="color: var(--text-muted); font-size: 0.75rem;">${formatBytes(m.size)}</span>
+      `;
+      projectModalPartsList.appendChild(row);
+    });
+  }
+
+  // Inicializar e renderizar o seletor de capa do projeto
+  state.selectedCoverKey = null;
+  state.selectedCustomCoverUrl = null;
+  const fileInput = document.getElementById('inputCustomCoverFile');
+  if (fileInput) fileInput.value = '';
+
+  renderProjectCoverPicker(selectedModels);
+
+  if (createProjectModal) {
+    createProjectModal.classList.add('active');
+    setTimeout(() => {
+      if (inputProjectName) {
+        inputProjectName.focus();
+        inputProjectName.select();
+      }
+    }, 60);
+  }
+}
+
+/**
+ * Adiciona e seleciona imediatamente uma foto personalizada para a capa do projeto
+ */
+function addCustomCoverCardToPicker(customUrl, fileName) {
+  state.selectedCustomCoverUrl = customUrl;
+  state.selectedCoverKey = '__custom__';
+  const selectedModels = state.models.filter(m => state.selectedModelIds.has(m.id));
+  renderProjectCoverPicker(selectedModels);
+  if (projectCoverHint) {
+    projectCoverHint.textContent = `Capa selecionada: ${fileName || 'Foto personalizada'} 🖼️`;
+  }
+}
+
+/**
+ * Renderiza o seletor interativo de miniaturas para a capa do projeto
+ */
+function renderProjectCoverPicker(selectedModels) {
+  if (!projectCoverGrid) return;
+  projectCoverGrid.innerHTML = '';
+
+  const modelsWithThumbs = selectedModels.filter(m => m.thumbnailUrl);
+
+  // Se ainda não definiu a capa e não há foto própria carregada, adota a primeira peça com miniatura
+  if (!state.selectedCoverKey) {
+    state.selectedCoverKey = modelsWithThumbs.length > 0 ? modelsWithThumbs[0].name : selectedModels[0].name;
+  }
+
+  if (projectCoverHint) {
+    if (state.selectedCoverKey === '__custom__' && state.selectedCustomCoverUrl) {
+      projectCoverHint.textContent = 'Capa selecionada: Foto personalizada 🖼️';
+    } else {
+      const count = modelsWithThumbs.length;
+      if (count > 0) {
+        projectCoverHint.textContent = `${count} miniatura${count === 1 ? '' : 's'} pronta${count === 1 ? '' : 's'}`;
+      } else {
+        projectCoverHint.textContent = 'Verificando miniaturas dos arquivos...';
+      }
+    }
+  }
+
+  // 1. Se o usuário enviou uma foto personalizada, exibe como primeiro card de capa
+  if (state.selectedCustomCoverUrl) {
+    const isCustomSel = state.selectedCoverKey === '__custom__';
+    const customCard = document.createElement('div');
+    customCard.className = `project-cover-card ${isCustomSel ? 'selected' : ''}`;
+    customCard.dataset.modelName = '__custom__';
+    customCard.title = 'Foto própria carregada para a capa';
+    customCard.innerHTML = `
+      <img class="project-cover-img" src="${state.selectedCustomCoverUrl}" alt="Foto Própria" loading="lazy">
+      <span class="project-cover-badge">✓ Própria</span>
+      <span class="project-cover-name">Foto Própria</span>
+    `;
+    customCard.addEventListener('click', () => {
+      state.selectedCoverKey = '__custom__';
+      projectCoverGrid.querySelectorAll('.project-cover-card').forEach(c => {
+        c.classList.toggle('selected', c.dataset.modelName === '__custom__');
+      });
+      if (projectCoverHint) {
+        projectCoverHint.textContent = 'Capa selecionada: Foto personalizada 🖼️';
+      }
+    });
+    projectCoverGrid.appendChild(customCard);
+  }
+
+  if (modelsWithThumbs.length === 0 && !state.selectedCustomCoverUrl) {
+    projectCoverGrid.innerHTML = `
+      <div class="project-cover-empty">
+        <span>🔍 Verificando miniaturas nos 3MFs selecionados...</span>
+      </div>
+    `;
+  }
+
+  // Verificar e carregar sob demanda miniaturas de 3MFs que ainda não foram extraídas
+  selectedModels.forEach(m => {
+    if (!m.thumbnailUrl && (m.type === '3mf' || m.type === 'stl')) {
+      loadModelOnDemand(m).then(loaded => {
+        if (loaded && loaded.thumbnailUrl) {
+          renderProjectCoverPicker(selectedModels);
+        }
+      });
+    }
+
+    if (!m.thumbnailUrl) return;
+
+    let cleanName = m.name;
+    const dot = cleanName.lastIndexOf('.');
+    if (dot !== -1) cleanName = cleanName.substring(0, dot);
+    const sep = Math.max(cleanName.lastIndexOf('_'), cleanName.lastIndexOf('-'), cleanName.lastIndexOf(' '));
+    if (sep !== -1 && sep < cleanName.length - 2) {
+      cleanName = cleanName.substring(sep + 1);
+    }
+
+    const card = document.createElement('div');
+    const isSelected = state.selectedCoverKey === m.name;
+    card.className = `project-cover-card ${isSelected ? 'selected' : ''}`;
+    card.dataset.modelName = m.name;
+    card.title = `Usar "${m.name}" como capa do projeto`;
+
+    card.innerHTML = `
+      <img class="project-cover-img" src="${m.thumbnailUrl}" alt="${escapeHtml(m.name)}" loading="lazy">
+      <span class="project-cover-badge">✓ Capa</span>
+      <span class="project-cover-name">${escapeHtml(cleanName)}</span>
+    `;
+
+    card.addEventListener('click', () => {
+      state.selectedCoverKey = m.name;
+      projectCoverGrid.querySelectorAll('.project-cover-card').forEach(c => {
+        c.classList.toggle('selected', c.dataset.modelName === m.name);
+      });
+      if (projectCoverHint) {
+        projectCoverHint.textContent = `Capa selecionada: ${escapeHtml(m.name)}`;
+      }
+    });
+
+    projectCoverGrid.appendChild(card);
+  });
+
+  const emptyMsg = projectCoverGrid.querySelector('.project-cover-empty');
+  if (emptyMsg && projectCoverGrid.querySelectorAll('.project-cover-card').length > 0) {
+    emptyMsg.remove();
+  }
+}
+
+function closeCreateProjectModal() {
+  if (createProjectModal) {
+    createProjectModal.classList.remove('active');
+  }
+}
+
+/**
+ * Confirma a criação do projeto com as peças selecionadas e capa definida
+ */
+function confirmCreateProject() {
+  const name = inputProjectName ? inputProjectName.value.trim() : '';
+  if (!name) {
+    showToast('Por favor, informe um nome para o projeto.', 'warning');
+    if (inputProjectName) inputProjectName.focus();
+    return;
+  }
+
+  const selectedModels = state.models.filter(m => state.selectedModelIds.has(m.id));
+  if (selectedModels.length < 2) {
+    showToast('É necessário pelo menos 2 arquivos selecionados.', 'warning');
+    return;
+  }
+
+  // Definir capa selecionada pelo usuário ou primeira peça que possua miniatura
+  const isCustom = state.selectedCoverKey === '__custom__' && !!state.selectedCustomCoverUrl;
+  const chosenCover = isCustom ? '__custom__' : (state.selectedCoverKey || (selectedModels.find(m => m.thumbnailUrl)?.name) || selectedModels[0].name);
+
+  const newProject = {
+    id: 'proj-' + Date.now(),
+    name: name,
+    fileKeys: selectedModels.map(m => m.name),
+    coverKey: chosenCover,
+    customCoverUrl: isCustom ? state.selectedCustomCoverUrl : null,
+    folderName: selectedModels[0].folderName || '',
+    createdAt: Date.now()
+  };
+
+  state.customProjects.push(newProject);
+  saveCustomProjects();
+
+  closeCreateProjectModal();
+  clearSelection();
+
+  updateStatsBadge();
+  renderGallery();
+
+  showToast(`Projeto "${name}" com ${selectedModels.length} mesas criado com sucesso! 📦`, 'success');
+}
+
+/**
+ * Desfaz um projeto customizado e retorna os arquivos à galeria
+ */
+function dissolveCustomProject(projectId) {
+  const projIdx = state.customProjects.findIndex(p => p.id === projectId);
+  if (projIdx === -1) return;
+
+  const proj = state.customProjects[projIdx];
+  const confirmMsg = `Deseja desagrupar o projeto "${proj.name}"? Os ${proj.fileKeys.length} arquivos voltarão a ser exibidos individualmente na galeria.`;
+  if (!confirm(confirmMsg)) {
+    return;
+  }
+
+  state.customProjects.splice(projIdx, 1);
+  saveCustomProjects();
+
+  updateStatsBadge();
+  renderGallery();
+
+  showToast(`Projeto "${proj.name}" foi desagrupado. Os arquivos voltaram ao estado avulso.`, 'info');
+}
+
+/**
+ * Cria a entidade sintética de Projeto Multi-peças / Multi-mesas
+ */
+function createProjectEntity(projectName, parts, groupKey, coverKey = null, customCoverUrl = null) {
+  parts.sort((a, b) => compareModelNames(a.name, b.name));
+
+  const totalSize = parts.reduce((sum, p) => sum + (p.size || 0), 0);
+
+  // 1. Prioridade para a capa escolhida pelo usuário (coverKey)
+  let primaryPart = null;
+  if (coverKey && coverKey !== '__custom__') {
+    primaryPart = parts.find(p => p.name === coverKey || p.id === coverKey);
+  }
+  // 2. Se a peça escolhida não tiver miniatura ou se nenhuma foi escolhida, procura qualquer peça que possua miniatura
+  if (!primaryPart || !primaryPart.thumbnailUrl) {
+    primaryPart = parts.find(p => p.thumbnailUrl) || primaryPart || parts[0];
+  }
+
+  let coverThumbnail = customCoverUrl || null;
+  if (!coverThumbnail) {
+    coverThumbnail = primaryPart?.thumbnailUrl || (parts.find(p => p.thumbnailUrl)?.thumbnailUrl) || '';
+  }
+
+  const hasFavorite = parts.some(p => p.isFavorite);
+  const isDuplicate = parts.some(p => p.isDuplicate);
+
+  const types = new Set(parts.map(p => p.type));
+  const dominantType = types.size === 1 ? Array.from(types)[0] : 'misto';
+
+  // Detectar prefixo comum entre as peças para que o nome de cada mesa fique limpo e legível (ex: "base_a", "head")
+  let commonPrefix = '';
+  if (parts.length > 1) {
+    const firstClean = parts[0].name.replace(/\.[^/.]+$/, '');
+    let prefixCandidate = '';
+    for (let i = 0; i < firstClean.length; i++) {
+      const char = firstClean[i];
+      if (parts.every(p => p.name.toLowerCase().startsWith((prefixCandidate + char).toLowerCase()))) {
+        prefixCandidate += char;
+      } else {
+        break;
+      }
+    }
+    const sepIdx = Math.max(prefixCandidate.lastIndexOf('_'), prefixCandidate.lastIndexOf('-'), prefixCandidate.lastIndexOf(' '));
+    if (sepIdx >= 2) {
+      commonPrefix = prefixCandidate.substring(0, sepIdx + 1);
+    } else if (prefixCandidate.length >= 4) {
+      commonPrefix = prefixCandidate;
+    }
+  }
+
+  const plates = [];
+  if (customCoverUrl) {
+    plates.push({
+      id: 0,
+      name: '⭐ Capa',
+      fullName: 'Capa do Projeto',
+      imageUrl: customCoverUrl,
+      isCustomCover: true,
+      isProjectPart: true,
+      model: primaryPart || parts[0]
+    });
+  }
+
+  parts.forEach((part, idx) => {
+    let cleanLabel = part.name;
+    const dotIdx = cleanLabel.lastIndexOf('.');
+    if (dotIdx !== -1) cleanLabel = cleanLabel.substring(0, dotIdx);
+
+    if (commonPrefix && cleanLabel.toLowerCase().startsWith(commonPrefix.toLowerCase()) && cleanLabel.length > commonPrefix.length) {
+      cleanLabel = cleanLabel.substring(commonPrefix.length);
+    }
+
+    const normProj = projectName.replace(/[\s_-]+/g, '').toLowerCase();
+    const normClean = cleanLabel.replace(/[\s_-]+/g, '').toLowerCase();
+    if (normClean.startsWith(normProj) && cleanLabel.length > projectName.length) {
+      cleanLabel = cleanLabel.substring(projectName.length).replace(/^[_\-\s]+/, '');
+    }
+
+    plates.push({
+      id: idx + 1,
+      name: cleanLabel || part.name,
+      fullName: part.name,
+      imageUrl: part.thumbnailUrl,
+      model: part,
+      isProjectPart: true
+    });
+  });
+
+  const projectLastMod = parts.reduce((max, p) => Math.max(max, p.lastModified || (p.file && p.file.lastModified) || 0), 0) || Date.now();
+
+  const projEntity = {
+    id: `proj-${encodeURIComponent(groupKey).replace(/[^a-zA-Z0-9]/g, '_')}`,
+    isProject: true,
+    name: projectName,
+    folderId: primaryPart.folderId,
+    folderName: primaryPart.folderName,
+    path: primaryPart.path,
+    fullDiskPath: primaryPart.fullDiskPath,
+    fullFolderDirectory: primaryPart.fullFolderDirectory,
+    size: totalSize,
+    lastModified: projectLastMod,
+    type: dominantType,
+    typesList: Array.from(types),
+    parts: parts,
+    partsCount: parts.length,
+    isFavorite: hasFavorite,
+    isDuplicate: isDuplicate,
+    thumbnailUrl: coverThumbnail,
+    customCoverUrl: customCoverUrl || null,
+    plates: plates,
+    primaryPart: primaryPart,
+    coverKey: coverKey || (primaryPart ? primaryPart.name : ''),
+    metadata: primaryPart.metadata,
+    slicerData: primaryPart.slicerData
+  };
+
+  parts.forEach(p => {
+    p.parentProject = projEntity;
+  });
+
+  return projEntity;
+}
+
+/**
+ * Cria e configura um elemento de card para um modelo 3D ou Projeto
  */
 function createModelCard(model) {
   const card = document.createElement('div');
-  card.className = 'model-card';
+  card.className = `model-card ${model.isProject ? 'is-project' : ''}`;
   card.dataset.id = model.id;
+
+  // Renderização especializada para Card de Projeto Multi-peças
+  if (model.isProject) {
+    const formattedSize = formatBytes(model.size);
+
+    card.innerHTML = `
+      <div class="card-thumbnail-wrapper">
+        <span class="badge-format project">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+            <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+            <line x1="12" y1="22.08" x2="12" y2="12"></line>
+          </svg>
+          PROJETO
+        </span>
+        <span class="card-project-parts-badge">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
+          ${model.partsCount} mesas
+        </span>
+        <button class="btn-dissolve-card" title="Desagrupar este projeto (voltar a exibir peças separadas)" aria-label="Desagrupar projeto" type="button">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+            <path d="M7 11V7a5 5 0 0 1 9.9-1"></path>
+          </svg>
+        </button>
+        <button class="btn-favorite ${model.isFavorite ? 'active' : ''}" title="${model.isFavorite ? 'Remover dos favoritos' : 'Favoritar projeto'}" aria-label="Favoritar projeto" type="button">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="${model.isFavorite ? '#fbbf24' : 'none'}" stroke="${model.isFavorite ? '#fbbf24' : 'currentColor'}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+          </svg>
+        </button>
+        ${model.thumbnailUrl 
+          ? `<img class="card-thumbnail" src="${model.thumbnailUrl}" alt="${escapeHtml(model.name)}" loading="lazy">` 
+          : `
+            <div class="thumb-loader">
+              <div class="spinner"></div>
+              <span>Carregando projeto...</span>
+            </div>
+          `
+        }
+        <div class="card-quick-preview">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <polygon points="10 8 16 12 10 16 10 8"></polygon>
+          </svg>
+          Explorar ${model.partsCount} Mesas
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="card-title-row">
+          <div class="card-title" title="${escapeHtml(model.name)} (${model.partsCount} arquivos)" data-fullname="${escapeHtml(model.name)}">
+            <span class="card-title-base card-title-project">${escapeHtml(model.name)}</span>
+          </div>
+        </div>
+        <div class="card-meta">
+          <span>${formattedSize} total</span>
+          <span class="card-dimensions" style="color: #c084fc; font-weight: 600;">${model.partsCount} arquivos 3D</span>
+        </div>
+        <div class="card-footer-actions">
+          <button class="btn-open-slicer" title="Abrir peça principal no fatiador" type="button">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
+              <polyline points="2 17 12 22 22 17"></polyline>
+              <polyline points="2 12 12 17 22 12"></polyline>
+            </svg>
+            <span>Abrir no fatiador</span>
+          </button>
+        </div>
+      </div>
+    `;
+
+    const btnFavorite = card.querySelector('.btn-favorite');
+    if (btnFavorite) {
+      btnFavorite.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleFavorite(model);
+      });
+    }
+
+    const btnSlicer = card.querySelector('.btn-open-slicer');
+    if (btnSlicer) {
+      btnSlicer.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openModelInSlicer(model.primaryPart || model.parts[0], btnSlicer);
+      });
+    }
+
+    const btnDissolve = card.querySelector('.btn-dissolve-card');
+    if (btnDissolve) {
+      btnDissolve.addEventListener('click', (e) => {
+        e.stopPropagation();
+        dissolveCustomProject(model.customProjectId || model.id);
+      });
+    }
+
+    card.addEventListener('click', (e) => {
+      if (e.target.closest('.btn-favorite') || e.target.closest('.btn-open-slicer') || e.target.closest('.btn-dissolve-card')) return;
+      openViewerModal(model);
+    });
+
+    return card;
+  }
 
   const formattedSize = formatBytes(model.size);
   const badgeClass = model.type === 'stl' ? 'stl format-stl' : '3mf format-3mf';
   const isSliced = model.slicerData && model.slicerData.isSliced;
+  const isSelected = state.selectedModelIds.has(model.id);
+
+  if (isSelected) {
+    card.classList.add('is-selected');
+  }
 
   const dotIdx = model.name.lastIndexOf('.');
   const ext = dotIdx !== -1 ? model.name.substring(dotIdx) : `.${model.type}`;
@@ -1522,6 +2640,11 @@ function createModelCard(model) {
 
   card.innerHTML = `
     <div class="card-thumbnail-wrapper">
+      <div class="card-select-checkbox ${isSelected ? 'checked' : ''}" title="Selecionar arquivo">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="20 6 9 17 4 12"></polyline>
+        </svg>
+      </div>
       <span class="badge-format ${badgeClass}">.${model.type.toUpperCase()}</span>
       ${isSliced ? `<span class="badge-sliced-card">Fatiado</span>` : ''}
       ${model.isDuplicate ? `
@@ -1735,7 +2858,11 @@ function createModelCard(model) {
   setupTitleRowEvents();
 
   card.addEventListener('click', (e) => {
-    if (e.target.closest('.card-rename-box') || e.target.closest('.btn-card-rename') || e.target.closest('.btn-favorite')) {
+    if (e.target.closest('.card-rename-box') || e.target.closest('.btn-card-rename') || e.target.closest('.btn-favorite') || e.target.closest('.btn-open-slicer')) {
+      return;
+    }
+    if (e.target.closest('.card-select-checkbox') || state.isSelectionMode) {
+      toggleModelSelection(model.id);
       return;
     }
     openViewerModal(model);
@@ -1832,6 +2959,9 @@ function updatePaginationUI(total, totalPages, startIdx, endIdx) {
   if (topPageSizeWrap) {
     topPageSizeWrap.style.display = total > 0 ? 'flex' : 'none';
   }
+  if (sortControlWrap) {
+    sortControlWrap.style.display = total > 0 ? 'flex' : 'none';
+  }
 
   if (!paginationBar) return;
 
@@ -1882,29 +3012,45 @@ function updatePaginationUI(total, totalPages, startIdx, endIdx) {
  * e carregamento estritamente sob demanda para cards em tela
  */
 function renderGallery() {
-  const filtered = state.models
-    .filter(model => {
+  const allItems = applyCustomProjects(state.models);
+
+  const filteredUnsorted = allItems
+    .filter(item => {
       // 1. Seção da Barra Lateral (Todos, Favoritos, Duplicados)
-      if (state.activeSection === 'favorites' && !model.isFavorite) {
+      if (state.activeSection === 'favorites' && !item.isFavorite) {
         return false;
       }
-      if (state.activeSection === 'duplicates' && !model.isDuplicate) {
+      if (state.activeSection === 'duplicates' && !item.isDuplicate) {
         return false;
       }
 
       // 2. Filtro de Formatos (.STL / .3MF)
-      if (state.activeFilter !== 'all' && model.type !== state.activeFilter) {
-        return false;
+      if (state.activeFilter !== 'all') {
+        if (item.isProject) {
+          if (!item.typesList.includes(state.activeFilter)) return false;
+        } else if (item.type !== state.activeFilter) {
+          return false;
+        }
       }
 
       // 3. Busca por Nome
-      if (state.searchQuery && !model.name.toLowerCase().includes(state.searchQuery)) {
-        return false;
+      if (state.searchQuery) {
+        if (item.isProject) {
+          const matchProject = item.name.toLowerCase().includes(state.searchQuery);
+          const matchPart = item.parts && item.parts.some(p => p.name.toLowerCase().includes(state.searchQuery));
+          if (!matchProject && !matchPart) return false;
+        } else {
+          if (!item.name.toLowerCase().includes(state.searchQuery)) {
+            return false;
+          }
+        }
       }
 
       return true;
-    })
-    .sort((a, b) => compareModelNames(a.name, b.name));
+    });
+
+  const filtered = sortModels(filteredUnsorted, state.sortOrder);
+  state.currentDisplayItems = filtered;
 
   favoritesGrid.innerHTML = '';
   modelsGrid.innerHTML = '';
@@ -1916,6 +3062,7 @@ function renderGallery() {
     favoritesSection.style.display = 'none';
     allSectionHeader.style.display = 'none';
     if (topPageSizeWrap) topPageSizeWrap.style.display = 'none';
+    if (sortControlWrap) sortControlWrap.style.display = 'none';
     if (paginationBar) paginationBar.style.display = 'none';
 
     let emptyMessage = 'Nenhum arquivo corresponde aos filtros aplicados.';
@@ -1982,6 +3129,9 @@ function renderGallery() {
 
   // Atualizar barra de navegação de páginas
   updatePaginationUI(filtered.length, totalPages, startIdx, endIdx);
+
+  // Atualizar barra de seleção e status do botão Selecionar/Desselecionar
+  updateSelectionBarUI();
 }
 
 // ==========================================
@@ -2010,7 +3160,13 @@ function setupCardObserver() {
         const card = entry.target;
         cardObserver.unobserve(card);
         const modelId = card.dataset.id;
-        const model = state.models.find(m => m.id === modelId);
+        let model = null;
+        if (state.currentDisplayItems) {
+          model = state.currentDisplayItems.find(m => m.id === modelId);
+        }
+        if (!model) {
+          model = state.models.find(m => m.id === modelId);
+        }
         if (model && !model.thumbnailUrl && !model.loadingThumbnail) {
           loadModelOnDemand(model);
         }
@@ -2037,6 +3193,40 @@ async function loadModelOnDemand(model) {
 
   if (model.loadingThumbnail) {
     return model;
+  }
+
+  // Se for uma entidade de projeto consolidado, resolve a miniatura através de sua peça principal ou primeira disponível com capa
+  if (model.isProject) {
+    const targetPart = (model.primaryPart && model.primaryPart.thumbnailUrl)
+      ? model.primaryPart
+      : (model.parts ? (model.parts.find(p => p.thumbnailUrl) || model.primaryPart || model.parts[0]) : null);
+    if (!targetPart) return model;
+
+    if (targetPart.thumbnailUrl) {
+      model.thumbnailUrl = targetPart.thumbnailUrl;
+      model.metadata = targetPart.metadata;
+      model.slicerData = targetPart.slicerData;
+      if (model.plates && model.plates.length > 0 && !model.plates[0].imageUrl) {
+        model.plates[0].imageUrl = targetPart.thumbnailUrl;
+      }
+      updateCardThumbnail(model);
+      return model;
+    }
+
+    model.loadingThumbnail = true;
+    return loadModelOnDemand(targetPart).then(loadedPart => {
+      model.loadingThumbnail = false;
+      if (loadedPart && loadedPart.thumbnailUrl) {
+        model.thumbnailUrl = loadedPart.thumbnailUrl;
+        model.metadata = loadedPart.metadata;
+        model.slicerData = loadedPart.slicerData;
+        if (model.plates && model.plates.length > 0 && !model.plates[0].imageUrl) {
+          model.plates[0].imageUrl = loadedPart.thumbnailUrl;
+        }
+      }
+      updateCardThumbnail(model);
+      return model;
+    });
   }
 
   // 1. Tentar recuperar instantaneamente do cache do IndexedDB
@@ -2167,7 +3357,19 @@ async function extractModelThumbnailAndMeta(model) {
  */
 function updateCardThumbnail(model) {
   const cards = document.querySelectorAll(`.model-card[data-id="${model.id}"]`);
-  if (!cards || cards.length === 0) return;
+  if (!cards || cards.length === 0) {
+    if (model.parentProject) {
+      if (!model.parentProject.thumbnailUrl && model.thumbnailUrl) {
+        model.parentProject.thumbnailUrl = model.thumbnailUrl;
+        if (model.parentProject.plates && model.parentProject.plates.length > 0) {
+          const matchingPlate = model.parentProject.plates.find(p => p.model && p.model.id === model.id);
+          if (matchingPlate) matchingPlate.imageUrl = model.thumbnailUrl;
+        }
+      }
+      updateCardThumbnail(model.parentProject);
+    }
+    return;
+  }
 
   cards.forEach(card => {
     const wrapper = card.querySelector('.card-thumbnail-wrapper');
@@ -2224,6 +3426,18 @@ function updateCardThumbnail(model) {
       }
     }
   });
+
+  // Se este modelo pertence a um projeto pai, propagar miniatura para o card do projeto pai também
+  if (model.parentProject) {
+    if (!model.parentProject.thumbnailUrl && model.thumbnailUrl) {
+      model.parentProject.thumbnailUrl = model.thumbnailUrl;
+      if (model.parentProject.plates && model.parentProject.plates.length > 0) {
+        const matchingPlate = model.parentProject.plates.find(p => p.model && p.model.id === model.id);
+        if (matchingPlate) matchingPlate.imageUrl = model.thumbnailUrl;
+      }
+      updateCardThumbnail(model.parentProject);
+    }
+  }
 }
 
 function generatePlaceholderThumb(name, type) {
@@ -2248,13 +3462,15 @@ function generatePlaceholderThumb(name, type) {
 function setViewerMode(mode) {
   state.currentViewerMode = mode;
 
+  const hasPlates = (state.activeProject && state.activeProject.plates && state.activeProject.plates.length > 0) ||
+                    (state.activeModel && state.activeModel.plates && state.activeModel.plates.length > 0);
+
   if (mode === 'plate') {
     modalPlateImg.style.display = 'block';
     modalCanvas.style.display = 'none';
     viewerControlsBar.style.display = 'none';
 
-    // Se o modelo tiver mesas, mostrar o botão flutuante 'Visualizar 3D'
-    if (state.activeModel && state.activeModel.plates && state.activeModel.plates.length > 0) {
+    if (hasPlates) {
       if (btnOpen3DView) btnOpen3DView.style.display = 'inline-flex';
       if (btnBackToPlate) btnBackToPlate.style.display = 'none';
     } else {
@@ -2266,8 +3482,7 @@ function setViewerMode(mode) {
     modalCanvas.style.display = 'block';
     viewerControlsBar.style.display = 'flex';
 
-    // Se o modelo tiver fotos de mesa, permitir retornar à foto
-    if (state.activeModel && state.activeModel.plates && state.activeModel.plates.length > 0) {
+    if (hasPlates) {
       if (btnOpen3DView) btnOpen3DView.style.display = 'none';
       if (btnBackToPlate) btnBackToPlate.style.display = 'inline-flex';
     } else {
@@ -2280,7 +3495,9 @@ function setViewerMode(mode) {
 
     // Carregar a malha 3D da mesa atualmente selecionada
     if (state.activeModel) {
-      loadModelIntoModal(state.activeModel, state.activePlateId);
+      const isProjectPart = !!(state.activeProject || (state.activeModel && state.activeModel.parentProject));
+      const plateToLoad = isProjectPart ? 1 : (state.activePlateId || 1);
+      loadModelIntoModal(state.activeModel, plateToLoad);
     }
   }
 }
@@ -2303,15 +3520,19 @@ function renderPlatesList(plates) {
     const card = document.createElement('div');
     card.className = `plate-square-card ${plate.id === state.activePlateId ? 'active' : ''}`;
     card.dataset.plateId = plate.id;
-    card.title = `${plate.name}${plate.printTimeFormatted ? ' (' + plate.printTimeFormatted + ')' : ''}`;
+    card.title = `${plate.fullName || plate.name}${plate.printTimeFormatted ? ' (' + plate.printTimeFormatted + ')' : ''}`;
+
+    const currentImg = plate.imageUrl || (plate.model && plate.model.thumbnailUrl) || '';
+
+    const badgeNum = plate.isCustomCover ? '⭐' : plate.id;
 
     card.innerHTML = `
-      <span class="plate-square-num">${plate.id}</span>
-      ${plate.imageUrl 
-        ? `<img class="plate-square-img" src="${plate.imageUrl}" alt="${escapeHtml(plate.name)}">`
-        : `<div style="font-size: 1.8rem; color: #64748b;">🖨️</div>`
+      <span class="plate-square-num">${badgeNum}</span>
+      ${currentImg 
+        ? `<img class="plate-square-img" src="${currentImg}" alt="${escapeHtml(plate.name)}">`
+        : `<div class="plate-square-placeholder"><span style="font-size: 1.4rem;">🖨️</span></div>`
       }
-      <span class="plate-square-label">${escapeHtml(plate.name)}</span>
+      <span class="plate-square-label" title="${escapeHtml(plate.fullName || plate.name)}">${escapeHtml(plate.name)}</span>
     `;
 
     card.addEventListener('click', () => {
@@ -2319,16 +3540,93 @@ function renderPlatesList(plates) {
     });
 
     platesList.appendChild(card);
+
+    // Se for parte de projeto e ainda não possuir miniatura, carregar sob demanda
+    if (plate.isProjectPart && !currentImg && plate.model) {
+      loadModelOnDemand(plate.model).then(loadedPart => {
+        if (loadedPart && loadedPart.thumbnailUrl) {
+          plate.imageUrl = loadedPart.thumbnailUrl;
+          const imgEl = card.querySelector('.plate-square-img');
+          if (imgEl) {
+            imgEl.src = loadedPart.thumbnailUrl;
+          } else {
+            const placeholder = card.querySelector('.plate-square-placeholder');
+            if (placeholder) {
+              const newImg = document.createElement('img');
+              newImg.className = 'plate-square-img';
+              newImg.src = loadedPart.thumbnailUrl;
+              newImg.alt = plate.name;
+              placeholder.replaceWith(newImg);
+            }
+          }
+          if (state.activePlateId === plate.id && state.currentViewerMode === 'plate') {
+            modalPlateImg.src = loadedPart.thumbnailUrl;
+          }
+        }
+      });
+    }
   });
 }
 
 function selectPlate(plate) {
   state.activePlateId = plate.id;
+  state.activePlate = plate;
 
   // Atualizar estilo ativo nos cards quadrados
   document.querySelectorAll('.plate-square-card').forEach(c => {
     c.classList.toggle('active', parseInt(c.dataset.plateId, 10) === plate.id);
   });
+
+  // Se for a capa personalizada do projeto
+  if (plate.isCustomCover) {
+    state.activeModel = plate.model || state.activeProject?.primaryPart || state.activeProject?.parts[0];
+    if (state.activeModel) updateModalFilePath(state.activeModel);
+
+    if (modalBadge) {
+      modalBadge.textContent = 'CAPA PROJETO';
+      modalBadge.className = 'badge-format project format-3mf';
+    }
+
+    modalPlateImg.src = plate.imageUrl;
+
+    if (state.currentViewerMode === '3d') {
+      if (state.activeModel) loadModelIntoModal(state.activeModel, 1);
+    } else {
+      setViewerMode('plate');
+    }
+    return;
+  }
+
+  if (plate.isProjectPart && plate.model) {
+    state.activeModel = plate.model;
+    updateModalFilePath(plate.model);
+
+    if (modalBadge) {
+      modalBadge.textContent = plate.model.type.toUpperCase();
+      modalBadge.className = `badge-format ${plate.model.type} format-${plate.model.type}`;
+    }
+
+    const imgUrl = plate.imageUrl || plate.model.thumbnailUrl;
+    if (imgUrl) {
+      modalPlateImg.src = imgUrl;
+    } else {
+      loadModelOnDemand(plate.model).then(loadedPart => {
+        if (loadedPart && loadedPart.thumbnailUrl) {
+          plate.imageUrl = loadedPart.thumbnailUrl;
+          if (state.activePlateId === plate.id && state.currentViewerMode === 'plate') {
+            modalPlateImg.src = loadedPart.thumbnailUrl;
+          }
+        }
+      });
+    }
+
+    if (state.currentViewerMode === '3d') {
+      loadModelIntoModal(plate.model, 1);
+    } else {
+      setViewerMode('plate');
+    }
+    return;
+  }
 
   if (plate.imageUrl) {
     modalPlateImg.src = plate.imageUrl;
@@ -2444,9 +3742,57 @@ async function updateModalFilePath(model) {
  * Modal Interativo (Three.js + Visualizador de Mesas)
  */
 async function openViewerModal(model) {
+  if (!getAuthenticatedUser()) {
+    showToast('Acesso restrito: faça login com Magic Link para visualizar modelos 3D.', 'warning');
+    return;
+  }
+
   viewerModal.classList.add('active');
   state.activeModel = model;
   state.isMeshLoaded = false;
+
+  // Resetar valores enquanto carrega
+  modalPlateImg.src = '';
+  if (state.modalMesh) {
+    state.modalScene.remove(state.modalMesh);
+    if (state.modalMesh.geometry) state.modalMesh.geometry.dispose();
+    state.modalMesh = null;
+  }
+
+  // Se o item for um Projeto consolidado multi-peças
+  if (model.isProject) {
+    state.activeProject = model;
+    const firstPart = model.primaryPart || model.parts[0];
+    updateModalFilePath(firstPart);
+
+    modalBadge.textContent = 'PROJETO';
+    modalBadge.className = 'badge-format project format-3mf';
+
+    if (modalDuplicateBadge) {
+      const dupParts = model.parts.filter(p => p.isDuplicate);
+      if (dupParts.length > 0) {
+        modalDuplicateBadge.style.display = 'inline-flex';
+        modalDuplicateBadge.title = `Arquivos duplicados detectados neste projeto`;
+        modalDuplicateBadge.textContent = `⚠️ Cópias Duplicadas (${dupParts.length})`;
+      } else {
+        modalDuplicateBadge.style.display = 'none';
+      }
+    }
+
+    if (modalSidebar) modalSidebar.style.display = 'flex';
+    if (platesSection) platesSection.style.display = 'flex';
+    if (modalSidebarInfo) modalSidebarInfo.style.display = 'none';
+
+    renderPlatesList(model.plates);
+    if (model.plates.length > 0) {
+      state.activePlateId = model.plates[0].id;
+      selectPlate(model.plates[0]);
+    }
+    setViewerMode('plate');
+    return;
+  }
+
+  state.activeProject = null;
 
   // Construir caminho completo desde C:\
   updateModalFilePath(model);
@@ -2462,14 +3808,6 @@ async function openViewerModal(model) {
     } else {
       modalDuplicateBadge.style.display = 'none';
     }
-  }
-
-  // Resetar valores enquanto carrega
-  modalPlateImg.src = '';
-  if (state.modalMesh) {
-    state.modalScene.remove(state.modalMesh);
-    if (state.modalMesh.geometry) state.modalMesh.geometry.dispose();
-    state.modalMesh = null;
   }
 
   // Garantir que metadados e mesas foram extraídos se ainda não tiverem sido carregados sob demanda
@@ -2591,7 +3929,8 @@ function onModalResize() {
 }
 
 async function loadModelIntoModal(model, plateId = null) {
-  const currentPlate = plateId || state.activePlateId || 1;
+  const isProjectPart = !!(state.activeProject || (model && model.parentProject));
+  const currentPlate = isProjectPart ? (plateId || 1) : (plateId || state.activePlateId || 1);
 
   // Limpar malha anterior
   if (state.modalMesh) {
@@ -2605,6 +3944,28 @@ async function loadModelIntoModal(model, plateId = null) {
   viewerLoadingText.textContent = `Carregando malha 3D de ${model.name}${plateLabel}...`;
 
   try {
+    if (!model.file && model.handle && typeof model.handle.getFile === 'function') {
+      try {
+        model.file = await model.handle.getFile();
+      } catch (e) {
+        console.warn('Handle getFile falhou:', e);
+      }
+    }
+    if (!model.file && model.url) {
+      try {
+        const resp = await fetch(model.url);
+        if (resp.ok) {
+          const blob = await resp.blob();
+          model.file = new File([blob], model.name, { type: 'application/octet-stream' });
+        }
+      } catch (e) {
+        console.warn('Fetch model.url falhou:', e);
+      }
+    }
+    if (!model.file) {
+      throw new Error('Arquivo não disponível');
+    }
+
     const buffer = await model.file.arrayBuffer();
     let geometry = null;
     let dimensions = { x: 0, y: 0, z: 0 };
@@ -2711,6 +4072,9 @@ function resetModalCamera() {
 
 function closeViewerModal() {
   viewerModal.classList.remove('active');
+  state.activeProject = null;
+  state.activePlate = null;
+  state.activeModel = null;
   if (state.modalMesh) {
     state.modalScene.remove(state.modalMesh);
     if (state.modalMesh.geometry) state.modalMesh.geometry.dispose();
@@ -2736,6 +4100,7 @@ window.addEventListener('DOMContentLoaded', init);
 
 // Exposição para testes e interoperabilidade
 window.appState = state;
+window.state = state;
 window.setPageSize = setPageSize;
 window.goToPage = goToPage;
 window.renderGallery = renderGallery;
@@ -2750,3 +4115,14 @@ window.clearThumbnailCache = clearThumbnailCache;
 window.openFoldersDB = openFoldersDB;
 window.loadModelOnDemand = loadModelOnDemand;
 window.openModelInSlicer = openModelInSlicer;
+window.setSelectionMode = setSelectionMode;
+window.toggleModelSelection = toggleModelSelection;
+window.selectAllVisible = selectAllVisible;
+window.toggleSelectAllVisible = toggleSelectAllVisible;
+window.addCustomCoverCardToPicker = addCustomCoverCardToPicker;
+window.clearSelection = clearSelection;
+window.setSortOrder = setSortOrder;
+window.sortModels = sortModels;
+window.confirmCreateProject = confirmCreateProject;
+window.dissolveCustomProject = dissolveCustomProject;
+window.applyCustomProjects = applyCustomProjects;

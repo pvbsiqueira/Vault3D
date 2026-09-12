@@ -3,11 +3,136 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>3D Print Library - Visualizador & Organizador STL e 3MF</title>
+  <title>Vault3D - Visualizador & Organizador STL e 3MF</title>
   <link rel="stylesheet" href="styles.css">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220%22%20viewBox=%220%200%20100%20100%22><text y=%22.9em%22 font-size=%2290%22>📦</text></svg>">
 </head>
 <body class="dashboard-body">
+
+  <!-- Tela de Login / Autenticação por Magic Link (Supabase) -->
+  <div class="auth-container" id="authContainer" style="display: none;">
+    <div class="auth-glow-bg"></div>
+    <div class="auth-card">
+      <div class="auth-header">
+        <div class="auth-brand-icon">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+            <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+            <line x1="12" y1="22.08" x2="12" y2="12"></line>
+          </svg>
+        </div>
+        <div class="auth-badge">ACESSO SEGURO</div>
+        <h2 class="auth-title">Vault3D</h2>
+        <p class="auth-subtitle">Entre com seu e-mail para receber um link de acesso instantâneo sem necessidade de senha.</p>
+      </div>
+
+      <!-- Banner de Alerta / Erro -->
+      <div class="auth-alert-banner" id="authAlertBanner" style="display: none;"></div>
+
+      <!-- Formulário de Envio do Magic Link -->
+      <form class="auth-form" id="authLoginForm" novalidate>
+        <div class="auth-input-group">
+          <label for="authEmailInput" class="auth-label">E-mail</label>
+          <div class="auth-input-wrapper">
+            <svg class="auth-input-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+              <polyline points="22,6 12,13 2,6"></polyline>
+            </svg>
+            <input 
+              type="email" 
+              id="authEmailInput" 
+              class="auth-input" 
+              placeholder="seu.email@exemplo.com" 
+              autocomplete="email" 
+              required
+            >
+          </div>
+        </div>
+
+        <button type="submit" class="btn-auth-submit" id="btnSendMagicLink">
+          <span class="btn-spinner" style="display: none;"></span>
+          <span class="btn-text">Entrar com Magic Link</span>
+          <svg class="btn-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="22" y1="2" x2="11" y2="13"></line>
+            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+          </svg>
+        </button>
+      </form>
+
+      <!-- Feedback de Sucesso: Link Enviado -->
+      <div class="auth-success-banner" id="authSuccessBanner" style="display: none;">
+        <div class="auth-success-icon-wrap">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+            <polyline points="22 4 12 14.01 9 11.01"></polyline>
+          </svg>
+        </div>
+        <h3 class="auth-success-title">Verifique sua caixa de entrada!</h3>
+        <p class="auth-success-desc">
+          Enviamos um link mágico de acesso para <strong id="authSuccessSentEmail"></strong>.
+          Basta clicar no link recebido para entrar diretamente.
+        </p>
+
+        <!-- Campo para digitar o código numérico de 6 dígitos recebido por e-mail -->
+        <div class="auth-otp-box">
+          <label for="authOtpInput" class="auth-otp-label">Ou digite o código de 6 dígitos recebido:</label>
+          <div class="auth-otp-row">
+            <input 
+              type="text" 
+              id="authOtpInput" 
+              class="auth-otp-input" 
+              placeholder="123456" 
+              maxlength="8" 
+              autocomplete="one-time-code"
+            >
+            <button type="button" class="btn-verify-otp" id="btnVerifyOtp">
+              <span class="btn-otp-spinner" style="display: none;"></span>
+              <span class="btn-otp-text">Confirmar</span>
+            </button>
+          </div>
+          <div class="auth-otp-error" id="authOtpError" style="display: none;"></div>
+        </div>
+
+        <div class="auth-success-actions">
+          <button type="button" class="btn-auth-secondary" id="btnResendMagicLink">Reenviar link</button>
+          <button type="button" class="btn-auth-text" id="btnUseOtherEmail">Usar outro e-mail</button>
+        </div>
+      </div>
+
+      <!-- Aviso e botão de Configuração de Chaves Supabase (caso não configuradas) -->
+      <div class="auth-config-notice" id="authConfigNotice" style="display: none;">
+        <p>Credenciais do Supabase não detectadas no <code>.env</code>.</p>
+        <button type="button" class="btn-auth-config" id="btnOpenConfigModal">Configurar Chaves Supabase</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal de Configuração de Credenciais Supabase -->
+  <div class="modal auth-config-modal" id="authConfigModal" style="display: none;">
+    <div class="modal-backdrop" id="authConfigBackdrop"></div>
+    <div class="auth-config-card">
+      <div class="auth-config-header">
+        <div class="auth-config-header-text">
+          <h3>Configuração do Supabase</h3>
+          <p>Informe a URL do seu projeto e a chave anônima pública (anon key).</p>
+        </div>
+        <button class="create-project-close" id="btnCloseConfigModal" type="button">&times;</button>
+      </div>
+      <div class="auth-config-body">
+        <div class="project-form-group">
+          <label for="inputSupabaseUrl">Supabase Project URL (NEXT_PUBLIC_SUPABASE_URL)</label>
+          <input type="url" id="inputSupabaseUrl" class="project-name-input" placeholder="https://xyzproject.supabase.co">
+        </div>
+        <div class="project-form-group">
+          <label for="inputSupabaseAnonKey">Supabase Anon Key (NEXT_PUBLIC_SUPABASE_ANON_KEY)</label>
+          <input type="password" id="inputSupabaseAnonKey" class="project-name-input" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...">
+        </div>
+      </div>
+      <div class="create-project-footer">
+        <button class="btn-project-confirm" id="btnSaveSupabaseConfig" type="button">Salvar Credenciais</button>
+      </div>
+    </div>
+  </div>
 
   <div class="dashboard-layout" id="dashboardLayout">
     
@@ -25,7 +150,7 @@
           </div>
           <div class="brand-text">
             <div class="brand-title-wrap">
-              <span class="brand-title">3D Print Library</span>
+              <span class="brand-title">Vault3D</span>
               <span class="brand-badge">PRO</span>
             </div>
             <span class="brand-sub">Gerenciador STL / 3MF</span>
@@ -138,6 +263,38 @@
         </div>
 
         <div class="topbar-right">
+          <!-- Filtro de Ordenação -->
+          <div class="sort-control-wrap" id="sortControlWrap" style="display: none;">
+            <label for="selectSortOrder" class="sort-label" title="Ordenar lista de modelos">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="m3 16 4 4 4-4"></path>
+                <path d="M7 20V4"></path>
+                <path d="m21 8-4-4-4 4"></path>
+                <path d="M17 4v16"></path>
+              </svg>
+              <span>Ordenar:</span>
+            </label>
+            <div class="custom-select-box">
+              <select id="selectSortOrder" class="sort-select" title="Critério de ordenação da galeria">
+                <option value="date_desc">📅 Mais recentes</option>
+                <option value="date_asc">📅 Mais antigos</option>
+                <option value="name_asc">🔤 Nome (A → Z)</option>
+                <option value="name_desc">🔤 Nome (Z → A)</option>
+                <option value="size_desc">📦 Maior tamanho</option>
+                <option value="size_asc">📦 Menor tamanho</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Botão de Seleção Múltipla para Criar Projetos -->
+          <button class="btn-toggle-select" id="btnToggleSelect" title="Selecionar múltiplos arquivos para agrupar em um projeto" type="button">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="4" ry="4"></rect>
+              <polyline points="9 11 12 14 22 4"></polyline>
+            </svg>
+            <span>Selecionar</span>
+          </button>
+
           <div class="top-page-size-wrap" id="topPageSizeWrap" style="display: none;">
             <span class="pagination-label">Cards:</span>
             <div class="page-size-buttons" id="topPageSizeButtons">
@@ -145,6 +302,22 @@
               <button class="page-size-btn" data-size="100" type="button">100</button>
               <button class="page-size-btn" data-size="150" type="button">150</button>
             </div>
+          </div>
+
+          <!-- Perfil do Usuário e Botão Logout -->
+          <div class="topbar-user-wrap" id="topbarUserWrap" style="display: none;">
+            <div class="user-pill" id="authUserBadge" title="Usuário Conectado">
+              <span class="user-status-dot"></span>
+              <span class="user-email-text" id="topbarUserEmail">usuario@email.com</span>
+            </div>
+            <button class="btn-logout" id="btnLogout" type="button" title="Encerrar sessão / Sair da conta">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                <polyline points="16 17 21 12 16 7"></polyline>
+                <line x1="21" y1="12" x2="9" y2="12"></line>
+              </svg>
+              <span>Sair</span>
+            </button>
           </div>
         </div>
       </header>
@@ -189,6 +362,13 @@
             <p class="empty-desc">
               Selecione ou arraste para cá a pasta do seu computador onde estão seus arquivos <strong>.STL</strong> e <strong>.3MF</strong> para visualizar todas as miniaturas instantaneamente.
             </p>
+            <div class="privacy-local-badge">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+              </svg>
+              <span>100% Local: a plataforma apenas lê e organiza seus arquivos, sem copiar ou fazer upload para a nuvem.</span>
+            </div>
             <div class="empty-actions">
               <button id="btnEmptySelectFolder" class="btn btn-primary" type="button">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -390,6 +570,172 @@
             </button>
           </div>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Barra Flutuante de Ação para Seleção Múltipla -->
+  <div class="selection-action-bar" id="selectionActionBar" style="display: none;">
+    <div class="selection-bar-info">
+      <span class="selection-badge-count" id="selectionCountBadge">0</span>
+      <span class="selection-text" id="selectionCountText">arquivos selecionados</span>
+    </div>
+    <div class="selection-bar-actions">
+      <button class="btn-selection-action secondary" id="btnSelectAllVisible" type="button" title="Selecionar todos os modelos visíveis na página/busca">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="9 11 12 14 22 4"></polyline>
+          <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
+        </svg>
+        <span>Selecionar visíveis</span>
+      </button>
+      <button class="btn-selection-action primary" id="btnOpenCreateProjectModal" type="button" title="Agrupar arquivos selecionados em um único projeto">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+          <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+          <line x1="12" y1="22.08" x2="12" y2="12"></line>
+        </svg>
+        <span>Criar Projeto</span>
+      </button>
+      <button class="btn-selection-action ghost" id="btnCancelSelection" type="button" title="Limpar seleção e sair">
+        &times;
+      </button>
+    </div>
+  </div>
+
+  <!-- Modal de Criação de Projeto Manual -->
+  <div class="modal create-project-modal" id="createProjectModal">
+    <div class="modal-backdrop" id="createProjectBackdrop"></div>
+    <div class="create-project-card">
+      <div class="create-project-header">
+        <div class="create-project-icon">📦</div>
+        <div class="create-project-header-text">
+          <h3>Criar Projeto Multi-mesas</h3>
+          <p>Agrupar os arquivos selecionados em um único card com múltiplas mesas.</p>
+        </div>
+        <button class="create-project-close" id="btnCloseCreateProjectModal" type="button">&times;</button>
+      </div>
+      <div class="create-project-body">
+        <div class="project-form-group">
+          <label for="inputProjectName">Nome do Projeto</label>
+          <input type="text" id="inputProjectName" class="project-name-input" placeholder="Ex: Kamen Rider Black" maxlength="80">
+        </div>
+        <div class="project-summary-box">
+          <div class="summary-item">
+            <span class="summary-label">Peças selecionadas:</span>
+            <span class="summary-val" id="projectModalCount">0</span>
+          </div>
+          <div class="summary-item">
+            <span class="summary-label">Tamanho acumulado:</span>
+            <span class="summary-val" id="projectModalSize">0 B</span>
+          </div>
+        </div>
+        <div class="project-cover-section" id="projectCoverSection">
+          <div class="project-cover-header">
+            <span class="project-cover-title">🖼️ Escolha a Capa do Projeto</span>
+            <div class="project-cover-header-actions">
+              <span class="project-cover-hint" id="projectCoverHint">Selecione uma miniatura</span>
+              <button class="btn-upload-cover" id="btnUploadProjectCover" type="button" title="Carregar foto personalizada do computador (JPG, PNG) para a capa">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                  <polyline points="17 8 12 3 7 8"></polyline>
+                  <line x1="12" y1="3" x2="12" y2="15"></line>
+                </svg>
+                <span>Carregar Foto</span>
+              </button>
+              <input type="file" id="inputCustomCoverFile" accept="image/png, image/jpeg, image/webp" style="display: none;">
+            </div>
+          </div>
+          <div class="project-cover-grid" id="projectCoverGrid">
+            <!-- Miniaturas disponíveis renderizadas via app.js -->
+          </div>
+        </div>
+        <div class="project-parts-preview-wrap">
+          <span class="project-parts-preview-title">Arquivos incluídos no projeto:</span>
+          <div class="project-parts-preview" id="projectModalPartsList">
+            <!-- Peças selecionadas -->
+          </div>
+        </div>
+      </div>
+      <div class="create-project-footer">
+        <button class="btn-project-cancel" id="btnCancelProjectCreation" type="button">Cancelar</button>
+        <button class="btn-project-confirm" id="btnConfirmProjectCreation" type="button">
+          <span>Criar Projeto</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Informativo: Leitura Segura de Pastas Locais -->
+  <div class="modal folder-permission-modal" id="folderPermissionModal" style="display: none;">
+    <div class="modal-backdrop" id="folderPermissionBackdrop"></div>
+    <div class="folder-permission-card">
+      <div class="folder-permission-header">
+        <div class="folder-permission-icon-wrap">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+            <polyline points="9 12 11 14 15 10"></polyline>
+          </svg>
+        </div>
+        <div class="folder-permission-header-text">
+          <div class="folder-permission-badge">LEITURA SEGURA LOCAL</div>
+          <h3>Acesso à Pasta de Modelos 3D</h3>
+          <p>Seus arquivos permanecem 100% seguros no seu computador.</p>
+        </div>
+        <button class="create-project-close" id="btnCloseFolderPermissionModal" type="button">&times;</button>
+      </div>
+
+      <div class="folder-permission-body">
+        <div class="permission-item">
+          <div class="permission-item-icon check">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="20 6 9 17 4 12"></polyline>
+            </svg>
+          </div>
+          <div class="permission-item-content">
+            <h4>Apenas Leitura e Organização</h4>
+            <p>A plataforma apenas lê as geometrias e metadados dos arquivos STL e 3MF para exibir as miniaturas e organizar seu acervo visual.</p>
+          </div>
+        </div>
+
+        <div class="permission-item">
+          <div class="permission-item-icon check">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="20 6 9 17 4 12"></polyline>
+            </svg>
+          </div>
+          <div class="permission-item-content">
+            <h4>Nenhum arquivo é copiado ou enviado para a nuvem</h4>
+            <p>Todos os seus modelos 3D permanecem exclusivamente no seu computador. Não há upload nem cópia de arquivos para a internet.</p>
+          </div>
+        </div>
+
+        <div class="permission-notice-box">
+          <div class="permission-notice-box-title">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="8" x2="12" y2="12"></line>
+              <line x1="12" y1="16" x2="12.01" y2="16"></line>
+            </svg>
+            <span>Sobre a mensagem do seu navegador:</span>
+          </div>
+          <p>
+            O Google Chrome ou Edge exibirá uma confirmação técnica perguntando se permite <em>"ver e copiar arquivos"</em> (tradução padrão do navegador para permissão de leitura de pastas). 
+            Basta clicar em <strong>"Permitir"</strong> para liberar a visualização dos seus modelos.
+          </p>
+        </div>
+      </div>
+
+      <div class="folder-permission-footer">
+        <label class="permission-dont-ask-label">
+          <input type="checkbox" id="chkDontShowFolderPermission">
+          <span>Não exibir esta explicação novamente</span>
+        </label>
+        <button class="btn btn-primary btn-proceed-folder" id="btnConfirmProceedFolder" type="button">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+          </svg>
+          <span>Escolher Pasta Agora</span>
+        </button>
       </div>
     </div>
   </div>
