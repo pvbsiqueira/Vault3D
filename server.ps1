@@ -212,6 +212,7 @@ while ($listener.IsListening) {
         $response.AddHeader("Access-Control-Allow-Origin", "*")
         $response.AddHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         $response.AddHeader("Access-Control-Allow-Headers", "*")
+        $response.AddHeader("Access-Control-Allow-Private-Network", "true")
 
         if ($request.HttpMethod -eq "OPTIONS") {
             $response.StatusCode = 200

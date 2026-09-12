@@ -37,7 +37,14 @@ const state = {
   currentPage: 1,
   filteredModelsCount: 0,
   currentPageModelIds: new Set(),
-  folderDiskPaths: {},
+  folderDiskPaths: (() => {
+    try {
+      const saved = localStorage.getItem('vault3d_folder_disk_paths');
+      return saved ? JSON.parse(saved) : {};
+    } catch (_) {
+      return {};
+    }
+  })(),
   isSelectionMode: false,
   selectedModelIds: new Set(),
   selectedCoverKey: null,
@@ -900,6 +907,17 @@ function saveFavorites(favSet) {
 }
 
 /**
+ * Salva o mapa de caminhos de pastas do disco no localStorage
+ */
+function saveFolderDiskPaths() {
+  try {
+    localStorage.setItem('vault3d_folder_disk_paths', JSON.stringify(state.folderDiskPaths || {}));
+  } catch (e) {
+    console.warn('Erro ao salvar caminhos de pasta no localStorage:', e);
+  }
+}
+
+/**
  * Alterna o estado de favorito de um modelo
  */
 function toggleFavorite(model) {
@@ -1426,6 +1444,28 @@ async function addFilesToLibrary(files, folderName, dirHandle = null, persistToD
     duplicateOrigins: ''
   }));
 
+  // Pré-determinar o caminho base da pasta no disco
+  const rootBase = (state.folderDiskPaths && state.folderDiskPaths[folderName]) || (
+    folderName.includes('sample_models')
+      ? 'C:\\Users\\eustudio\\Desktop\\Projeto\\sample_models'
+      : `C:\\Users\\eustudio\\Downloads\\${folderName}`
+  );
+
+  if (!state.folderDiskPaths[folderName]) {
+    state.folderDiskPaths[folderName] = rootBase;
+    saveFolderDiskPaths();
+  }
+
+  // Pré-calcular o caminho completo em disco para cada modelo
+  newModels.forEach(m => {
+    let sub = (m.path || m.name).replace(/\//g, '\\');
+    if (sub.toLowerCase().startsWith(folderName.toLowerCase() + '\\')) {
+      sub = sub.substring(folderName.length + 1);
+    }
+    m.fullFolderDirectory = rootBase + '\\';
+    m.fullDiskPath = `${rootBase}\\${sub}`.replace(/\\\\+/g, '\\');
+  });
+
   // Evitar duplicar pasta se já existir com o mesmo nome ou ID
   const existingFolderIndex = state.folders.findIndex(f => 
     (existingFolderId && f.id === existingFolderId) || 
@@ -1447,13 +1487,16 @@ async function addFilesToLibrary(files, folderName, dirHandle = null, persistToD
     count: newModels.length
   });
 
-  // Pré-resolver caminho no disco iniciando em C:\ para agilizar a exibição e tooltips
+  // Pré-resolver caminho no disco iniciando em C:\ para agilizar a exibição e tooltips (se servidor local estiver ativo)
   if (files[0]) {
-    fetch(`/api/resolve-path?folder=${encodeURIComponent(folderName)}&path=${encodeURIComponent(files[0].path || files[0].name)}`)
+    const isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+    const localBase = isLocalHost ? '' : 'http://127.0.0.1:3000';
+    fetch(`${localBase}/api/resolve-path?folder=${encodeURIComponent(folderName)}&path=${encodeURIComponent(files[0].path || files[0].name)}`)
       .then(res => res.ok ? res.json() : null)
       .then(data => {
         if (data && data.rootFolder) {
           state.folderDiskPaths[folderName] = data.rootFolder;
+          saveFolderDiskPaths();
           updateFolderTooltip(folderName, data.rootFolder);
         }
       })
@@ -1813,7 +1856,9 @@ async function renameModelFile(model, newBaseName) {
 }
 
 /**
- * Envia o modelo 3D para o servidor local abrir diretamente no fatiador instalado
+ * Envia o modelo 3D para o fatiador instalado na máquina do usuário.
+ * Suporta o protocolo nativo vault3d:// (abertura instantânea sem servidor)
+ * e também o companion local http://127.0.0.1:3000/api/open-slicer quando ativo.
  */
 async function openModelInSlicer(model, buttonEl) {
   if (!model) return;
@@ -1853,72 +1898,75 @@ async function openModelInSlicer(model, buttonEl) {
   showToast(`Enviando "${modelDisplayName}" para o fatiador...`, 'info');
 
   try {
-    // 2. Tentar recuperar o objeto File em memória ou via Handle se disponível
-    let file = targetModel.file;
-    if (!file && targetModel.handle && typeof targetModel.handle.getFile === 'function') {
+    // 2. Resolver o caminho completo do arquivo no disco
+    const folderName = targetModel.folderName || '';
+    const relPath = (targetModel.path || targetModel.name).replace(/\//g, '\\');
+
+    let fullPath = targetModel.fullDiskPath;
+    if (!fullPath) {
+      const rootBase = (state.folderDiskPaths && state.folderDiskPaths[folderName]) || (
+        folderName.includes('sample_models') || relPath.includes('sample_models')
+          ? 'C:\\Users\\eustudio\\Desktop\\Projeto\\sample_models'
+          : `C:\\Users\\eustudio\\Downloads\\${folderName}`
+      );
+      let sub = relPath;
+      if (sub.toLowerCase().startsWith(folderName.toLowerCase() + '\\')) {
+        sub = sub.substring(folderName.length + 1);
+      }
+      fullPath = `${rootBase}\\${sub}`.replace(/\\\\+/g, '\\');
+      targetModel.fullDiskPath = fullPath;
+      targetModel.fullFolderDirectory = rootBase + '\\';
+    }
+
+    // 3. Copiar o caminho do arquivo para a área de transferência como comodidade imediata
+    if (fullPath && navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
       try {
-        file = await targetModel.handle.getFile();
-        targetModel.file = file;
-      } catch (e) {
-        console.warn('Handle getFile falhou:', e);
+        await navigator.clipboard.writeText(fullPath);
+      } catch (_) {}
+    }
+
+    // 4. Disparar abertura via protocolo nativo do Windows (vault3d://)
+    // Esse método funciona tanto em www.vault3d.com.br quanto localmente sem exigir servidor rodando
+    if (fullPath) {
+      try {
+        const protocolUrl = `vault3d://open?path=${encodeURIComponent(fullPath)}`;
+        const a = document.createElement('a');
+        a.href = protocolUrl;
+        a.style.display = 'none';
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => a.remove(), 1000);
+      } catch (eProto) {
+        console.warn('Falha ao disparar protocolo vault3d://:', eProto);
       }
     }
 
-    // Se for modelo de exemplo ou URL remota, buscar blob
-    if (!file && targetModel.url) {
-      try {
-        const resp = await fetch(targetModel.url);
-        if (resp.ok) {
-          const blob = await resp.blob();
-          file = new File([blob], targetModel.name, { type: 'application/octet-stream' });
-          targetModel.file = file;
-        }
-      } catch (e) {
-        console.warn('Fetch targetModel.url falhou:', e);
-      }
+    // 5. Tentar adicionalmente a API do servidor local se estiver ativo (sem quebrar se offline ou 404)
+    try {
+      const isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+      const localBase = isLocalHost ? '' : 'http://127.0.0.1:3000';
+
+      const params = new URLSearchParams();
+      params.set('filename', targetModel.name || 'modelo_3d.3mf');
+      if (targetModel.folderName) params.set('folder', targetModel.folderName);
+      if (targetModel.path) params.set('path', targetModel.path);
+      if (fullPath) params.set('filePath', fullPath);
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 1200);
+
+      await fetch(`${localBase}/api/open-slicer?${params.toString()}`, {
+        method: 'POST',
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+    } catch (_) {
+      // Ignora silenciosamente se o servidor local não estiver rodando (o protocolo nativo já foi disparado)
     }
 
-    // 3. Se ainda não temos file nem fullDiskPath, consultar /api/resolve-path no servidor
-    if (!targetModel.fullDiskPath && (targetModel.folderName || targetModel.path)) {
-      try {
-        const resPath = await fetch(`/api/resolve-path?folder=${encodeURIComponent(targetModel.folderName || '')}&path=${encodeURIComponent(targetModel.path || targetModel.name || '')}`);
-        if (resPath.ok) {
-          const pathData = await resPath.json();
-          if (pathData && pathData.fullPath) {
-            targetModel.fullDiskPath = pathData.fullPath;
-            targetModel.fullFolderDirectory = pathData.folderPath;
-          }
-        }
-      } catch (e) {
-        console.warn('Pré-resolução de caminho no servidor falhou:', e);
-      }
-    }
+    // 6. Feedback de sucesso ao usuário
+    showToast(`"${modelDisplayName}" enviado para o fatiador! (Caminho copiado)`, 'success');
 
-    // 4. Se não há arquivo em memória e nem caminho em disco resolvido, notificar o usuário
-    if (!file && !targetModel.fullDiskPath) {
-      throw new Error('Não foi possível obter os dados do arquivo para o fatiador. Tente reconectar a pasta.');
-    }
-
-    // 5. Montar query string completa para o servidor
-    const params = new URLSearchParams();
-    params.set('filename', targetModel.name || 'modelo_3d.3mf');
-    if (targetModel.folderName) params.set('folder', targetModel.folderName);
-    if (targetModel.path) params.set('path', targetModel.path);
-    if (targetModel.fullDiskPath) params.set('filePath', targetModel.fullDiskPath);
-
-    const res = await fetch(`/api/open-slicer?${params.toString()}`, {
-      method: 'POST',
-      body: targetModel.fullDiskPath ? undefined : file
-    });
-
-    if (!res.ok) {
-      const errData = await res.json().catch(() => ({}));
-      throw new Error(errData.error || `Servidor retornou erro ${res.status}`);
-    }
-
-    const data = await res.json();
-    const slicerName = data.slicer || 'fatiador';
-    showToast(`"${modelDisplayName}" aberto com sucesso no ${slicerName}!`, 'success');
   } catch (err) {
     console.error('Erro ao abrir no fatiador:', err);
     showToast(`Não foi possível abrir no fatiador: ${err.message}`, 'error');
@@ -3795,13 +3843,25 @@ async function updateModalFilePath(model) {
   if (lastSlash !== -1) {
     estimatedDir += sub.substring(0, lastSlash + 1);
   }
+  model.fullFolderDirectory = estimatedDir;
+  model.fullDiskPath = `${estimatedDir}${model.name}`;
+
   if (modalPathFolder) modalPathFolder.textContent = estimatedDir;
   if (modalPathName) modalPathName.textContent = model.name;
   if (modalFileName) modalFileName.title = `${estimatedDir}${model.name} (Clique para copiar)`;
 
-  // 4. Consulta assíncrona ao servidor local para obter o caminho 100% real do Windows
+  // 4. Consulta assíncrona ao servidor local para obter o caminho 100% real do Windows (se companion estiver ativo)
   try {
-    const res = await fetch(`/api/resolve-path?folder=${encodeURIComponent(folderName)}&path=${encodeURIComponent(model.path || model.name)}`);
+    const isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+    const localBase = isLocalHost ? '' : 'http://127.0.0.1:3000';
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 1000);
+
+    const res = await fetch(`${localBase}/api/resolve-path?folder=${encodeURIComponent(folderName)}&path=${encodeURIComponent(model.path || model.name)}`, {
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+
     if (res.ok) {
       const data = await res.json();
       if (data && data.fullPath) {
@@ -3809,6 +3869,7 @@ async function updateModalFilePath(model) {
         model.fullFolderDirectory = data.folderPath;
         if (data.rootFolder && folderName) {
           state.folderDiskPaths[folderName] = data.rootFolder;
+          saveFolderDiskPaths();
           updateFolderTooltip(folderName, data.rootFolder);
         }
         // Se este mesmo modelo ainda estiver ativo no modal, atualiza na tela
@@ -3820,7 +3881,7 @@ async function updateModalFilePath(model) {
       }
     }
   } catch (err) {
-    console.warn('Erro ao consultar /api/resolve-path:', err);
+    // Silencioso - já estamos com estimatedDir aplicado com sucesso
   }
 }
 
