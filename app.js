@@ -9,6 +9,9 @@ import { initAuth, getAuthenticatedUser } from './auth.js';
 const state = {
   models: [],
   folders: [], // Array de { id, name, handle, count }
+  activeFolderId: null, // ID da pasta conectada ativa para filtro ou null (todas)
+  activeSubfolderPath: null, // Caminho relativo da subpasta ativa ou null (toda a pasta)
+  collapsedFolders: new Set(), // Set com chaves de pastas/subpastas recolhidas
   activeFilter: 'all', // 'all', 'stl', '3mf', 'duplicates'
   activeSection: 'all', // 'all', 'projects', 'favorites', 'duplicates'
   searchQuery: '',
@@ -89,6 +92,9 @@ const sidebarDuplicatesCountBadge = document.getElementById('sidebarDuplicatesCo
 const sidebarFoldersList = document.getElementById('sidebarFoldersList');
 const sidebarFoldersCountBadge = document.getElementById('sidebarFoldersCountBadge');
 const sidebarFoldersEmpty = document.getElementById('sidebarFoldersEmpty');
+const sidebarAllFoldersWrap = document.getElementById('sidebarAllFoldersWrap');
+const btnShowAllFolders = document.getElementById('btnShowAllFolders');
+const allFoldersBadge = document.getElementById('allFoldersBadge');
 const fileCountBadge = document.getElementById('fileCountBadge');
 const sidebarStlCountBadge = document.getElementById('sidebarStlCountBadge');
 const sidebar3mfCountBadge = document.getElementById('sidebar3mfCountBadge');
@@ -221,6 +227,13 @@ function init() {
       setNavSection(section);
     });
   });
+
+  // Chamada secundária: Exibir todas as pastas conectadas
+  if (btnShowAllFolders) {
+    btnShowAllFolders.addEventListener('click', () => {
+      resetFolderFilter();
+    });
+  }
 
   // Busca e Filtros
   if (searchInput) {
@@ -1556,6 +1569,18 @@ async function removeFolder(folderId) {
   state.folders.splice(folderIndex, 1);
   state.models = state.models.filter(m => m.folderId !== folderId);
 
+  // Se a pasta ativa ou suas subpastas pertenciam a essa pasta, resetar filtro
+  if (state.activeFolderId === folderId) {
+    state.activeFolderId = null;
+    state.activeSubfolderPath = null;
+  }
+  // Limpar chaves dessa pasta das pastas recolhidas
+  for (const key of Array.from(state.collapsedFolders)) {
+    if (key === folderId || key.startsWith(`${folderId}::`)) {
+      state.collapsedFolders.delete(key);
+    }
+  }
+
   // Remover do IndexedDB
   await removeFolderFromDB(folderId);
 
@@ -1568,6 +1593,9 @@ async function removeFolder(folderId) {
 
   // Se não houver mais pastas conectadas, volta para a tela inicial vazia
   if (state.folders.length === 0) {
+    state.activeFolderId = null;
+    state.activeSubfolderPath = null;
+    state.collapsedFolders.clear();
     dropZone.style.display = 'block';
     galleryContainer.style.display = 'none';
     if (topPageSizeWrap) topPageSizeWrap.style.display = 'none';
@@ -1594,28 +1622,167 @@ async function removeFolder(folderId) {
 }
 
 /**
- * Renderiza a lista de pastas conectadas na barra lateral
+ * Normaliza o caminho relativo de um modelo excluindo o prefixo do nome da pasta raiz (se houver)
+ */
+function getModelRelativePath(model, folderName) {
+  let p = (model.path || model.name || '').replace(/\\/g, '/');
+  if (folderName) {
+    const fn = folderName.replace(/\\/g, '/');
+    if (p.toLowerCase().startsWith(fn.toLowerCase() + '/')) {
+      p = p.substring(fn.length + 1);
+    }
+  }
+  return p;
+}
+
+/**
+ * Extrai recursivamente a árvore de subpastas de uma pasta conectada
+ */
+function extractFolderTree(folder, models) {
+  const folderModels = models.filter(m => m.folderId === folder.id);
+  const subfolderMap = new Map(); // path -> { path, name, level, parentPath, count }
+
+  folderModels.forEach(m => {
+    const relPath = getModelRelativePath(m, folder.name);
+    const parts = relPath.split('/').filter(Boolean);
+
+    if (parts.length > 1) {
+      const dirParts = parts.slice(0, -1);
+      let currentPath = '';
+      let parentPath = null;
+
+      for (let i = 0; i < dirParts.length; i++) {
+        const seg = dirParts[i];
+        currentPath = currentPath ? `${currentPath}/${seg}` : seg;
+        const level = i + 1;
+
+        if (!subfolderMap.has(currentPath)) {
+          subfolderMap.set(currentPath, {
+            path: currentPath,
+            name: seg,
+            level: level,
+            parentPath: parentPath,
+            count: 0
+          });
+        }
+        subfolderMap.get(currentPath).count++;
+        parentPath = currentPath;
+      }
+    }
+  });
+
+  return Array.from(subfolderMap.values()).sort((a, b) => {
+    return a.path.localeCompare(b.path, undefined, { numeric: true, sensitivity: 'base' });
+  });
+}
+
+/**
+ * Verifica se um modelo pertence ao filtro de pasta/subpasta ativo
+ */
+function isModelInFolderFilter(model, folderId, subfolderPath) {
+  if (!folderId) return true;
+  if (model.folderId !== folderId) return false;
+  if (!subfolderPath) return true; // Pasta raiz completa
+
+  const relPath = getModelRelativePath(model, model.folderName);
+  const normalizedSubfolder = subfolderPath.replace(/\\/g, '/').toLowerCase();
+  const normalizedRel = relPath.toLowerCase();
+
+  return normalizedRel.startsWith(normalizedSubfolder + '/');
+}
+
+/**
+ * Define o filtro de pasta/subpasta ativa e atualiza a galeria
+ */
+function selectFolder(folderId, subfolderPath = null) {
+  state.activeFolderId = folderId;
+  state.activeSubfolderPath = subfolderPath;
+  state.currentPage = 1;
+  updateFolderSelectionUI();
+  renderGallery();
+}
+
+/**
+ * Reseta o filtro de pastas exibindo modelos de todas as pastas conectadas
+ */
+function resetFolderFilter() {
+  state.activeFolderId = null;
+  state.activeSubfolderPath = null;
+  state.currentPage = 1;
+  updateFolderSelectionUI();
+  renderGallery();
+}
+
+/**
+ * Atualiza o destaque visual ativo dos itens de pastas e botão 'Exibir todas as pastas'
+ */
+function updateFolderSelectionUI() {
+  if (btnShowAllFolders) {
+    btnShowAllFolders.classList.toggle('active', !state.activeFolderId);
+  }
+  if (!sidebarFoldersList) return;
+  const items = sidebarFoldersList.querySelectorAll('.sidebar-folder-item');
+  items.forEach(el => {
+    const fId = el.dataset.folderId;
+    const sPath = el.dataset.subfolderPath || null;
+    const isActive = (state.activeFolderId === fId && (state.activeSubfolderPath || null) === sPath);
+    el.classList.toggle('active', isActive);
+  });
+}
+
+/**
+ * Renderiza a lista de pastas conectadas na barra lateral com suporte a subpastas hierárquicas e expansão
  */
 function renderFolderChips() {
   if (!sidebarFoldersList) return;
   sidebarFoldersList.innerHTML = '';
 
+  const totalFolders = state.folders.length;
   if (sidebarFoldersCountBadge) {
-    sidebarFoldersCountBadge.textContent = state.folders.length;
+    sidebarFoldersCountBadge.textContent = totalFolders;
   }
 
-  if (state.folders.length === 0) {
+  if (sidebarAllFoldersWrap) {
+    sidebarAllFoldersWrap.style.display = totalFolders > 0 ? 'block' : 'none';
+  }
+
+  if (allFoldersBadge) {
+    allFoldersBadge.textContent = totalFolders > 0 ? `(${state.models.length})` : '';
+  }
+
+  if (btnShowAllFolders) {
+    btnShowAllFolders.classList.toggle('active', !state.activeFolderId);
+  }
+
+  if (totalFolders === 0) {
     sidebarFoldersList.innerHTML = '<div class="sidebar-folders-empty" id="sidebarFoldersEmpty">Nenhuma pasta conectada</div>';
     return;
   }
 
   state.folders.forEach(folder => {
+    const subfolders = extractFolderTree(folder, state.models);
+    const hasSubfolders = subfolders.length > 0;
+    const isRootCollapsed = state.collapsedFolders.has(folder.id);
+    const isRootActive = state.activeFolderId === folder.id && !state.activeSubfolderPath;
+
+    // Elemento da pasta raiz conectada
     const item = document.createElement('div');
-    item.className = 'sidebar-folder-item';
+    item.className = `sidebar-folder-item ${isRootActive ? 'active' : ''}`;
+    item.dataset.folderId = folder.id;
+    item.dataset.subfolderPath = '';
     item.title = `${folder.name} (${folder.count} arquivos)`;
+
+    const chevronHtml = hasSubfolders
+      ? `<button class="btn-folder-toggle ${isRootCollapsed ? 'collapsed' : ''}" type="button" title="${isRootCollapsed ? 'Expandir subpastas' : 'Recolher subpastas'}" aria-label="Expandir ou recolher subpastas">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </button>`
+      : `<span class="btn-folder-toggle-spacer"></span>`;
 
     item.innerHTML = `
       <div class="sidebar-folder-left">
+        ${chevronHtml}
         <span class="folder-item-icon">📁</span>
         <span class="sidebar-folder-name">${escapeHtml(folder.name)}</span>
       </div>
@@ -1627,13 +1794,106 @@ function renderFolderChips() {
       </div>
     `;
 
-    const btnRemove = item.querySelector('.btn-remove-sidebar-folder');
-    btnRemove.addEventListener('click', (e) => {
-      e.stopPropagation();
-      removeFolder(folder.id);
+    // Toggle expandir / recolher
+    if (hasSubfolders) {
+      const btnToggle = item.querySelector('.btn-folder-toggle');
+      if (btnToggle) {
+        btnToggle.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (state.collapsedFolders.has(folder.id)) {
+            state.collapsedFolders.delete(folder.id);
+          } else {
+            state.collapsedFolders.add(folder.id);
+          }
+          renderFolderChips();
+        });
+      }
+    }
+
+    // Clique no item para filtrar
+    item.addEventListener('click', () => {
+      selectFolder(folder.id, null);
     });
 
+    // Botão remover pasta
+    const btnRemove = item.querySelector('.btn-remove-sidebar-folder');
+    if (btnRemove) {
+      btnRemove.addEventListener('click', (e) => {
+        e.stopPropagation();
+        removeFolder(folder.id);
+      });
+    }
+
     sidebarFoldersList.appendChild(item);
+
+    // Se a pasta raiz não estiver recolhida, renderiza subpastas
+    if (!isRootCollapsed && hasSubfolders) {
+      subfolders.forEach(sub => {
+        // Verificar se algum ancestral direto está recolhido
+        const pathSegments = sub.path.split('/');
+        let ancestorCollapsed = false;
+        let runningPath = '';
+        for (let s = 0; s < pathSegments.length - 1; s++) {
+          runningPath = runningPath ? `${runningPath}/${pathSegments[s]}` : pathSegments[s];
+          if (state.collapsedFolders.has(`${folder.id}::${runningPath}`)) {
+            ancestorCollapsed = true;
+            break;
+          }
+        }
+        if (ancestorCollapsed) return;
+
+        const hasSubChildren = subfolders.some(s => s.parentPath === sub.path);
+        const subKey = `${folder.id}::${sub.path}`;
+        const isSubCollapsed = state.collapsedFolders.has(subKey);
+        const isSubActive = (state.activeFolderId === folder.id && state.activeSubfolderPath === sub.path);
+
+        const subItem = document.createElement('div');
+        subItem.className = `sidebar-folder-item is-subfolder ${isSubActive ? 'active' : ''}`;
+        subItem.style.setProperty('--subfolder-level', sub.level);
+        subItem.dataset.folderId = folder.id;
+        subItem.dataset.subfolderPath = sub.path;
+        subItem.title = `${sub.path} (${sub.count} arquivo${sub.count === 1 ? '' : 's'})`;
+
+        const subChevronHtml = hasSubChildren
+          ? `<button class="btn-folder-toggle ${isSubCollapsed ? 'collapsed' : ''}" type="button" title="${isSubCollapsed ? 'Expandir subpastas' : 'Recolher subpastas'}" aria-label="Expandir ou recolher subpastas">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </button>`
+          : `<span class="btn-folder-toggle-spacer"></span>`;
+
+        subItem.innerHTML = `
+          <div class="sidebar-folder-left">
+            <span class="subfolder-tree-guide">└</span>
+            ${subChevronHtml}
+            <span class="folder-item-icon">📁</span>
+            <span class="sidebar-folder-name">${escapeHtml(sub.name)}</span>
+          </div>
+          <span class="sidebar-folder-count">(${sub.count})</span>
+        `;
+
+        if (hasSubChildren) {
+          const btnSubToggle = subItem.querySelector('.btn-folder-toggle');
+          if (btnSubToggle) {
+            btnSubToggle.addEventListener('click', (e) => {
+              e.stopPropagation();
+              if (state.collapsedFolders.has(subKey)) {
+                state.collapsedFolders.delete(subKey);
+              } else {
+                state.collapsedFolders.add(subKey);
+              }
+              renderFolderChips();
+            });
+          }
+        }
+
+        subItem.addEventListener('click', () => {
+          selectFolder(folder.id, sub.path);
+        });
+
+        sidebarFoldersList.appendChild(subItem);
+      });
+    }
   });
 }
 
@@ -1676,6 +1936,12 @@ function updateStatsBadge() {
   }
   if (sidebarFoldersCountBadge) {
     sidebarFoldersCountBadge.textContent = foldersCount;
+  }
+  if (allFoldersBadge) {
+    allFoldersBadge.textContent = foldersCount > 0 ? `(${totalFiles})` : '';
+  }
+  if (sidebarAllFoldersWrap) {
+    sidebarAllFoldersWrap.style.display = foldersCount > 0 ? 'block' : 'none';
   }
 }
 
@@ -3141,6 +3407,14 @@ function renderGallery() {
         return false;
       }
 
+      // 1.5 Filtro de Pasta Conectada / Subpasta
+      if (state.activeFolderId) {
+        const matchesFolder = item.isProject
+          ? item.parts && item.parts.some(p => isModelInFolderFilter(p, state.activeFolderId, state.activeSubfolderPath))
+          : isModelInFolderFilter(item, state.activeFolderId, state.activeSubfolderPath);
+        if (!matchesFolder) return false;
+      }
+
       // 2. Filtro de Formatos (.STL / .3MF)
       if (state.activeFilter !== 'all') {
         if (item.isProject) {
@@ -3183,7 +3457,13 @@ function renderGallery() {
     if (paginationBar) paginationBar.style.display = 'none';
 
     let emptyMessage = 'Nenhum arquivo corresponde aos filtros aplicados.';
-    if (state.activeSection === 'projects') {
+    if (state.activeFolderId) {
+      const activeFolder = state.folders.find(f => f.id === state.activeFolderId);
+      const folderDisplayName = state.activeSubfolderPath
+        ? `${activeFolder ? activeFolder.name + '/' : ''}${state.activeSubfolderPath}`
+        : (activeFolder ? activeFolder.name : 'pasta selecionada');
+      emptyMessage = `Nenhum modelo encontrado na pasta "${escapeHtml(folderDisplayName)}".`;
+    } else if (state.activeSection === 'projects') {
       emptyMessage = 'Nenhum projeto criado ainda. Selecione arquivos múltiplos na galeria e clique em "Criar Projeto" para agrupá-los!';
     } else if (state.activeSection === 'favorites') {
       emptyMessage = 'Nenhum modelo favoritado ainda. Clique na estrela ⭐ de qualquer modelo para favoritá-lo!';
@@ -3201,7 +3481,7 @@ function renderGallery() {
 
   // Se estiver na seção "all" e houver favoritos sem busca ativa, exibir faixa de favoritos no topo
   const favorites = filtered.filter(m => m.isFavorite);
-  if (state.activeSection === 'all' && favorites.length > 0 && !state.searchQuery && state.activeFilter === 'all') {
+  if (state.activeSection === 'all' && favorites.length > 0 && !state.searchQuery && state.activeFilter === 'all' && !state.activeFolderId) {
     favoritesSection.style.display = 'block';
     favoritesCountBadge.textContent = favorites.length;
     favorites.forEach(model => {
