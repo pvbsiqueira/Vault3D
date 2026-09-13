@@ -1491,6 +1491,41 @@ body.dashboard-body {
   margin-top: auto;
   padding-top: 0.45rem;
   border-top: 1px solid rgba(255, 255, 255, 0.05);
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.card-folder-info {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  min-width: 0;
+  padding: 0 0.15rem;
+  line-height: 1.2;
+}
+
+.card-folder-icon {
+  font-size: 0.8rem;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  opacity: 0.85;
+}
+
+.card-folder-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #94a3b8;
+  font-weight: 500;
+  transition: color 0.15s ease;
+}
+
+.model-card:hover .card-folder-name {
+  color: #38bdf8;
 }
 
 .btn-open-slicer {

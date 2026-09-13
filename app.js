@@ -2907,6 +2907,41 @@ function createProjectEntity(projectName, parts, groupKey, coverKey = null, cust
 }
 
 /**
+ * Retorna o nome da pasta pai imediata e o caminho da pasta para exibição no card
+ */
+function getModelParentFolderInfo(model) {
+  if (!model) return { name: '', full: '' };
+
+  if (model.isProject) {
+    const firstPart = (model.parts && model.parts[0]) || model.primaryPart;
+    if (firstPart) {
+      return getModelParentFolderInfo(firstPart);
+    }
+    return { name: model.folderName || 'Projeto', full: model.folderName || 'Projeto' };
+  }
+
+  const folderName = (model.folderName || '').trim().replace(/[\\/]+$/, '');
+  let relPath = (model.path || model.name || '').replace(/\\/g, '/').trim();
+
+  if (folderName) {
+    const fn = folderName.replace(/\\/g, '/');
+    if (relPath.toLowerCase().startsWith(fn.toLowerCase() + '/')) {
+      relPath = relPath.substring(fn.length + 1);
+    }
+  }
+
+  const parts = relPath.split('/').filter(Boolean);
+  if (parts.length > 1) {
+    const parentName = parts[parts.length - 2];
+    const fullSubfolder = parts.slice(0, -1).join('/');
+    const fullDisplay = folderName ? `${folderName}/${fullSubfolder}` : fullSubfolder;
+    return { name: parentName, full: fullDisplay };
+  }
+
+  return { name: folderName || 'Biblioteca', full: folderName || 'Biblioteca' };
+}
+
+/**
  * Cria e configura um elemento de card para um modelo 3D ou Projeto
  */
 function createModelCard(model) {
@@ -2917,6 +2952,7 @@ function createModelCard(model) {
   // Renderização especializada para Card de Projeto Multi-peças
   if (model.isProject) {
     const formattedSize = formatBytes(model.size);
+    const folderInfo = getModelParentFolderInfo(model);
 
     card.innerHTML = `
       <div class="card-thumbnail-wrapper">
@@ -2964,6 +3000,10 @@ function createModelCard(model) {
           <span class="card-dimensions" style="color: #c084fc; font-weight: 600;">${model.partsCount} arquivos 3D</span>
         </div>
         <div class="card-footer-actions">
+          <div class="card-folder-info" title="Pasta: ${escapeHtml(folderInfo.full)}">
+            <span class="card-folder-icon">📁</span>
+            <span class="card-folder-name">${escapeHtml(folderInfo.name)}</span>
+          </div>
           <button class="btn-open-slicer" title="Copiar caminho para colar no fatiador ou Windows Explorer" type="button">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
@@ -3014,6 +3054,7 @@ function createModelCard(model) {
   const badgeClass = model.type === 'stl' ? 'stl format-stl' : '3mf format-3mf';
   const isSliced = model.slicerData && model.slicerData.isSliced;
   const isSelected = state.selectedModelIds.has(model.id);
+  const folderInfo = getModelParentFolderInfo(model);
 
   if (isSelected) {
     card.classList.add('is-selected');
@@ -3082,6 +3123,10 @@ function createModelCard(model) {
         </div>
       ` : ''}
       <div class="card-footer-actions">
+        <div class="card-folder-info" title="Pasta: ${escapeHtml(folderInfo.full)}">
+          <span class="card-folder-icon">📁</span>
+          <span class="card-folder-name">${escapeHtml(folderInfo.name)}</span>
+        </div>
         <button class="btn-open-slicer" title="Copiar caminho para colar no fatiador ou Windows Explorer" type="button">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
