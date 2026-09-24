@@ -166,7 +166,7 @@
 
     let isCompleted = false;
 
-    function showSuccess(message = 'Login validado com sucesso! Redirecionando para o seu acervo...') {
+    function showSuccess(session, message = 'Login validado com sucesso!') {
       if (isCompleted) return;
       isCompleted = true;
 
@@ -176,12 +176,43 @@
       iconWrap.style.background = 'rgba(16, 185, 129, 0.15)';
       iconWrap.style.borderColor = 'rgba(16, 185, 129, 0.4)';
       titleEl.textContent = 'Acesso Autorizado!';
-      descEl.textContent = message;
-      actionsEl.style.display = 'none';
+      descEl.textContent = 'Abrindo o aplicativo Vault3D no seu computador... Se o app não abrir em instantes, clique no botão abaixo.';
 
-      setTimeout(() => {
-        window.location.replace('/');
-      }, 800);
+      let desktopUrl = '';
+      if (session?.access_token && session?.refresh_token) {
+        desktopUrl = `vault3d://auth/callback#access_token=${encodeURIComponent(session.access_token)}&refresh_token=${encodeURIComponent(session.refresh_token)}`;
+      } else {
+        const hash = window.location.hash || '';
+        const search = window.location.search || '';
+        desktopUrl = `vault3d://auth/callback${search}${hash}`;
+      }
+
+      // 1. Tentar acionar imediatamente o protocolo vault3d:// para o aplicativo desktop
+      if (desktopUrl) {
+        try {
+          window.location.href = desktopUrl;
+        } catch (e) {
+          console.warn('Erro ao acionar protocolo vault3d://', e);
+        }
+      }
+
+      // 2. Exibir interface com ações claras
+      actionsEl.style.display = 'flex';
+      actionsEl.style.flexDirection = 'column';
+      actionsEl.style.gap = '10px';
+      actionsEl.innerHTML = `
+        <a href="${desktopUrl}" class="btn-return-login">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+            <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+            <line x1="12" y1="22.08" x2="12" y2="12"></line>
+          </svg>
+          <span>Abrir no Vault3D Desktop</span>
+        </a>
+        <a href="/" style="color: #94a3b8; font-size: 0.9rem; text-decoration: none; padding: 6px; transition: color 0.2s;">
+          Continuar no Navegador (Web) &rarr;
+        </a>
+      `;
     }
 
     function showError(message) {
@@ -208,14 +239,14 @@
         // 1. Escutar imediatamente evento de autenticação do Supabase
         supabase.auth.onAuthStateChange((event, session) => {
           if (session) {
-            showSuccess();
+            showSuccess(session);
           }
         });
 
         // 2. Verificar se uma sessão já existe ou foi recuperada
         const { data: initialCheck } = await getCurrentSession();
         if (initialCheck?.session) {
-          showSuccess();
+          showSuccess(initialCheck.session);
           return;
         }
 
@@ -236,7 +267,7 @@
           try {
             const { data, error: tokenErr } = await verifyTokenHash(tokenHash, type);
             if (!tokenErr && data?.session) {
-              showSuccess();
+              showSuccess(data.session);
               return;
             }
           } catch (e) {
@@ -249,7 +280,7 @@
           try {
             const { data, error: exchangeError } = await exchangeCodeForSession(code);
             if (!exchangeError && data?.session) {
-              showSuccess();
+              showSuccess(data.session);
               return;
             }
           } catch (err) {
@@ -259,7 +290,7 @@
           // Verificar se o cliente Supabase já processou o código em paralelo
           const { data: checkAfterCode } = await getCurrentSession();
           if (checkAfterCode?.session) {
-            showSuccess();
+            showSuccess(checkAfterCode.session);
             return;
           }
         }
@@ -270,7 +301,7 @@
           await new Promise(r => setTimeout(r, 600));
           const { data: hashSession } = await getCurrentSession();
           if (hashSession?.session) {
-            showSuccess();
+            showSuccess(hashSession.session);
             return;
           }
         }
@@ -280,7 +311,7 @@
           if (!isCompleted) {
             const { data: finalSession } = await getCurrentSession();
             if (finalSession?.session) {
-              showSuccess();
+              showSuccess(finalSession.session);
             } else {
               showError(
                 'Este link de acesso expirou ou foi aberto em um navegador diferente do qual solicitou o login.\n\n' +

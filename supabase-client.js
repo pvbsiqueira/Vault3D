@@ -161,3 +161,21 @@ export async function verifyTokenHash(tokenHash, type = 'email') {
     type: type
   });
 }
+
+/**
+ * Restaura uma sessão ativa diretamente a partir de tokens de acesso (Deep Link / OAuth)
+ * @param {string} accessToken 
+ * @param {string} refreshToken 
+ * @returns {Promise<{data: any, error: any}>}
+ */
+export async function setSessionTokens(accessToken, refreshToken) {
+  const supabase = await getSupabase();
+  if (!supabase) {
+    throw new Error('Supabase não inicializado.');
+  }
+
+  return await supabase.auth.setSession({
+    access_token: accessToken,
+    refresh_token: refreshToken
+  });
+}

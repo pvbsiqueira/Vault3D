@@ -21,5 +21,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
     const listener = (event, data) => callback(data);
     ipcRenderer.on('update-status', listener);
     return () => ipcRenderer.removeListener('update-status', listener);
+  },
+
+  // Ouvinte de Deep Links para login automático (vault3d://)
+  onAuthDeepLink: (callback) => {
+    if (typeof callback !== 'function') return () => {};
+    const listener = (event, url) => callback(url);
+    ipcRenderer.on('auth-deep-link', listener);
+    return () => ipcRenderer.removeListener('auth-deep-link', listener);
   }
 });

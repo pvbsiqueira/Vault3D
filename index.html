@@ -75,7 +75,7 @@
 
         <!-- Campo para digitar o código numérico de 6 dígitos recebido por e-mail -->
         <div class="auth-otp-box">
-          <label for="authOtpInput" class="auth-otp-label">Ou digite o código de 6 dígitos recebido:</label>
+          <label for="authOtpInput" class="auth-otp-label">Digite o código numérico de 6 dígitos recebido:</label>
           <div class="auth-otp-row">
             <input 
               type="text" 
@@ -91,6 +91,25 @@
             </button>
           </div>
           <div class="auth-otp-error" id="authOtpError" style="display: none;"></div>
+        </div>
+
+        <!-- Campo alternativo para colar o link recebido por e-mail -->
+        <div class="auth-link-box">
+          <label for="authMagicLinkInput" class="auth-otp-label">Ou cole o link de acesso recebido no e-mail:</label>
+          <div class="auth-otp-row">
+            <input 
+              type="text" 
+              id="authMagicLinkInput" 
+              class="auth-link-input" 
+              placeholder="Cole o link do e-mail ou URL aqui..." 
+              autocomplete="off"
+            >
+            <button type="button" class="btn-verify-otp" id="btnConfirmMagicLink">
+              <span class="btn-link-spinner" style="display: none;"></span>
+              <span class="btn-link-text">Entrar</span>
+            </button>
+          </div>
+          <div class="auth-otp-error" id="authLinkError" style="display: none;"></div>
         </div>
 
         <div class="auth-success-actions">

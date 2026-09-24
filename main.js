@@ -5,12 +5,28 @@ const { autoUpdater } = require('electron-updater');
 
 app.name = 'Vault3D';
 
+const PROTOCOL_PREFIX = 'vault3d';
+
+// Registrar como handler padrão do protocolo vault3d:// (deep link)
+if (process.defaultApp) {
+  if (process.argv.length >= 2) {
+    app.setAsDefaultProtocolClient(PROTOCOL_PREFIX, process.execPath, [path.resolve(process.argv[1])]);
+  }
+} else {
+  app.setAsDefaultProtocolClient(PROTOCOL_PREFIX);
+}
+
 // Configurações do Auto-Updater
 autoUpdater.autoDownload = true;
 autoUpdater.autoInstallOnAppQuit = true;
 autoUpdater.allowPrerelease = false;
 
 let mainWindow = null;
+
+function sendDeepLinkToWindow(url) {
+  if (!url || !mainWindow) return;
+  mainWindow.webContents.send('auth-deep-link', url);
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -46,6 +62,14 @@ function createWindow() {
           console.warn('Verificação de atualização silenciosa:', err ? err.message : err);
         });
       }, 3000); // 3 segundos após abrir para não disputar I/O de inicialização
+    }
+
+    // Se o aplicativo foi iniciado diretamente por um link vault3d:// (cold start)
+    const initialDeepLink = process.argv.find(arg => arg.startsWith(`${PROTOCOL_PREFIX}://`));
+    if (initialDeepLink) {
+      setTimeout(() => {
+        sendDeepLinkToWindow(initialDeepLink);
+      }, 1000);
     }
   });
 
@@ -205,9 +229,38 @@ ipcMain.handle('resolve-disk-path', async (event, { folderName, relPath }) => {
 });
 
 // ==========================================
-// Ciclo de Vida do Aplicativo
+// Ciclo de Vida do Aplicativo e Instância Única
 // ==========================================
-app.whenReady().then(createWindow);
+const gotTheLock = app.requestSingleInstanceLock();
+
+if (!gotTheLock) {
+  // Já existe uma instância do Vault3D rodando; encerra a duplicata
+  app.quit();
+} else {
+  // Quando outra instância tenta rodar ou quando o usuário clica num deep link vault3d:// no navegador
+  app.on('second-instance', (event, commandLine) => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
+    const deepLinkUrl = commandLine.find(arg => arg.startsWith(`${PROTOCOL_PREFIX}://`));
+    if (deepLinkUrl) {
+      sendDeepLinkToWindow(deepLinkUrl);
+    }
+  });
+
+  app.whenReady().then(createWindow);
+}
+
+// Handler de Deep Link no macOS
+app.on('open-url', (event, url) => {
+  event.preventDefault();
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.focus();
+  }
+  sendDeepLinkToWindow(url);
+});
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {

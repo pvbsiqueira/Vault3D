@@ -30,6 +30,14 @@
   "build": {
     "appId": "com.vault3d.app",
     "productName": "Vault3D",
+    "protocols": [
+      {
+        "name": "Vault3D Protocol",
+        "schemes": [
+          "vault3d"
+        ]
+      }
+    ],
     "directories": {
       "output": "dist"
     },

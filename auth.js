@@ -8,7 +8,10 @@ import {
   signOut, 
   getCurrentSession, 
   onAuthStateChange,
-  verifyEmailOtp
+  verifyEmailOtp,
+  verifyTokenHash,
+  exchangeCodeForSession,
+  setSessionTokens
 } from './supabase-client.js';
 import { 
   getSupabaseConfig, 
@@ -33,6 +36,9 @@ let btnResendLink = null;
 let authOtpInput = null;
 let btnVerifyOtp = null;
 let authOtpError = null;
+let authMagicLinkInput = null;
+let btnConfirmMagicLink = null;
+let authLinkError = null;
 let topbarUserWrap = null;
 let topbarUserEmail = null;
 let btnLogout = null;
@@ -272,6 +278,138 @@ async function handleVerifyOtp() {
 }
 
 /**
+ * Processa links de autenticação recebidos externamente (Deep Link vault3d:// ou colado pelo usuário)
+ * @param {string} rawUrlOrToken 
+ * @returns {Promise<boolean>}
+ */
+export async function handleExternalAuthUrl(rawUrlOrToken) {
+  if (!rawUrlOrToken || typeof rawUrlOrToken !== 'string') return false;
+
+  const raw = rawUrlOrToken.trim();
+  if (!raw) return false;
+
+  const emailToVerify = lastSentEmail || (emailInput ? emailInput.value.trim() : '');
+
+  // 1. Se for apenas um código numérico de 6 a 8 dígitos
+  if (/^\d{6,8}$/.test(raw)) {
+    if (authOtpInput) authOtpInput.value = raw;
+    await handleVerifyOtp();
+    return true;
+  }
+
+  clearMessages();
+  if (authLinkError) {
+    authLinkError.textContent = '';
+    authLinkError.style.display = 'none';
+  }
+
+  const btnText = btnConfirmMagicLink?.querySelector('.btn-link-text');
+  const btnSpinner = btnConfirmMagicLink?.querySelector('.btn-link-spinner');
+
+  try {
+    if (btnConfirmMagicLink) btnConfirmMagicLink.disabled = true;
+    if (btnText) btnText.textContent = 'Validando...';
+    if (btnSpinner) btnSpinner.style.display = 'inline-block';
+
+    // 2. Extrair fragmentos de hash (#) ou busca (?)
+    let hashPart = '';
+    let searchPart = '';
+
+    if (raw.includes('#')) {
+      const parts = raw.split('#');
+      hashPart = parts[1];
+      if (parts[0].includes('?')) {
+        searchPart = parts[0].split('?')[1];
+      }
+    } else if (raw.includes('?')) {
+      searchPart = raw.split('?')[1];
+    }
+
+    const hashParams = new URLSearchParams(hashPart);
+    const searchParams = new URLSearchParams(searchPart);
+
+    const accessToken = hashParams.get('access_token') || searchParams.get('access_token');
+    const refreshToken = hashParams.get('refresh_token') || searchParams.get('refresh_token');
+
+    // 2.1 Tokens Diretos (JWT via Deep Link ou redirecionamento do callback)
+    if (accessToken && refreshToken) {
+      const { data, error } = await setSessionTokens(accessToken, refreshToken);
+      if (error) throw error;
+      if (data?.session) {
+        updateAuthUI(data.session);
+        return true;
+      }
+    }
+
+    // 2.2 Código PKCE (code=...)
+    const code = searchParams.get('code') || hashParams.get('code');
+    if (code) {
+      const { data, error } = await exchangeCodeForSession(code);
+      if (error) throw error;
+      if (data?.session) {
+        updateAuthUI(data.session);
+        return true;
+      }
+    }
+
+    // 2.3 token_hash (token_hash=...)
+    const tokenHash = searchParams.get('token_hash') || hashParams.get('token_hash');
+    const type = searchParams.get('type') || hashParams.get('type') || 'email';
+    if (tokenHash) {
+      const { data, error } = await verifyTokenHash(tokenHash, type);
+      if (error) throw error;
+      if (data?.session) {
+        updateAuthUI(data.session);
+        return true;
+      }
+    }
+
+    // 2.4 Token bruto de e-mail (token=...)
+    const token = searchParams.get('token') || hashParams.get('token');
+    if (token && emailToVerify) {
+      const { data, error } = await verifyEmailOtp(emailToVerify, token);
+      if (error) throw error;
+      if (data?.session) {
+        updateAuthUI(data.session);
+        return true;
+      }
+    }
+
+    throw new Error('Não foi possível identificar credenciais válidas no link informado.');
+  } catch (err) {
+    console.error('Falha ao processar link de autenticação:', err);
+    if (authLinkError) {
+      authLinkError.textContent = err.message || 'Falha ao validar o link de acesso.';
+      authLinkError.style.display = 'block';
+    } else {
+      showError(err.message || 'Falha ao validar o link de acesso.');
+    }
+    return false;
+  } finally {
+    if (btnConfirmMagicLink) btnConfirmMagicLink.disabled = false;
+    if (btnText) btnText.textContent = 'Entrar';
+    if (btnSpinner) btnSpinner.style.display = 'none';
+  }
+}
+
+/**
+ * Valida o link colado manualmente pelo usuário no campo alternativo
+ */
+async function handleConfirmMagicLink() {
+  if (!authMagicLinkInput) return;
+  const link = authMagicLinkInput.value.trim();
+  if (!link) {
+    if (authLinkError) {
+      authLinkError.textContent = 'Por favor, cole o link recebido no seu e-mail.';
+      authLinkError.style.display = 'block';
+    }
+    authMagicLinkInput.focus();
+    return;
+  }
+  await handleExternalAuthUrl(link);
+}
+
+/**
  * Trata o clique no botão de Logout
  */
 async function handleLogout() {
@@ -317,6 +455,9 @@ export async function initAuth(onAuthenticated) {
   authOtpInput = document.getElementById('authOtpInput');
   btnVerifyOtp = document.getElementById('btnVerifyOtp');
   authOtpError = document.getElementById('authOtpError');
+  authMagicLinkInput = document.getElementById('authMagicLinkInput');
+  btnConfirmMagicLink = document.getElementById('btnConfirmMagicLink');
+  authLinkError = document.getElementById('authLinkError');
   topbarUserWrap = document.getElementById('topbarUserWrap');
   topbarUserEmail = document.getElementById('topbarUserEmail');
   btnLogout = document.getElementById('btnLogout');
@@ -375,6 +516,33 @@ export async function initAuth(onAuthenticated) {
       if (authOtpError && authOtpError.style.display !== 'none') {
         authOtpError.style.display = 'none';
       }
+    });
+  }
+
+  // Eventos para colar e validar link mágico de acesso
+  if (btnConfirmMagicLink) {
+    btnConfirmMagicLink.addEventListener('click', handleConfirmMagicLink);
+  }
+
+  if (authMagicLinkInput) {
+    authMagicLinkInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        handleConfirmMagicLink();
+      }
+    });
+    authMagicLinkInput.addEventListener('input', () => {
+      if (authLinkError && authLinkError.style.display !== 'none') {
+        authLinkError.style.display = 'none';
+      }
+    });
+  }
+
+  // Ouvinte de Deep Links para login automático via Desktop (vault3d://)
+  if (typeof window !== 'undefined' && window.electronAPI?.onAuthDeepLink) {
+    window.electronAPI.onAuthDeepLink(async (deepLinkUrl) => {
+      console.log('Deep link de autenticação capturado pelo app desktop:', deepLinkUrl);
+      await handleExternalAuthUrl(deepLinkUrl);
     });
   }
 
