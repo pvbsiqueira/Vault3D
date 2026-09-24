@@ -2893,6 +2893,7 @@ function openCreateProjectModal() {
   renderProjectCoverPicker(selectedModels);
 
   if (createProjectModal) {
+    createProjectModal.style.removeProperty('display');
     createProjectModal.classList.add('active');
     setTimeout(() => {
       if (inputProjectName) {
@@ -3029,6 +3030,7 @@ function renderProjectCoverPicker(selectedModels) {
 function closeCreateProjectModal() {
   if (createProjectModal) {
     createProjectModal.classList.remove('active');
+    createProjectModal.style.removeProperty('display');
   }
 }
 
@@ -4651,14 +4653,20 @@ async function openViewerModal(model) {
       selectPlate(model.plates[0]);
     }
     setViewerMode('plate');
-    viewerModal.classList.add('active');
+    if (viewerModal) {
+      viewerModal.style.removeProperty('display');
+      viewerModal.classList.add('active');
+    }
     return;
   }
 
   state.activeProject = null;
 
-  modalBadge.textContent = model.type.toUpperCase();
-  modalBadge.className = `badge-format ${model.type} format-${model.type}`;
+  if (modalBadge) {
+    const badgeType = (model.type || '3mf').toUpperCase();
+    modalBadge.textContent = badgeType;
+    modalBadge.className = `badge-format ${model.type || '3mf'} format-${model.type || '3mf'}`;
+  }
 
   if (modalSidebar) modalSidebar.style.display = 'flex';
 
@@ -4677,7 +4685,7 @@ async function openViewerModal(model) {
     if (platesSection) platesSection.style.display = 'none';
     if (modalSidebarInfo) {
       modalSidebarInfo.style.display = 'block';
-      if (modalInfoFormat) modalInfoFormat.textContent = `.${model.type.toUpperCase()}`;
+      if (modalInfoFormat) modalInfoFormat.textContent = `.${(model.type || 'stl').toUpperCase()}`;
       if (modalInfoSize) modalInfoSize.textContent = formatBytes(model.size);
       if (modalInfoDimensions) {
         if (model.metadata?.dimensions) {
@@ -4712,7 +4720,10 @@ async function openViewerModal(model) {
   }
 
   // Abre o modal na tela de imediato com dados e layout 100% visíveis
-  viewerModal.classList.add('active');
+  if (viewerModal) {
+    viewerModal.style.removeProperty('display');
+    viewerModal.classList.add('active');
+  }
 
   // 5. Se o arquivo for 3MF e não tiver mesas ou se faltar foto em alguma mesa, extrair mesas sob demanda em background
   const needsPlateExtraction = model.type === '3mf' && (
@@ -4966,7 +4977,10 @@ function resetModalCamera() {
 }
 
 function closeViewerModal() {
-  viewerModal.classList.remove('active');
+  if (viewerModal) {
+    viewerModal.classList.remove('active');
+    viewerModal.style.removeProperty('display');
+  }
   state.activeProject = null;
   state.activePlate = null;
   state.activeModel = null;

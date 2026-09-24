@@ -2016,7 +2016,7 @@ body.dashboard-body {
 }
 
 .modal-overlay.active {
-  display: flex;
+  display: flex !important;
 }
 
 .modal-container {
@@ -2717,7 +2717,7 @@ body.dashboard-body {
 }
 
 .create-project-modal.active {
-  display: flex;
+  display: flex !important;
 }
 
 .create-project-card {
@@ -3711,7 +3711,7 @@ body.dashboard-body {
 
 .modal.active,
 .modal.show {
-  display: flex;
+  display: flex !important;
 }
 
 .modal-backdrop {

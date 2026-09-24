@@ -134,6 +134,13 @@ function updateAuthUI(session) {
       topbarUserEmail.title = currentUser.email || '';
     }
 
+    // Garante que modais interativos estejam sem inline style 'display: none' residual
+    const viewerModal = document.getElementById('viewerModal');
+    if (viewerModal) viewerModal.style.removeProperty('display');
+
+    const createProjectModal = document.getElementById('createProjectModal');
+    if (createProjectModal) createProjectModal.style.removeProperty('display');
+
     // Disparar o callback de inicialização da biblioteca apenas UMA vez por sessão
     if (!hasTriggeredAuthSuccess && typeof onAuthSuccessCallback === 'function') {
       hasTriggeredAuthSuccess = true;
@@ -160,15 +167,25 @@ function updateAuthUI(session) {
       emailInput.readOnly = false;
     }
 
-    // Fecha qualquer modal aberto
+    // Fecha qualquer modal aberto sem deixar inline style conflitante
     const viewerModal = document.getElementById('viewerModal');
-    if (viewerModal) viewerModal.style.display = 'none';
+    if (viewerModal) {
+      viewerModal.classList.remove('active');
+      viewerModal.style.removeProperty('display');
+    }
 
     const createProjectModal = document.getElementById('createProjectModal');
-    if (createProjectModal) createProjectModal.style.display = 'none';
+    if (createProjectModal) {
+      createProjectModal.classList.remove('active');
+      createProjectModal.style.removeProperty('display');
+    }
 
     const logoutModal = document.getElementById('logoutConfirmModal');
-    if (logoutModal) logoutModal.style.display = 'none';
+    if (logoutModal) {
+      logoutModal.classList.remove('active');
+      logoutModal.classList.remove('show');
+      logoutModal.style.display = 'none';
+    }
 
     if (topbarUserWrap) topbarUserWrap.style.display = 'none';
     if (topbarUserEmail) topbarUserEmail.textContent = '';
