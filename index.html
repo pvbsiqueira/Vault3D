@@ -622,7 +622,7 @@
   </div>
 
   <!-- Modal de Criação de Projeto Manual -->
-  <div class="modal create-project-modal" id="createProjectModal">
+  <div class="modal create-project-modal" id="createProjectModal" style="display: none;">
     <div class="modal-backdrop" id="createProjectBackdrop"></div>
     <div class="create-project-card">
       <div class="create-project-header">
@@ -683,6 +683,27 @@
       </div>
     </div>
   </div>
+
+  <!-- Modal de Confirmação de Logout -->
+  <div class="modal logout-confirm-modal" id="logoutConfirmModal" style="display: none;">
+    <div class="modal-backdrop" id="logoutConfirmBackdrop"></div>
+    <div class="logout-confirm-card">
+      <div class="logout-confirm-icon">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+          <polyline points="16 17 21 12 16 7"></polyline>
+          <line x1="21" y1="12" x2="9" y2="12"></line>
+        </svg>
+      </div>
+      <h3 class="logout-confirm-title">Encerrar Sessão</h3>
+      <p class="logout-confirm-desc">Deseja realmente sair da sua conta? Seus arquivos no disco permanecerão intactos.</p>
+      <div class="logout-confirm-actions">
+        <button type="button" class="btn-cancel-logout" id="btnCancelLogout">Cancelar</button>
+        <button type="button" class="btn-confirm-logout" id="btnConfirmLogout">Sair da conta</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Notificação Flutuante de Atualização do Aplicativo (Modo Desktop) -->
   <div class="desktop-update-banner" id="desktopUpdateBanner" style="display: none;">
     <div class="update-banner-left">

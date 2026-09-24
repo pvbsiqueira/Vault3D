@@ -1,4 +1,5 @@
 :root {
+  /* Cores Principais */
   --bg-main: #0b0f19;
   --bg-card: #151d2f;
   --bg-card-hover: #1c273e;
@@ -13,9 +14,34 @@
   --accent-3mf: #10b981;
   --accent-3mf-glow: rgba(16, 185, 129, 0.25);
   --accent-cyan: #06b6d4;
-  --radius-lg: 14px;
-  --radius-md: 10px;
+
+  /* 8-Point Grid Spacing Tokens */
+  --space-0-5: 4px;   /* 0.5x = 4px (micro-espaçamentos, ícones, badges) */
+  --space-1:   8px;   /* 1x   = 8px  (gaps pequenos, paddings internos) */
+  --space-1-5: 12px;  /* 1.5x = 12px (paddings compactos) */
+  --space-2:   16px;  /* 2x   = 16px (gutter padrão, margens entre blocos) */
+  --space-3:   24px;  /* 3x   = 24px (paddings de seções, gaps de layout) */
+  --space-4:   32px;  /* 4x   = 32px (paddings de cards e modais) */
+  --space-5:   40px;  /* 5x   = 40px */
+  --space-6:   48px;  /* 6x   = 48px */
+  --space-8:   64px;  /* 8x   = 64px (altura de topbar, grandes seções) */
+  --space-10:  80px;  /* 10x  = 80px */
+
+  /* Alturas e Dimensões Padronizadas (8-pt aligned) */
+  --control-height-sm: 32px;  /* Botões e tags secundárias */
+  --control-height-md: 40px;  /* Botões e seletores normais */
+  --control-height-lg: 48px;  /* Inputs e botões primários / auth */
+  --topbar-height:     64px;  /* Barra superior do dashboard */
+  --sidebar-width:     280px; /* Sidebar lateral */
+
+  /* Raio de Borda Alinhado */
+  --radius-xs: 4px;
   --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  --radius-full: 9999px;
+
   --shadow-card: 0 4px 20px -2px rgba(0, 0, 0, 0.5);
   --transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -61,9 +87,9 @@ body.dashboard-body {
 }
 
 .sidebar-header {
-  height: 64px;
+  height: var(--topbar-height);
   box-sizing: border-box;
-  padding: 0 1.25rem;
+  padding: 0 var(--space-2);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -73,7 +99,7 @@ body.dashboard-body {
 .brand {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: var(--space-1);
 }
 
 .brand-icon {
@@ -97,7 +123,7 @@ body.dashboard-body {
 .brand-title-wrap {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-0-5);
 }
 
 .brand-title {
@@ -117,7 +143,7 @@ body.dashboard-body {
   background: rgba(56, 189, 248, 0.15);
   color: #38bdf8;
   padding: 1px 5px;
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   border: 1px solid rgba(56, 189, 248, 0.3);
 }
 
@@ -129,13 +155,17 @@ body.dashboard-body {
 
 /* Ação Primária da Sidebar */
 .sidebar-actions-wrap {
-  padding: 1rem 1.25rem 0.5rem;
+  padding: var(--space-2) var(--space-2) var(--space-1);
 }
 
 .sidebar-btn-add {
   width: 100%;
+  height: var(--control-height-md);
+  display: inline-flex;
+  align-items: center;
   justify-content: center;
-  padding: 0.7rem 1rem;
+  gap: var(--space-1);
+  padding: 0 var(--space-2);
   font-weight: 700;
   font-size: 0.88rem;
   border-radius: var(--radius-md);
@@ -147,10 +177,10 @@ body.dashboard-body {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 0.75rem 1.25rem;
+  padding: var(--space-1-5) var(--space-2);
   display: flex;
   flex-direction: column;
-  gap: 1.4rem;
+  gap: var(--space-3);
   min-width: 0;
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
@@ -182,7 +212,7 @@ body.dashboard-body {
 .sidebar-section {
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
+  gap: var(--space-1);
 }
 
 .sidebar-section-title {
@@ -191,21 +221,21 @@ body.dashboard-body {
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--text-muted);
-  padding: 0 0.4rem;
-  margin-bottom: 0.2rem;
+  padding: 0 var(--space-1);
+  margin-bottom: var(--space-0-5);
 }
 
 .sidebar-nav {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: var(--space-0-5);
 }
 
 .sidebar-nav-item {
   display: flex;
   align-items: center;
-  gap: 0.65rem;
-  padding: 0.55rem 0.75rem;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-1-5);
   border-radius: var(--radius-md);
   border: 1px solid transparent;
   background: transparent;
@@ -634,7 +664,7 @@ body.dashboard-body {
 
 /* Topbar do Dashboard */
 .dashboard-topbar {
-  height: 64px;
+  height: var(--topbar-height);
   background: rgba(13, 18, 31, 0.85);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
@@ -642,8 +672,8 @@ body.dashboard-body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 2rem;
-  gap: 1.5rem;
+  padding: 0 var(--space-3);
+  gap: var(--space-2);
   position: sticky;
   top: 0;
   z-index: 30;
@@ -658,20 +688,20 @@ body.dashboard-body {
 .topbar-right {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: var(--space-1-5);
 }
 
 /* Seletor de Ordenação no Topbar */
 .sort-control-wrap {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: var(--space-1);
 }
 
 .sort-label {
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: var(--space-0-5);
   color: var(--text-muted);
   font-size: 0.8rem;
   font-weight: 600;
@@ -693,13 +723,14 @@ body.dashboard-body {
 .sort-select {
   appearance: none;
   -webkit-appearance: none;
+  height: var(--control-height-sm);
   background: rgba(30, 41, 59, 0.7);
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: var(--radius-md);
   color: #f1f5f9;
   font-size: 0.8rem;
   font-weight: 600;
-  padding: 6px 28px 6px 11px;
+  padding: 0 28px 0 var(--space-1-5);
   cursor: pointer;
   outline: none;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
@@ -735,20 +766,21 @@ body.dashboard-body {
 .top-page-size-wrap {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: var(--space-1);
 }
 
 /* Botão de Ativar Modo Seleção no Topbar */
 .btn-toggle-select {
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: var(--space-0-5);
+  height: var(--control-height-sm);
   background: rgba(30, 41, 59, 0.7);
   border: 1px solid rgba(255, 255, 255, 0.1);
   color: var(--text-secondary);
   font-size: 0.8rem;
   font-weight: 600;
-  padding: 6px 13px;
+  padding: 0 var(--space-1-5);
   border-radius: var(--radius-md);
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
@@ -775,10 +807,11 @@ body.dashboard-body {
 
 .search-input {
   width: 100%;
+  height: var(--control-height-md);
   background: #111827;
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
-  padding: 0.55rem 0.85rem 0.55rem 2.25rem;
+  padding: 0 var(--space-2) 0 38px;
   color: #fff;
   font-size: 0.875rem;
   outline: none;
@@ -792,13 +825,13 @@ body.dashboard-body {
 
 .search-icon {
   position: absolute;
-  left: 0.75rem;
+  left: var(--space-1-5);
   top: 50%;
   transform: translateY(-50%);
   color: var(--text-muted);
   pointer-events: none;
-  width: 15px;
-  height: 15px;
+  width: 16px;
+  height: 16px;
 }
 
 /* Buttons Globais */
@@ -1184,7 +1217,7 @@ body.dashboard-body {
 .models-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 1.5rem;
+  gap: var(--space-3);
 }
 
 /* Card do Modelo */
@@ -1199,7 +1232,7 @@ body.dashboard-body {
   position: relative;
   cursor: pointer;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
-  padding: 7px;
+  padding: var(--space-1);
 }
 
 .model-card:hover {
@@ -1337,10 +1370,10 @@ body.dashboard-body {
 
 
 .card-body {
-  padding: 0.65rem 0.4rem 0.35rem;
+  padding: var(--space-1-5) var(--space-1) var(--space-0-5);
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
+  gap: var(--space-1);
   flex: 1;
 }
 
@@ -1348,8 +1381,8 @@ body.dashboard-body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.4rem;
-  min-height: 28px;
+  gap: var(--space-1);
+  min-height: var(--control-height-sm);
   position: relative;
 }
 
@@ -1489,21 +1522,21 @@ body.dashboard-body {
 /* Rodapé do Card: Ações & Botão Abrir no Computador */
 .card-footer-actions {
   margin-top: auto;
-  padding-top: 8px;
+  padding-top: var(--space-1);
   border-top: 1px solid rgba(255, 255, 255, 0.06);
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--space-1);
 }
 
 .card-folder-info {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1);
   font-size: 0.74rem;
   color: var(--text-muted);
   min-width: 0;
-  padding: 0 2px;
+  padding: 0 var(--space-0-5);
   line-height: 1.3;
 }
 
@@ -1530,12 +1563,13 @@ body.dashboard-body {
 
 .btn-open-slicer {
   width: 100%;
+  height: var(--control-height-sm);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.45rem;
-  padding: 0.45rem 0.65rem;
-  border-radius: 6px;
+  gap: var(--space-0-5);
+  padding: 0 var(--space-1-5);
+  border-radius: var(--radius-sm);
   background: rgba(37, 99, 235, 0.12);
   border: 1px solid rgba(59, 130, 246, 0.3);
   color: #60a5fa;
@@ -1585,7 +1619,7 @@ body.dashboard-body {
 
 /* Modal: Botão Abrir no Computador Fixo no Rodapé */
 .modal-sidebar-footer {
-  padding: 0.85rem 1rem;
+  padding: var(--space-2);
   background: rgba(17, 24, 39, 0.95);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
@@ -1599,12 +1633,13 @@ body.dashboard-body {
 
 .btn-modal-slicer-footer {
   width: 100%;
+  height: var(--control-height-md);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.55rem;
-  padding: 0.75rem 1rem;
-  border-radius: 8px;
+  gap: var(--space-1);
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-md);
   background: linear-gradient(135deg, #2563eb, #1d4ed8);
   border: 1px solid rgba(96, 165, 250, 0.5);
   color: #ffffff;
@@ -1648,9 +1683,9 @@ body.dashboard-body {
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 1.25rem;
-  margin-top: 2.25rem;
-  padding: 0.9rem 1.25rem;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+  padding: var(--space-2) var(--space-3);
   background: #111624;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: var(--radius-lg);
@@ -1661,7 +1696,7 @@ body.dashboard-body {
 .section-header-right {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
+  gap: var(--space-1);
 }
 
 .pagination-label {
@@ -1673,7 +1708,7 @@ body.dashboard-body {
 .page-size-buttons {
   display: inline-flex;
   align-items: center;
-  gap: 0.25rem;
+  gap: 2px;
   background: #0b0f19;
   padding: 3px;
   border-radius: var(--radius-md);
@@ -1686,8 +1721,9 @@ body.dashboard-body {
   color: var(--text-muted);
   font-size: 0.78rem;
   font-weight: 700;
-  padding: 4px 11px;
-  border-radius: var(--radius-sm);
+  height: 28px;
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-xs);
   cursor: pointer;
   transition: var(--transition);
 }
@@ -1715,19 +1751,20 @@ body.dashboard-body {
 .pagination-nav {
   display: flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: var(--space-0-5);
 }
 
 .page-nav-btn {
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: var(--space-0-5);
+  height: var(--control-height-sm);
   background: #1c2436;
   border: 1px solid rgba(255, 255, 255, 0.1);
   color: var(--text-primary);
   font-size: 0.8rem;
   font-weight: 600;
-  padding: 6px 12px;
+  padding: 0 var(--space-1-5);
   border-radius: var(--radius-sm);
   cursor: pointer;
   transition: var(--transition);
@@ -1748,13 +1785,13 @@ body.dashboard-body {
 .pagination-numbers {
   display: flex;
   align-items: center;
-  gap: 0.25rem;
+  gap: var(--space-0-5);
 }
 
 .page-num-btn {
-  min-width: 34px;
-  height: 34px;
-  padding: 0 6px;
+  min-width: var(--control-height-sm);
+  height: var(--control-height-sm);
+  padding: 0 var(--space-1);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1971,11 +2008,11 @@ body.dashboard-body {
   background: rgba(5, 8, 16, 0.85);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  z-index: 100;
+  z-index: 10000;
   display: none;
   align-items: center;
   justify-content: center;
-  padding: 1.5rem;
+  padding: var(--space-3);
 }
 
 .modal-overlay.active {
@@ -1997,7 +2034,7 @@ body.dashboard-body {
 }
 
 .modal-header {
-  padding: 1rem 1.5rem;
+  padding: var(--space-2) var(--space-3);
   background: #162032;
   border-bottom: 1px solid var(--border-color);
   display: flex;
@@ -2008,7 +2045,7 @@ body.dashboard-body {
 .modal-title-wrap {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: var(--space-1-5);
   min-width: 0;
 }
 
@@ -2063,11 +2100,12 @@ body.dashboard-body {
 
 .btn-copy-path {
   background: rgba(255, 255, 255, 0.05);
+  background: rgba(15, 23, 42, 0.6);
   border: 1px solid rgba(255, 255, 255, 0.12);
   color: #94a3b8;
-  border-radius: 6px;
-  width: 26px;
-  height: 26px;
+  border-radius: var(--radius-sm);
+  width: var(--control-height-sm);
+  height: var(--control-height-sm);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -2090,18 +2128,18 @@ body.dashboard-body {
 .btn-modal-slicer {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
+  gap: var(--space-0-5);
+  padding: 0 var(--space-1-5);
   background: rgba(99, 102, 241, 0.16);
   border: 1px solid rgba(99, 102, 241, 0.4);
   color: #818cf8;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   font-size: 0.8rem;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   flex-shrink: 0;
-  height: 26px;
+  height: var(--control-height-sm);
 }
 
 .btn-modal-slicer:hover {
@@ -2120,7 +2158,8 @@ body.dashboard-body {
   border: none;
   color: var(--text-muted);
   cursor: pointer;
-  padding: 6px;
+  width: var(--control-height-sm);
+  height: var(--control-height-sm);
   border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
@@ -2546,20 +2585,20 @@ body.dashboard-body {
 /* Barra Flutuante de Ação no Rodapé */
 .selection-action-bar {
   position: fixed;
-  bottom: 24px;
+  bottom: var(--space-3);
   left: 50%;
   transform: translateX(-50%);
   z-index: 1200;
   display: flex;
   align-items: center;
-  gap: 1.25rem;
+  gap: var(--space-2);
   background: rgba(15, 23, 42, 0.92);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border: 1px solid rgba(139, 92, 246, 0.45);
   box-shadow: 0 12px 35px rgba(0, 0, 0, 0.6), 0 0 25px rgba(124, 58, 237, 0.25);
-  padding: 8px 16px 8px 20px;
-  border-radius: 9999px;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-full);
   animation: slideUpFloat 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
@@ -2577,7 +2616,7 @@ body.dashboard-body {
 .selection-bar-info {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-1);
   color: #e2e8f0;
   font-size: 0.88rem;
   font-weight: 500;
@@ -2600,17 +2639,18 @@ body.dashboard-body {
 .selection-bar-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-1);
 }
 
 .btn-selection-action {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-0-5);
+  height: var(--control-height-sm);
   font-size: 0.82rem;
   font-weight: 600;
-  padding: 7px 14px;
-  border-radius: 9999px;
+  padding: 0 var(--space-1-5);
+  border-radius: var(--radius-full);
   cursor: pointer;
   transition: all 0.18s ease;
   border: none;
@@ -2669,11 +2709,11 @@ body.dashboard-body {
 .create-project-modal {
   position: fixed;
   inset: 0;
-  z-index: 1300;
+  z-index: 10000;
   display: none;
   align-items: center;
   justify-content: center;
-  padding: 1rem;
+  padding: var(--space-3);
 }
 
 .create-project-modal.active {
@@ -2687,7 +2727,7 @@ body.dashboard-body {
   border-radius: var(--radius-lg);
   width: 100%;
   max-width: 520px;
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.7), 0 0 30px rgba(124, 58, 237, 0.2);
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.7), 0 0 30px rgba(124, 58, 237, 0.2);
   z-index: 2;
   overflow: hidden;
   animation: modalScaleIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
@@ -2696,8 +2736,8 @@ body.dashboard-body {
 .create-project-header {
   display: flex;
   align-items: flex-start;
-  gap: 12px;
-  padding: 1.25rem 1.5rem;
+  gap: var(--space-1-5);
+  padding: var(--space-2) var(--space-3);
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
@@ -2734,11 +2774,11 @@ body.dashboard-body {
 }
 
 .create-project-body {
-  padding: 1.25rem 1.5rem;
+  padding: var(--space-2) var(--space-3);
 }
 
 .project-form-group {
-  margin-bottom: 1.25rem;
+  margin-bottom: var(--space-2);
 }
 
 .project-form-group label {
@@ -2746,15 +2786,16 @@ body.dashboard-body {
   color: #cbd5e1;
   font-size: 0.85rem;
   font-weight: 600;
-  margin-bottom: 6px;
+  margin-bottom: var(--space-1);
 }
 
 .project-name-input {
   width: 100%;
+  height: var(--control-height-md);
   background: #1e293b;
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
-  padding: 0.65rem 0.85rem;
+  padding: 0 var(--space-2);
   color: #fff;
   font-size: 0.95rem;
   outline: none;
@@ -2772,8 +2813,8 @@ body.dashboard-body {
   background: rgba(30, 41, 59, 0.5);
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: var(--radius-md);
-  padding: 0.75rem 1rem;
-  margin-bottom: 1rem;
+  padding: var(--space-1-5) var(--space-2);
+  margin-bottom: var(--space-2);
 }
 
 .project-summary-box .summary-item {
@@ -3000,19 +3041,20 @@ body.dashboard-body {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 10px;
-  padding: 1rem 1.5rem;
+  gap: var(--space-1-5);
+  padding: var(--space-2) var(--space-3);
   background: rgba(15, 23, 42, 0.5);
   border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .btn-project-cancel {
+  height: var(--control-height-md);
   background: transparent;
   border: 1px solid var(--border-color);
   color: var(--text-secondary);
   font-size: 0.85rem;
   font-weight: 600;
-  padding: 8px 16px;
+  padding: 0 var(--space-2);
   border-radius: var(--radius-md);
   cursor: pointer;
   transition: var(--transition);
@@ -3024,12 +3066,13 @@ body.dashboard-body {
 }
 
 .btn-project-confirm {
+  height: var(--control-height-md);
   background: linear-gradient(135deg, #7c3aed, #4f46e5);
   border: none;
   color: #fff;
   font-size: 0.85rem;
   font-weight: 600;
-  padding: 8px 20px;
+  padding: 0 var(--space-3);
   border-radius: var(--radius-md);
   cursor: pointer;
   transition: all 0.2s ease;
@@ -3085,13 +3128,14 @@ body.dashboard-body {
 .auth-container {
   position: fixed;
   inset: 0;
-  z-index: 9999;
+  z-index: 100000;
   display: flex;
   align-items: center;
   justify-content: center;
   background: radial-gradient(circle at 50% 20%, #151e34 0%, #0b0f19 80%);
-  padding: 20px;
+  padding: var(--space-3);
   overflow-y: auto;
+  pointer-events: auto;
 }
 
 .auth-glow-bg {
@@ -3110,17 +3154,19 @@ body.dashboard-body {
   position: relative;
   width: 100%;
   max-width: 440px;
-  background: rgba(18, 24, 39, 0.85);
+  background: rgba(18, 24, 39, 0.88);
   border: 1px solid rgba(255, 255, 255, 0.1);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border-radius: 20px;
-  padding: 36px 32px;
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6), 0 0 40px rgba(99, 102, 241, 0.12);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  box-shadow: 0 24px 48px -12px rgba(0, 0, 0, 0.6), 0 0 40px rgba(99, 102, 241, 0.12);
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: var(--space-3);
   animation: fadeInAuth 0.35s ease-out;
+  pointer-events: auto;
+  z-index: 10;
 }
 
 @keyframes fadeInAuth {
@@ -3136,15 +3182,15 @@ body.dashboard-body {
 }
 
 .auth-brand-icon {
-  width: 52px;
-  height: 52px;
-  border-radius: 14px;
+  width: var(--space-6);
+  height: var(--space-6);
+  border-radius: 12px;
   background: linear-gradient(135deg, #6366f1, #3b82f6);
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: 14px;
-  box-shadow: 0 8px 20px rgba(99, 102, 241, 0.35);
+  margin-bottom: var(--space-2);
+  box-shadow: 0 8px 24px rgba(99, 102, 241, 0.35);
 }
 
 .auth-badge {
@@ -3152,19 +3198,19 @@ body.dashboard-body {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.12em;
-  padding: 3px 10px;
-  border-radius: 9999px;
+  padding: var(--space-0-5) var(--space-1-5);
+  border-radius: var(--radius-full);
   background: rgba(99, 102, 241, 0.18);
   color: #818cf8;
   border: 1px solid rgba(99, 102, 241, 0.3);
-  margin-bottom: 10px;
+  margin-bottom: var(--space-1);
 }
 
 .auth-title {
-  font-size: 1.55rem;
+  font-size: 1.5rem;
   font-weight: 700;
   color: #ffffff;
-  margin: 0 0 6px;
+  margin: 0 0 var(--space-1);
   letter-spacing: -0.02em;
 }
 
@@ -3180,8 +3226,8 @@ body.dashboard-body {
   background: rgba(239, 68, 68, 0.12);
   border: 1px solid rgba(239, 68, 68, 0.35);
   color: #fca5a5;
-  padding: 12px 14px;
-  border-radius: 10px;
+  padding: var(--space-1-5) var(--space-2);
+  border-radius: var(--radius-md);
   font-size: 0.88rem;
   line-height: 1.4;
   text-align: center;
@@ -3197,13 +3243,13 @@ body.dashboard-body {
 .auth-form {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: var(--space-2);
 }
 
 .auth-input-group {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--space-1);
   text-align: left;
 }
 
@@ -3231,13 +3277,17 @@ body.dashboard-body {
 
 .auth-input {
   width: 100%;
+  height: var(--control-height-lg);
   box-sizing: border-box;
-  padding: 12px 14px 12px 42px;
+  padding: 0 var(--space-2) 0 44px;
   background: rgba(15, 23, 42, 0.6);
   border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   color: #f8fafc;
   font-size: 0.95rem;
+  pointer-events: auto;
+  user-select: text;
+  -webkit-user-select: text;
   transition: border-color 0.2s, box-shadow 0.2s, background-color 0.2s;
 }
 
@@ -3257,11 +3307,12 @@ body.dashboard-body {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
+  gap: var(--space-1);
   width: 100%;
-  padding: 13px 20px;
+  height: var(--control-height-lg);
+  padding: 0 var(--space-3);
   border: none;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   background: linear-gradient(135deg, #6366f1, #4f46e5);
   color: #ffffff;
   font-size: 0.98rem;
@@ -3533,27 +3584,31 @@ body.dashboard-body {
 }
 
 /* Modal de Configuração do Supabase */
+.auth-config-modal {
+  z-index: 100001;
+}
+
 .auth-config-card {
   position: relative;
   width: 90%;
   max-width: 480px;
   background: #111827;
   border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 16px;
-  padding: 24px;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
-  z-index: 10000;
+  border-radius: var(--radius-lg);
+  padding: var(--space-3);
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.6);
+  z-index: 2;
 }
 
 .auth-config-header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  margin-bottom: 18px;
+  margin-bottom: var(--space-2);
 }
 
 .auth-config-header-text h3 {
-  margin: 0 0 4px;
+  margin: 0 0 var(--space-0-5);
   font-size: 1.2rem;
   color: #ffffff;
 }
@@ -3567,29 +3622,29 @@ body.dashboard-body {
 .auth-config-body {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  margin-bottom: 20px;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
 }
 
 /* Badge do Usuário e Logout na Topbar */
 .topbar-user-wrap {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
-  margin-left: 6px;
+  gap: var(--space-1);
 }
 
 .user-pill {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 12px;
-  border-radius: 9999px;
+  gap: var(--space-1);
+  height: var(--control-height-sm);
+  padding: 0 var(--space-1-5);
+  border-radius: var(--radius-full);
   background: rgba(15, 23, 42, 0.65);
   border: 1px solid rgba(255, 255, 255, 0.1);
   color: #e2e8f0;
   font-size: 0.82rem;
-  max-width: 200px;
+  max-width: 220px;
 }
 
 .user-status-dot {
@@ -3611,9 +3666,10 @@ body.dashboard-body {
 .btn-logout {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  border-radius: 8px;
+  gap: var(--space-1);
+  height: var(--control-height-sm);
+  padding: 0 var(--space-1-5);
+  border-radius: var(--radius-md);
   border: 1px solid rgba(239, 68, 68, 0.3);
   background: rgba(239, 68, 68, 0.1);
   color: #fca5a5;
@@ -3636,18 +3692,24 @@ body.dashboard-body {
 }
 
 /* ==========================================================================
-   Modais Genéricos, Backdrop e Modal de Permissão de Pasta
+   Modais Genéricos, Backdrop e Confirmação de Logout
    ========================================================================== */
 .modal {
   position: fixed;
   inset: 0;
   z-index: 10000;
+  display: none;
   align-items: center;
   justify-content: center;
-  padding: 1.5rem;
+  padding: var(--space-3);
   background: rgba(3, 7, 18, 0.75);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
+}
+
+.modal.active,
+.modal.show {
+  display: flex;
 }
 
 .modal-backdrop {
@@ -3655,6 +3717,99 @@ body.dashboard-body {
   inset: 0;
   background: transparent;
   cursor: pointer;
+}
+
+/* Modal de Confirmação de Logout */
+.logout-confirm-modal {
+  z-index: 100001;
+}
+
+.logout-confirm-card {
+  position: relative;
+  background: #111827;
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  border-radius: var(--radius-lg);
+  width: 100%;
+  max-width: 420px;
+  padding: var(--space-4);
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.7), 0 0 32px rgba(239, 68, 68, 0.15);
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  animation: fadeInAuth 0.25s ease-out;
+}
+
+.logout-confirm-icon {
+  width: var(--space-6);
+  height: var(--space-6);
+  border-radius: 12px;
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: var(--space-2);
+}
+
+.logout-confirm-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #ffffff;
+  margin: 0 0 var(--space-1) 0;
+}
+
+.logout-confirm-desc {
+  font-size: 0.88rem;
+  color: #94a3b8;
+  line-height: 1.5;
+  margin: 0 0 var(--space-3) 0;
+}
+
+.logout-confirm-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  width: 100%;
+}
+
+.btn-cancel-logout {
+  flex: 1;
+  height: var(--control-height-md);
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.05);
+  color: #cbd5e1;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-cancel-logout:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+}
+
+.btn-confirm-logout {
+  flex: 1;
+  height: var(--control-height-md);
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-md);
+  border: none;
+  background: #dc2626;
+  color: #ffffff;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-confirm-logout:hover {
+  background: #b91c1c;
+  box-shadow: 0 0 16px rgba(220, 38, 38, 0.4);
 }
 
 .folder-permission-modal {

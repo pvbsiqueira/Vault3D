@@ -49,6 +49,10 @@ let configUrlInput = null;
 let configKeyInput = null;
 let btnSaveConfig = null;
 let btnCloseConfigModal = null;
+let logoutConfirmModal = null;
+let logoutConfirmBackdrop = null;
+let btnCancelLogout = null;
+let btnConfirmLogout = null;
 
 /**
  * Validação básica de endereço de e-mail
@@ -148,12 +152,23 @@ function updateAuthUI(session) {
       loginForm.style.display = 'block';
     }
 
+    clearMessages();
+    setLoading(false);
+
+    if (emailInput) {
+      emailInput.disabled = false;
+      emailInput.readOnly = false;
+    }
+
     // Fecha qualquer modal aberto
     const viewerModal = document.getElementById('viewerModal');
     if (viewerModal) viewerModal.style.display = 'none';
 
     const createProjectModal = document.getElementById('createProjectModal');
     if (createProjectModal) createProjectModal.style.display = 'none';
+
+    const logoutModal = document.getElementById('logoutConfirmModal');
+    if (logoutModal) logoutModal.style.display = 'none';
 
     if (topbarUserWrap) topbarUserWrap.style.display = 'none';
     if (topbarUserEmail) topbarUserEmail.textContent = '';
@@ -433,27 +448,54 @@ async function handleConfirmMagicLink() {
 }
 
 /**
- * Trata o clique no botão de Logout
+ * Abre o modal de confirmação de logout
  */
-async function handleLogout() {
-  const confirmLogout = window.confirm('Deseja realmente sair da sua conta?');
-  if (!confirmLogout) return;
+function openLogoutModal() {
+  if (logoutConfirmModal) {
+    logoutConfirmModal.style.display = 'flex';
+  } else {
+    executeLogout();
+  }
+}
+
+/**
+ * Fecha o modal de confirmação de logout
+ */
+function closeLogoutModal() {
+  if (logoutConfirmModal) {
+    logoutConfirmModal.style.display = 'none';
+  }
+}
+
+/**
+ * Executa o encerramento da sessão com limpeza completa do estado
+ */
+async function executeLogout() {
+  closeLogoutModal();
 
   try {
     await signOut();
     currentUser = null;
     updateAuthUI(null);
 
-    // Resetar campos do formulário
+    // Resetar campos do formulário de autenticação
+    clearMessages();
+    setLoading(false);
     if (loginForm) loginForm.style.display = 'block';
     if (successBanner) successBanner.style.display = 'none';
     if (emailInput) {
       emailInput.value = '';
-      emailInput.focus();
+      emailInput.disabled = false;
+      emailInput.readOnly = false;
+      setTimeout(() => {
+        if (emailInput) {
+          emailInput.focus();
+        }
+      }, 150);
     }
   } catch (err) {
     console.error('Erro ao encerrar sessão:', err);
-    alert('Erro ao sair: ' + err.message);
+    showError('Erro ao sair: ' + (err.message || 'Falha inesperada'));
   }
 }
 
@@ -569,9 +611,36 @@ export async function initAuth(onAuthenticated) {
     });
   }
 
-  // Botão de Logout
+  logoutConfirmModal = document.getElementById('logoutConfirmModal');
+  logoutConfirmBackdrop = document.getElementById('logoutConfirmBackdrop');
+  btnCancelLogout = document.getElementById('btnCancelLogout');
+  btnConfirmLogout = document.getElementById('btnConfirmLogout');
+
+  // Botão de Logout (abre modal in-app suave sem travar Electron)
   if (btnLogout) {
-    btnLogout.addEventListener('click', handleLogout);
+    btnLogout.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      openLogoutModal();
+    });
+  }
+
+  if (btnCancelLogout) {
+    btnCancelLogout.addEventListener('click', (e) => {
+      e.preventDefault();
+      closeLogoutModal();
+    });
+  }
+
+  if (logoutConfirmBackdrop) {
+    logoutConfirmBackdrop.addEventListener('click', closeLogoutModal);
+  }
+
+  if (btnConfirmLogout) {
+    btnConfirmLogout.addEventListener('click', (e) => {
+      e.preventDefault();
+      executeLogout();
+    });
   }
 
   // Modal e configuração do Supabase
@@ -596,7 +665,11 @@ export async function initAuth(onAuthenticated) {
       const key = configKeyInput ? configKeyInput.value.trim() : '';
 
       if (!url || !key) {
-        alert('Por favor, preencha tanto a URL quanto a Anon Key do Supabase.');
+        if (typeof window.showToast === 'function') {
+          window.showToast('Por favor, preencha a URL e a Anon Key do Supabase.', 'warning');
+        } else {
+          alert('Por favor, preencha tanto a URL quanto a Anon Key do Supabase.');
+        }
         return;
       }
 
@@ -606,7 +679,9 @@ export async function initAuth(onAuthenticated) {
       if (configModal) configModal.style.display = 'none';
       if (configNoticeWrap) configNoticeWrap.style.display = 'none';
       clearMessages();
-      alert('Configurações salvas com sucesso!');
+      if (typeof window.showToast === 'function') {
+        window.showToast('Configurações do Supabase salvas com sucesso! ✅', 'success');
+      }
     });
   }
 

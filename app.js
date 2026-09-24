@@ -5036,3 +5036,4 @@ window.dissolveCustomProject = dissolveCustomProject;
 window.applyCustomProjects = applyCustomProjects;
 window.openViewerModal = openViewerModal;
 window.closeViewerModal = closeViewerModal;
+window.showToast = showToast;
