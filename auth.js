@@ -149,7 +149,7 @@ function updateAuthUI(session) {
     if (dashboardLayout) dashboardLayout.style.display = 'none';
     if (authContainer) authContainer.style.display = 'flex';
     if (loginForm && (!successBanner || successBanner.style.display === 'none')) {
-      loginForm.style.display = 'block';
+      loginForm.style.display = 'flex';
     }
 
     clearMessages();
@@ -481,7 +481,7 @@ async function executeLogout() {
     // Resetar campos do formulário de autenticação
     clearMessages();
     setLoading(false);
-    if (loginForm) loginForm.style.display = 'block';
+    if (loginForm) loginForm.style.display = 'flex';
     if (successBanner) successBanner.style.display = 'none';
     if (emailInput) {
       emailInput.value = '';
@@ -550,7 +550,7 @@ export async function initAuth(onAuthenticated) {
   if (btnUseOtherEmail) {
     btnUseOtherEmail.addEventListener('click', () => {
       if (successBanner) successBanner.style.display = 'none';
-      if (loginForm) loginForm.style.display = 'block';
+      if (loginForm) loginForm.style.display = 'flex';
       if (authOtpError) authOtpError.style.display = 'none';
       if (emailInput) {
         emailInput.select();
