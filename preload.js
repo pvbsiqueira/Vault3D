@@ -13,6 +13,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Abrir pasta ou arquivo no Windows Explorer
   openInExplorer: (filePath) => ipcRenderer.invoke('open-in-explorer', filePath),
 
+  // Abrir arquivo 3D diretamente no Fatiador associado (Bambu Studio, OrcaSlicer, Cura, etc.)
+  openInSlicer: (filePath) => ipcRenderer.invoke('open-in-slicer', filePath),
+
   // Gerenciamento de Atualização Automática
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
   restartAndInstallUpdate: () => ipcRenderer.invoke('restart-and-install-update'),

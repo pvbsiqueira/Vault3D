@@ -247,6 +247,25 @@ ipcMain.handle('resolve-disk-path', async (event, { folderName, relPath }) => {
   return { success: false };
 });
 
+// 6. Abrir arquivo 3D diretamente no Fatiador associado pelo Windows (Bambu, Orca, Cura, etc.)
+ipcMain.handle('open-in-slicer', async (event, targetPath) => {
+  if (!targetPath) return { success: false, message: 'Caminho não fornecido' };
+  try {
+    if (fs.existsSync(targetPath)) {
+      const errorMsg = await shell.openPath(targetPath);
+      if (errorMsg) {
+        return { success: false, message: errorMsg };
+      }
+      return { success: true };
+    } else {
+      return { success: false, message: 'Arquivo não encontrado no disco local' };
+    }
+  } catch (e) {
+    console.warn('Erro ao abrir no fatiador:', e);
+    return { success: false, message: e.message };
+  }
+});
+
 // ==========================================
 // Ciclo de Vida do Aplicativo e Instância Única
 // ==========================================

@@ -173,6 +173,7 @@ const modalInfoDimensionsWrap = document.getElementById('modalInfoDimensionsWrap
 const modalInfoTriangles = document.getElementById('modalInfoTriangles');
 const modalInfoTrianglesWrap = document.getElementById('modalInfoTrianglesWrap');
 const btnCopyModalPath = document.getElementById('btnCopyModalPath');
+const btnOpenModalSlicer = document.getElementById('btnOpenModalSlicer');
 
 // Seleção Múltipla & Projetos Manuais DOM
 const btnToggleSelect = document.getElementById('btnToggleSelect');
@@ -507,6 +508,21 @@ function init() {
       copyModalFullPath();
     });
   }
+
+  // Abrir no Fatiador diretamente a partir do Modal 3D
+  if (btnOpenModalSlicer) {
+    if (window.electronAPI && window.electronAPI.isElectron) {
+      btnOpenModalSlicer.style.display = 'inline-flex';
+    }
+    btnOpenModalSlicer.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const currentModel = (state.activePlate && state.activePlate.model) || state.activeModel;
+      if (currentModel) {
+        openModelInSlicer(currentModel, btnOpenModalSlicer);
+      }
+    });
+  }
+
   if (modalFileName) {
     modalFileName.addEventListener('click', () => {
       copyModalFullPath();
@@ -2283,8 +2299,37 @@ async function copyTextToClipboard(text) {
 }
 
 /**
- * Copia o caminho completo do modelo 3D para a área de transferência do usuário,
- * permitindo colar instantaneamente no Fatiador (Ctrl+O -> Ctrl+V) ou no Windows Explorer.
+ * Retorna as configurações visuais do botão do Fatiador (Adapta entre Desktop e Web)
+ */
+function getSlicerButtonConfig() {
+  const isDesktop = Boolean(typeof window !== 'undefined' && window.electronAPI && window.electronAPI.isElectron);
+  if (isDesktop) {
+    return {
+      title: 'Abrir arquivo diretamente no seu Fatiador 3D padrão (Bambu Studio, OrcaSlicer, etc.)',
+      text: 'Abrir no Fatiador',
+      icon: `
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+          <polyline points="15 3 21 3 21 9"></polyline>
+          <line x1="10" y1="14" x2="21" y2="3"></line>
+        </svg>
+      `
+    };
+  }
+  return {
+    title: 'Copiar caminho para colar no fatiador ou Windows Explorer',
+    text: 'Copiar caminho',
+    icon: `
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+      </svg>
+    `
+  };
+}
+
+/**
+ * Abre o arquivo 3D diretamente no Fatiador (no app Desktop) ou copia o caminho (na Web)
  */
 async function openModelInSlicer(model, buttonEl) {
   if (!model) return;
@@ -2318,6 +2363,19 @@ async function openModelInSlicer(model, buttonEl) {
     const relPath = (targetModel.path || targetModel.name).replace(/\//g, '\\');
 
     let fullPath = targetModel.fullDiskPath;
+    if (!fullPath && window.electronAPI && typeof window.electronAPI.resolveDiskPath === 'function') {
+      try {
+        const resolved = await window.electronAPI.resolveDiskPath(folderName, relPath);
+        if (resolved && resolved.success && resolved.fullPath) {
+          fullPath = resolved.fullPath;
+          targetModel.fullDiskPath = fullPath;
+          targetModel.fullFolderDirectory = resolved.folderPath;
+        }
+      } catch (err) {
+        console.warn('Erro ao resolver caminho no disco via Electron:', err);
+      }
+    }
+
     if (!fullPath) {
       const rootBase = (state.folderDiskPaths && state.folderDiskPaths[folderName]) || (
         folderName.includes('sample_models') || relPath.includes('sample_models')
@@ -2333,15 +2391,46 @@ async function openModelInSlicer(model, buttonEl) {
       targetModel.fullFolderDirectory = rootBase + '\\';
     }
 
-    const textToCopy = fullPath || targetModel.name;
+    // 3. Se estiver no app Desktop (Electron), abrir diretamente no fatiador!
+    if (window.electronAPI && typeof window.electronAPI.openInSlicer === 'function' && fullPath) {
+      // Também copia para a área de transferência silenciosamente como conveniência
+      copyTextToClipboard(fullPath).catch(() => {});
 
-    // 3. Copiar para a área de transferência
+      const res = await window.electronAPI.openInSlicer(fullPath);
+      if (res && res.success) {
+        if (buttonEl) {
+          if (!buttonEl.dataset.origHtml) {
+            buttonEl.dataset.origHtml = buttonEl.innerHTML;
+          }
+          buttonEl.classList.add('btn-copied');
+          buttonEl.innerHTML = `
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="20 6 9 17 4 12"></polyline>
+            </svg>
+            <span>Fatiador aberto!</span>
+          `;
+          setTimeout(() => {
+            buttonEl.classList.remove('btn-copied');
+            if (buttonEl.dataset.origHtml) {
+              buttonEl.innerHTML = buttonEl.dataset.origHtml;
+            }
+          }, 2200);
+        }
+
+        showToast(`🚀 Abrindo ${modelDisplayName} no seu fatiador!`, 'success');
+        return;
+      } else {
+        console.warn('openInSlicer retornou aviso/erro, usando fallback de cópia:', res?.message);
+      }
+    }
+
+    // Fallback para modo Web ou caso o SO não abra diretamente
+    const textToCopy = fullPath || targetModel.name;
     const copied = await copyTextToClipboard(textToCopy);
     if (!copied) {
       throw new Error('Permissão de cópia bloqueada pelo navegador');
     }
 
-    // 4. Feedback visual no botão que foi clicado
     if (buttonEl) {
       if (!buttonEl.dataset.origHtml) {
         buttonEl.dataset.origHtml = buttonEl.innerHTML;
@@ -2361,12 +2450,11 @@ async function openModelInSlicer(model, buttonEl) {
       }, 2200);
     }
 
-    // 5. Toast orientativo e rápido
     showToast(`📋 Caminho copiado! Pressione Ctrl+V no seu fatiador ou Windows Explorer.`, 'success');
 
   } catch (err) {
-    console.error('Erro ao copiar caminho do modelo:', err);
-    showToast(`Não foi possível copiar o caminho: ${err.message}`, 'error');
+    console.error('Erro ao abrir ou copiar modelo:', err);
+    showToast(`Não foi possível abrir o modelo: ${err.message}`, 'error');
   }
 }
 
@@ -3010,6 +3098,8 @@ function createModelCard(model) {
   card.className = `model-card ${model.isProject ? 'is-project' : ''}`;
   card.dataset.id = model.id;
 
+  const slicerBtn = getSlicerButtonConfig();
+
   // Renderização especializada para Card de Projeto Multi-peças
   if (model.isProject) {
     const formattedSize = formatBytes(model.size);
@@ -3065,12 +3155,9 @@ function createModelCard(model) {
             <span class="card-folder-icon">📁</span>
             <span class="card-folder-name">${escapeHtml(folderInfo.name)}</span>
           </div>
-          <button class="btn-open-slicer" title="Copiar caminho para colar no fatiador ou Windows Explorer" type="button">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-            </svg>
-            <span>Copiar caminho</span>
+          <button class="btn-open-slicer" title="${slicerBtn.title}" type="button">
+            ${slicerBtn.icon}
+            <span>${slicerBtn.text}</span>
           </button>
         </div>
       </div>
@@ -3188,12 +3275,9 @@ function createModelCard(model) {
           <span class="card-folder-icon">📁</span>
           <span class="card-folder-name">${escapeHtml(folderInfo.name)}</span>
         </div>
-        <button class="btn-open-slicer" title="Copiar caminho para colar no fatiador ou Windows Explorer" type="button">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-          </svg>
-          <span>Copiar caminho</span>
+        <button class="btn-open-slicer" title="${slicerBtn.title}" type="button">
+          ${slicerBtn.icon}
+          <span>${slicerBtn.text}</span>
         </button>
       </div>
     </div>
