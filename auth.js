@@ -421,8 +421,8 @@ export async function initAuth(onAuthenticated) {
 
   // Verificar se credenciais do Supabase estão configuradas
   const config = await getSupabaseConfig();
-  if (!config.isConfigured && configNoticeWrap) {
-    configNoticeWrap.style.display = 'block';
+  if (configNoticeWrap) {
+    configNoticeWrap.style.display = config.isConfigured ? 'none' : 'block';
   }
 
   // Verificar sessão inicial

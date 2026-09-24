@@ -6,6 +6,11 @@
 const STORAGE_KEY_URL = 'sb_config_url';
 const STORAGE_KEY_ANON = 'sb_config_anon_key';
 
+// Credenciais padrão de produção (Supabase publishable/anon key)
+// Seguras para distribuição no cliente / app desktop com Row Level Security (RLS)
+const DEFAULT_SUPABASE_URL = 'https://xkzrvbjndldsukkxvbiw.supabase.co';
+const DEFAULT_SUPABASE_ANON_KEY = 'sb_publishable_65Eya5zhA-8BA66QEznBiA_CmPP2cPD';
+
 let cachedConfig = null;
 
 /**
@@ -24,7 +29,8 @@ export function normalizeSupabaseUrl(url) {
 
 /**
  * Obtém as configurações do Supabase.
- * Tenta endpoint /api/config, depois localStorage, depois variáveis globais (window.__ENV__).
+ * Tenta endpoint /api/config, depois localStorage, depois variáveis globais (window.__ENV__),
+ * e por fim as credenciais padrão de produção embutidas.
  * @param {boolean} forceRefresh - Forçar nova busca no backend
  * @returns {Promise<{supabaseUrl: string, supabaseAnonKey: string, isConfigured: boolean}>}
  */
@@ -36,7 +42,7 @@ export async function getSupabaseConfig(forceRefresh = false) {
   let supabaseUrl = '';
   let supabaseAnonKey = '';
 
-  // 1. Tentar ler do endpoint local /api/config (carregado do .env pelo servidor)
+  // 1. Tentar ler do endpoint local /api/config (carregado do .env pelo servidor quando na web)
   try {
     const res = await fetch('/api/config', { cache: 'no-store' });
     if (res.ok) {
@@ -44,15 +50,16 @@ export async function getSupabaseConfig(forceRefresh = false) {
       if (data.NEXT_PUBLIC_SUPABASE_URL) {
         supabaseUrl = normalizeSupabaseUrl(data.NEXT_PUBLIC_SUPABASE_URL);
       }
-      if (data.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
-        supabaseAnonKey = data.NEXT_PUBLIC_SUPABASE_ANON_KEY.trim();
+      const key = data.NEXT_PUBLIC_SUPABASE_ANON_KEY || data.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+      if (key) {
+        supabaseAnonKey = key.trim();
       }
     }
   } catch {
-    // Ignora erro se estiver em ambiente estático sem servidor powershell
+    // Ignora erro se estiver em ambiente estático ou desktop (file://)
   }
 
-  // 2. Fallback para localStorage caso não venha do servidor
+  // 2. Fallback para localStorage caso tenha sido configurado manualmente
   if (!supabaseUrl || !supabaseAnonKey) {
     try {
       const localUrl = localStorage.getItem(STORAGE_KEY_URL);
@@ -65,13 +72,22 @@ export async function getSupabaseConfig(forceRefresh = false) {
   }
 
   // 3. Fallback para window.__ENV__ se injetado
-  if ((!supabaseUrl || !supabaseAnonKey) && window.__ENV__) {
+  if ((!supabaseUrl || !supabaseAnonKey) && typeof window !== 'undefined' && window.__ENV__) {
     if (window.__ENV__.NEXT_PUBLIC_SUPABASE_URL && !supabaseUrl) {
       supabaseUrl = normalizeSupabaseUrl(window.__ENV__.NEXT_PUBLIC_SUPABASE_URL);
     }
-    if (window.__ENV__.NEXT_PUBLIC_SUPABASE_ANON_KEY && !supabaseAnonKey) {
-      supabaseAnonKey = window.__ENV__.NEXT_PUBLIC_SUPABASE_ANON_KEY.trim();
+    const envKey = window.__ENV__.NEXT_PUBLIC_SUPABASE_ANON_KEY || window.__ENV__.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+    if (envKey && !supabaseAnonKey) {
+      supabaseAnonKey = envKey.trim();
     }
+  }
+
+  // 4. Fallback padrão definitivo para produção / Desktop App (out-of-the-box para o usuário final)
+  if (!supabaseUrl || supabaseUrl === 'https://seu-projeto.supabase.co' || supabaseUrl.includes('placeholder')) {
+    supabaseUrl = DEFAULT_SUPABASE_URL;
+  }
+  if (!supabaseAnonKey || supabaseAnonKey.includes('placeholder')) {
+    supabaseAnonKey = DEFAULT_SUPABASE_ANON_KEY;
   }
 
   const isConfigured = Boolean(
