@@ -730,6 +730,19 @@
         </button>
       </div>
     </div>
+  <!-- Notificação Flutuante de Atualização do Aplicativo (Modo Desktop) -->
+  <div class="desktop-update-banner" id="desktopUpdateBanner" style="display: none;">
+    <div class="update-banner-left">
+      <span class="update-banner-icon" id="desktopUpdateIcon">🔄</span>
+      <div class="update-banner-info">
+        <span class="update-banner-title">Atualização do Vault3D</span>
+        <span class="update-banner-text" id="desktopUpdateText">Uma nova versão está sendo baixada...</span>
+      </div>
+    </div>
+    <div class="update-banner-actions">
+      <button class="btn-update-action" id="btnRestartUpdate" type="button" style="display: none;">Reiniciar e Instalar</button>
+      <button class="btn-update-close" id="btnCloseUpdateBanner" type="button" title="Fechar notificação">&times;</button>
+    </div>
   </div>
 
   <!-- Script principal da aplicação como módulo ES -->

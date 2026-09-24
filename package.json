@@ -1,0 +1,69 @@
+{
+  "name": "vault3d",
+  "version": "1.0.0",
+  "description": "Visualizador e Gerenciador 3D para Impressão 3D (STL e 3MF)",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder",
+    "dist:win": "electron-builder --win"
+  },
+  "keywords": [
+    "3d",
+    "stl",
+    "3mf",
+    "slicer",
+    "bambu",
+    "orcaslicer",
+    "3d-printing"
+  ],
+  "author": "Paulo Siqueira",
+  "license": "MIT",
+  "dependencies": {
+    "electron-updater": "^6.3.9"
+  },
+  "devDependencies": {
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.vault3d.app",
+    "productName": "Vault3D",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "**/*",
+      "!dist/*",
+      "!.git/*",
+      "!.github/*",
+      "!*.bat",
+      "!*.ps1"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Vault3D"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "pvbsiqueira",
+        "repo": "Vault3D"
+      }
+    ]
+  }
+}

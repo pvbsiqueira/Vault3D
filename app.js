@@ -195,8 +195,61 @@ const projectCoverGrid = document.getElementById('projectCoverGrid');
 const btnCancelProjectCreation = document.getElementById('btnCancelProjectCreation');
 const btnConfirmProjectCreation = document.getElementById('btnConfirmProjectCreation');
 
+/**
+ * Configuração de atualizações automáticas em segundo plano para o app Desktop (Electron)
+ */
+function setupDesktopUpdater() {
+  if (!window.electronAPI || typeof window.electronAPI.onUpdateStatus !== 'function') return;
+
+  const banner = document.getElementById('desktopUpdateBanner');
+  const updateText = document.getElementById('desktopUpdateText');
+  const updateIcon = document.getElementById('desktopUpdateIcon');
+  const btnRestart = document.getElementById('btnRestartUpdate');
+  const btnClose = document.getElementById('btnCloseUpdateBanner');
+
+  if (btnClose && banner) {
+    btnClose.addEventListener('click', () => {
+      banner.style.display = 'none';
+    });
+  }
+
+  if (btnRestart) {
+    btnRestart.addEventListener('click', () => {
+      if (window.electronAPI.restartAndInstallUpdate) {
+        window.electronAPI.restartAndInstallUpdate();
+      }
+    });
+  }
+
+  window.electronAPI.onUpdateStatus((data) => {
+    if (!banner || !updateText) return;
+
+    if (data.status === 'available') {
+      banner.style.display = 'flex';
+      if (updateIcon) updateIcon.textContent = '📥';
+      updateText.textContent = `Nova versão ${data.version || ''} encontrada! Baixando atualização...`;
+      if (btnRestart) btnRestart.style.display = 'none';
+    } else if (data.status === 'downloading') {
+      banner.style.display = 'flex';
+      if (updateIcon) updateIcon.textContent = '⏳';
+      updateText.textContent = `Baixando atualização: ${data.percent || 0}% concluído...`;
+      if (btnRestart) btnRestart.style.display = 'none';
+    } else if (data.status === 'downloaded') {
+      banner.style.display = 'flex';
+      if (updateIcon) updateIcon.textContent = '🚀';
+      updateText.textContent = `Versão ${data.version || ''} pronta para instalar!`;
+      if (btnRestart) btnRestart.style.display = 'inline-block';
+    } else if (data.status === 'error') {
+      console.warn('Auto-updater desktop:', data.message);
+    }
+  });
+}
+
 // Inicialização de Eventos
 function init() {
+  // Monitorar atualizações automáticas no modo Desktop
+  setupDesktopUpdater();
+
   if (btnSelectFolder) btnSelectFolder.addEventListener('click', handleChooseFolder);
   if (btnEmptySelectFolder) btnEmptySelectFolder.addEventListener('click', handleChooseFolder);
   if (folderInputFallback) folderInputFallback.addEventListener('change', handleFallbackFileSelect);
@@ -1501,20 +1554,28 @@ async function addFilesToLibrary(files, folderName, dirHandle = null, persistToD
     count: newModels.length
   });
 
-  // Pré-resolver caminho no disco iniciando em C:\ para agilizar a exibição e tooltips (se servidor local estiver ativo)
+  // Pré-resolver caminho no disco iniciando em C:\ para agilizar a exibição e tooltips
   if (files[0]) {
-    const isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
-    const localBase = isLocalHost ? '' : 'http://127.0.0.1:3000';
-    fetch(`${localBase}/api/resolve-path?folder=${encodeURIComponent(folderName)}&path=${encodeURIComponent(files[0].path || files[0].name)}`)
-      .then(res => res.ok ? res.json() : null)
-      .then(data => {
-        if (data && data.rootFolder) {
-          state.folderDiskPaths[folderName] = data.rootFolder;
-          saveFolderDiskPaths();
-          updateFolderTooltip(folderName, data.rootFolder);
-        }
-      })
-      .catch(() => {});
+    const handleResolvedPath = (data) => {
+      if (data && data.rootFolder) {
+        state.folderDiskPaths[folderName] = data.rootFolder;
+        saveFolderDiskPaths();
+        updateFolderTooltip(folderName, data.rootFolder);
+      }
+    };
+
+    if (window.electronAPI && typeof window.electronAPI.resolveDiskPath === 'function') {
+      window.electronAPI.resolveDiskPath(folderName, files[0].path || files[0].name)
+        .then(handleResolvedPath)
+        .catch(() => {});
+    } else {
+      const isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+      const localBase = isLocalHost ? '' : 'http://127.0.0.1:3000';
+      fetch(`${localBase}/api/resolve-path?folder=${encodeURIComponent(folderName)}&path=${encodeURIComponent(files[0].path || files[0].name)}`)
+        .then(res => res.ok ? res.json() : null)
+        .then(handleResolvedPath)
+        .catch(() => {});
+    }
   }
 
   // Salvar no IndexedDB se solicitado
@@ -4234,34 +4295,40 @@ async function updateModalFilePath(model) {
   if (modalPathName) modalPathName.textContent = model.name;
   if (modalFileName) modalFileName.title = `${estimatedDir}${model.name} (Clique para copiar)`;
 
-  // 4. Consulta assíncrona ao servidor local para obter o caminho 100% real do Windows (se companion estiver ativo)
+  // 4. Consulta para obter o caminho 100% real do Windows (Nativo no Electron ou via servidor companion na Web)
   try {
-    const isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
-    const localBase = isLocalHost ? '' : 'http://127.0.0.1:3000';
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 1000);
+    let data = null;
+    if (window.electronAPI && typeof window.electronAPI.resolveDiskPath === 'function') {
+      data = await window.electronAPI.resolveDiskPath(folderName, model.path || model.name);
+    } else {
+      const isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+      const localBase = isLocalHost ? '' : 'http://127.0.0.1:3000';
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 1000);
 
-    const res = await fetch(`${localBase}/api/resolve-path?folder=${encodeURIComponent(folderName)}&path=${encodeURIComponent(model.path || model.name)}`, {
-      signal: controller.signal
-    });
-    clearTimeout(timeoutId);
+      const res = await fetch(`${localBase}/api/resolve-path?folder=${encodeURIComponent(folderName)}&path=${encodeURIComponent(model.path || model.name)}`, {
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
 
-    if (res.ok) {
-      const data = await res.json();
-      if (data && data.fullPath) {
-        model.fullDiskPath = data.fullPath;
-        model.fullFolderDirectory = data.folderPath;
-        if (data.rootFolder && folderName) {
-          state.folderDiskPaths[folderName] = data.rootFolder;
-          saveFolderDiskPaths();
-          updateFolderTooltip(folderName, data.rootFolder);
-        }
-        // Se este mesmo modelo ainda estiver ativo no modal, atualiza na tela
-        if (state.activeModel && state.activeModel.id === model.id) {
-          if (modalPathFolder) modalPathFolder.textContent = data.folderPath;
-          if (modalPathName) modalPathName.textContent = data.fileName || model.name;
-          if (modalFileName) modalFileName.title = `${data.fullPath} (Clique para copiar)`;
-        }
+      if (res.ok) {
+        data = await res.json();
+      }
+    }
+
+    if (data && data.fullPath) {
+      model.fullDiskPath = data.fullPath;
+      model.fullFolderDirectory = data.folderPath;
+      if (data.rootFolder && folderName) {
+        state.folderDiskPaths[folderName] = data.rootFolder;
+        saveFolderDiskPaths();
+        updateFolderTooltip(folderName, data.rootFolder);
+      }
+      // Se este mesmo modelo ainda estiver ativo no modal, atualiza na tela
+      if (state.activeModel && state.activeModel.id === model.id) {
+        if (modalPathFolder) modalPathFolder.textContent = data.folderPath;
+        if (modalPathName) modalPathName.textContent = data.fileName || model.name;
+        if (modalFileName) modalFileName.title = `${data.fullPath} (Clique para copiar)`;
       }
     }
   } catch (err) {
