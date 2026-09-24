@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, dialog, session } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, dialog, session, clipboard } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { autoUpdater } = require('electron-updater');
@@ -378,6 +378,33 @@ ipcMain.handle('open-in-slicer', async (event, targetPath) => {
     console.warn('Erro ao abrir no fatiador:', e);
     return { success: false, message: e.message };
   }
+});
+
+// 7. Renomear arquivo diretamente no disco (Windows)
+ipcMain.handle('rename-file', async (event, { oldPath, newName }) => {
+  if (!oldPath || !fs.existsSync(oldPath)) {
+    return { success: false, message: 'Arquivo original não encontrado no disco' };
+  }
+  try {
+    const dir = path.dirname(oldPath);
+    const newPath = path.join(dir, newName);
+    if (fs.existsSync(newPath)) {
+      return { success: false, message: 'Já existe um arquivo com esse nome nesta pasta' };
+    }
+    await fs.promises.rename(oldPath, newPath);
+    return { success: true, newPath };
+  } catch (err) {
+    return { success: false, message: err.message };
+  }
+});
+
+// 8. Cópia direta para a Área de Transferência nativa do Windows
+ipcMain.handle('copy-to-clipboard', (event, text) => {
+  if (typeof text === 'string') {
+    clipboard.writeText(text);
+    return true;
+  }
+  return false;
 });
 
 // ==========================================

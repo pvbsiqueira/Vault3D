@@ -28,6 +28,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Abrir arquivo 3D diretamente no Fatiador associado (Bambu Studio, OrcaSlicer, Cura, etc.)
   openInSlicer: (filePath) => ipcRenderer.invoke('open-in-slicer', filePath),
 
+  // Renomear arquivo diretamente no disco (Windows)
+  renameFile: (oldPath, newName) => ipcRenderer.invoke('rename-file', { oldPath, newName }),
+
+  // Cópia nativa direta para a Área de Transferência do Windows
+  copyToClipboard: (text) => ipcRenderer.invoke('copy-to-clipboard', text),
+
   // Gerenciamento de Atualização Automática
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
   restartAndInstallUpdate: () => ipcRenderer.invoke('restart-and-install-update'),

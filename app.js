@@ -76,11 +76,6 @@ const appSidebar = document.getElementById('appSidebar');
 const btnSidebarToggle = document.getElementById('btnSidebarToggle');
 const btnSelectFolder = document.getElementById('btnSelectFolder');
 const folderInputFallback = document.getElementById('folderInputFallback');
-const folderPermissionModal = document.getElementById('folderPermissionModal');
-const folderPermissionBackdrop = document.getElementById('folderPermissionBackdrop');
-const btnCloseFolderPermissionModal = document.getElementById('btnCloseFolderPermissionModal');
-const btnConfirmProceedFolder = document.getElementById('btnConfirmProceedFolder');
-const chkDontShowFolderPermission = document.getElementById('chkDontShowFolderPermission');
 const navAllModels = document.getElementById('navAllModels');
 const navProjects = document.getElementById('navProjects');
 const navFavorites = document.getElementById('navFavorites');
@@ -255,23 +250,6 @@ function init() {
   if (btnEmptySelectFolder) btnEmptySelectFolder.addEventListener('click', handleChooseFolder);
   if (folderInputFallback) folderInputFallback.addEventListener('change', handleFallbackFileSelect);
   if (btnLoadSample) btnLoadSample.addEventListener('click', loadSampleModels);
-
-  // Eventos do Modal Informativo de Permissão de Pasta
-  if (btnCloseFolderPermissionModal) {
-    btnCloseFolderPermissionModal.addEventListener('click', closeFolderPermissionModal);
-  }
-  if (folderPermissionBackdrop) {
-    folderPermissionBackdrop.addEventListener('click', closeFolderPermissionModal);
-  }
-  if (btnConfirmProceedFolder) {
-    btnConfirmProceedFolder.addEventListener('click', () => {
-      if (chkDontShowFolderPermission && chkDontShowFolderPermission.checked) {
-        localStorage.setItem('hide_folder_permission_notice', 'true');
-      }
-      closeFolderPermissionModal();
-      proceedWithDirectoryPicker();
-    });
-  }
 
   // Navegação da Barra Lateral (Todos / Projetos / Favoritos / Duplicados)
   [navAllModels, navProjects, navFavorites, navDuplicates].forEach(navBtn => {
@@ -599,29 +577,12 @@ function setNavSection(section) {
   renderGallery();
 }
 
-function openFolderPermissionModal() {
-  if (folderPermissionModal) {
-    folderPermissionModal.style.display = 'flex';
-  }
-}
-
-function closeFolderPermissionModal() {
-  if (folderPermissionModal) {
-    folderPermissionModal.style.display = 'none';
-  }
-}
-
 /**
  * Ponto de entrada ao clicar em "Adicionar Pasta"
- * Se o aviso prévio não tiver sido ocultado pelo usuário, exibe a explicação primeiro
+ * Abre diretamente o seletor nativo de pasta do Windows
  */
 async function handleChooseFolder() {
-  const dontShow = localStorage.getItem('hide_folder_permission_notice') === 'true';
-  if (dontShow) {
-    proceedWithDirectoryPicker();
-  } else {
-    openFolderPermissionModal();
-  }
+  proceedWithDirectoryPicker();
 }
 
 /**
@@ -2281,10 +2242,27 @@ async function renameModelFile(model, newBaseName) {
     return false;
   }
 
-  // Se tiver FileSystemFileHandle, renomear fisicamente no disco
-  if (model.handle) {
+  // 1. MODO DESKTOP (ELECTRON): Renomear nativamente no disco do Windows
+  if (window.electronAPI && typeof window.electronAPI.renameFile === 'function' && model.fullDiskPath) {
     try {
-      // 1. Obter permissão de gravação se ainda não tiver
+      const res = await window.electronAPI.renameFile(model.fullDiskPath, newFullName);
+      if (!res.success) {
+        showToast(`Erro ao renomear arquivo: ${res.message}`, 'error');
+        return false;
+      }
+      model.fullDiskPath = res.newPath;
+      if (model.file) {
+        model.file.name = newFullName;
+        if (model.file.fullDiskPath) model.file.fullDiskPath = res.newPath;
+      }
+      showToast(`Arquivo renomeado para "${newFullName}" no disco! ✏️`, 'success');
+    } catch (e) {
+      showToast(`Erro ao renomear arquivo: ${e.message}`, 'error');
+      return false;
+    }
+  } else if (model.handle) {
+    // 2. MODO WEB: Renomear via FileSystemHandle
+    try {
       let hasPerm = false;
       if (typeof model.handle.queryPermission === 'function') {
         const status = await model.handle.queryPermission({ mode: 'readwrite' });
@@ -2301,7 +2279,7 @@ async function renameModelFile(model, newBaseName) {
         if (req === 'granted') hasPerm = true;
       }
 
-      // 2. Renomear o arquivo no sistema operacional
+      // Renomear o arquivo no sistema operacional
       if (typeof model.handle.move === 'function') {
         await model.handle.move(newFullName);
       } else if (model.parentHandle) {
@@ -2314,18 +2292,19 @@ async function renameModelFile(model, newBaseName) {
         await model.parentHandle.removeEntry(model.name);
         model.handle = newFileHandle;
       } else {
-        throw new Error('Navegador não possui suporte nativo para mover arquivos.');
+        throw new Error('Sistema não possui suporte para mover arquivos diretamente.');
       }
 
-      // 3. Atualizar o objeto File local
+      // Atualizar o objeto File local
       if (typeof model.handle.getFile === 'function') {
         try {
           model.file = await model.handle.getFile();
         } catch (_) {}
       }
+      showToast(`Arquivo renomeado para "${newFullName}"! ✏️`, 'success');
     } catch (err) {
       if (err.name === 'AbortError' || err.name === 'NotAllowedError') {
-        showToast('Permissão de gravação negada. O arquivo não foi alterado.', 'warning');
+        showToast('Permissão negada para alterar o arquivo.', 'warning');
         return false;
       }
       console.error('Erro ao renomear arquivo no disco:', err);
@@ -2333,8 +2312,7 @@ async function renameModelFile(model, newBaseName) {
       return false;
     }
   } else {
-    // Modelos carregados sem FileSystemFileHandle (ex: sample_models ou fallback)
-    showToast('Nome atualizado na tela (para renomear no disco, use a pasta aberta nativamente).', 'info');
+    showToast(`Nome atualizado para "${newFullName}".`, 'info');
   }
 
   // Se o modelo era favorito, atualizar o nome nos favoritos
@@ -2454,9 +2432,15 @@ function setupModelDraggable(element, getModelFn) {
 }
 
 /**
- * Copia texto para a área de transferência de forma compatível com todos os navegadores.
+ * Copia texto para a área de transferência do Windows / SO.
  */
 async function copyTextToClipboard(text) {
+  if (window.electronAPI && typeof window.electronAPI.copyToClipboard === 'function') {
+    try {
+      const ok = await window.electronAPI.copyToClipboard(text);
+      if (ok) return true;
+    } catch (_) {}
+  }
   if (navigator.clipboard && window.isSecureContext) {
     try {
       await navigator.clipboard.writeText(text);
@@ -2609,7 +2593,7 @@ async function openModelInSlicer(model, buttonEl) {
     const textToCopy = fullPath || targetModel.name;
     const copied = await copyTextToClipboard(textToCopy);
     if (!copied) {
-      throw new Error('Permissão de cópia bloqueada pelo navegador');
+      throw new Error('Não foi possível acessar a área de transferência.');
     }
 
     if (buttonEl) {
