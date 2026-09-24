@@ -79,12 +79,13 @@ function clearMessages() {
     alertBanner.textContent = '';
     alertBanner.style.display = 'none';
   }
-  if (successBanner) {
-    successBanner.style.display = 'none';
-  }
   if (authOtpError) {
     authOtpError.textContent = '';
     authOtpError.style.display = 'none';
+  }
+  if (authLinkError) {
+    authLinkError.textContent = '';
+    authLinkError.style.display = 'none';
   }
 }
 
@@ -143,6 +144,9 @@ function updateAuthUI(session) {
     // Usuário Desconectado: Oculta Dashboard e exibe tela de login
     if (dashboardLayout) dashboardLayout.style.display = 'none';
     if (authContainer) authContainer.style.display = 'flex';
+    if (loginForm && (!successBanner || successBanner.style.display === 'none')) {
+      loginForm.style.display = 'block';
+    }
 
     // Fecha qualquer modal aberto
     const viewerModal = document.getElementById('viewerModal');
@@ -366,18 +370,37 @@ export async function handleExternalAuthUrl(rawUrlOrToken) {
 
     // 2.4 Token bruto de e-mail (token=...)
     const token = searchParams.get('token') || hashParams.get('token');
-    if (token && emailToVerify) {
-      const { data, error } = await verifyEmailOtp(emailToVerify, token);
-      if (error) throw error;
-      if (data?.session) {
-        updateAuthUI(data.session);
-        return true;
+    const typeParam = searchParams.get('type') || hashParams.get('type') || 'magiclink';
+    if (token) {
+      // Tentar como token_hash do link
+      try {
+        const { data, error } = await verifyTokenHash(token, typeParam);
+        if (!error && data?.session) {
+          updateAuthUI(data.session);
+          return true;
+        }
+      } catch (e1) {
+        console.warn('verifyTokenHash falhou, tentando alternativa:', e1);
+      }
+
+      // Tentar como código OTP de email se houver endereço
+      if (emailToVerify) {
+        try {
+          const { data, error } = await verifyEmailOtp(emailToVerify, token);
+          if (!error && data?.session) {
+            updateAuthUI(data.session);
+            return true;
+          }
+        } catch (e2) {
+          console.warn('verifyEmailOtp falhou:', e2);
+        }
       }
     }
 
     throw new Error('Não foi possível identificar credenciais válidas no link informado.');
   } catch (err) {
     console.error('Falha ao processar link de autenticação:', err);
+    if (successBanner) successBanner.style.display = 'block';
     if (authLinkError) {
       authLinkError.textContent = err.message || 'Falha ao validar o link de acesso.';
       authLinkError.style.display = 'block';
