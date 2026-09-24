@@ -8,12 +8,16 @@ app.name = 'Vault3D';
 const PROTOCOL_PREFIX = 'vault3d';
 
 // Registrar como handler padrão do protocolo vault3d:// (deep link)
-if (process.defaultApp) {
-  if (process.argv.length >= 2) {
-    app.setAsDefaultProtocolClient(PROTOCOL_PREFIX, process.execPath, [path.resolve(process.argv[1])]);
+try {
+  if (process.defaultApp) {
+    if (process.argv.length >= 2) {
+      app.setAsDefaultProtocolClient(PROTOCOL_PREFIX, process.execPath, [path.resolve(process.argv[1])]);
+    }
+  } else {
+    app.setAsDefaultProtocolClient(PROTOCOL_PREFIX);
   }
-} else {
-  app.setAsDefaultProtocolClient(PROTOCOL_PREFIX);
+} catch (err) {
+  console.warn('Aviso ao registrar protocolo:', err);
 }
 
 // Configurações do Auto-Updater
@@ -72,6 +76,13 @@ function createWindow() {
       }, 1000);
     }
   });
+
+  // Garantir que a janela seja exibida mesmo em máquinas com renderização atrasada
+  setTimeout(() => {
+    if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) {
+      mainWindow.show();
+    }
+  }, 1200);
 
   // Interceptar cliques em links externos para abrir no navegador padrão do sistema
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -233,14 +244,15 @@ ipcMain.handle('resolve-disk-path', async (event, { folderName, relPath }) => {
 // ==========================================
 const gotTheLock = app.requestSingleInstanceLock();
 
-if (!gotTheLock) {
-  // Já existe uma instância do Vault3D rodando; encerra a duplicata
+if (!gotTheLock && app.isPackaged) {
+  // Em produção empacotada, encerra a duplicata
   app.quit();
 } else {
   // Quando outra instância tenta rodar ou quando o usuário clica num deep link vault3d:// no navegador
   app.on('second-instance', (event, commandLine) => {
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
       mainWindow.focus();
     }
     const deepLinkUrl = commandLine.find(arg => arg.startsWith(`${PROTOCOL_PREFIX}://`));
