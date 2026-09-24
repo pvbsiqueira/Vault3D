@@ -39,7 +39,7 @@ function createWindow() {
     minWidth: 960,
     minHeight: 600,
     backgroundColor: '#0a0e17',
-    show: false,
+    show: true,
     title: 'Vault3D - Gerenciador 3D',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -52,10 +52,18 @@ function createWindow() {
   // Ocultar barra de menu padrão do Windows para visual limpo estilo app moderno
   mainWindow.setMenuBarVisibility(false);
 
+  // Escutar logs do console da janela para diagnóstico
+  mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
+    console.log(`[Renderer]: ${message} (${sourceId}:${line})`);
+  });
+
+  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
+    console.error(`[Load Error ${errorCode}]: ${errorDescription} (${validatedURL})`);
+  });
+
   // Carregar a aplicação local
   mainWindow.loadFile('index.html');
 
-  // Exibir a janela de forma suave assim que estiver pronta
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
 
