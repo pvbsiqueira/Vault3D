@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, dialog, session } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { autoUpdater } = require('electron-updater');
@@ -51,6 +51,10 @@ function createWindow() {
 
   // Ocultar barra de menu padrão do Windows para visual limpo estilo app moderno
   mainWindow.setMenuBarVisibility(false);
+
+  // Auto-conceder permissões para operações locais no Electron (sistema de arquivos, clipboard, etc.)
+  session.defaultSession.setPermissionCheckHandler(() => true);
+  session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => callback(true));
 
   // Escutar logs do console da janela para diagnóstico
   mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
@@ -199,8 +203,8 @@ ipcMain.handle('open-in-explorer', async (event, targetPath) => {
   return false;
 });
 
-// 5. Resolução nativa de caminhos no disco do Windows
-ipcMain.handle('resolve-disk-path', async (event, { folderName, relPath }) => {
+// Função auxiliar interna para resolução de caminhos de pastas no disco do Windows
+function resolveDiskPathInternal(folderName, relPath = '') {
   if (!folderName) return { success: false };
 
   const cleanRel = (relPath || '').replace(/\//g, path.sep);
@@ -245,6 +249,116 @@ ipcMain.handle('resolve-disk-path', async (event, { folderName, relPath }) => {
   }
 
   return { success: false };
+}
+
+// Varredura recursiva nativa ultrarrápida com Node.js fs
+async function scanDirectoryDiskRecursive(dirPath, rootPath = dirPath) {
+  let results = [];
+  try {
+    const entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = path.join(dirPath, entry.name);
+      if (entry.isDirectory()) {
+        const sub = await scanDirectoryDiskRecursive(fullPath, rootPath);
+        results = results.concat(sub);
+      } else if (entry.isFile()) {
+        const ext = path.extname(entry.name).toLowerCase().replace('.', '');
+        if (ext === 'stl' || ext === '3mf') {
+          const stats = await fs.promises.stat(fullPath);
+          const relPath = path.relative(rootPath, fullPath).replace(/\\/g, '/');
+          results.push({
+            name: entry.name,
+            path: relPath,
+            size: stats.size,
+            lastModified: Math.round(stats.mtimeMs),
+            type: ext,
+            fullDiskPath: fullPath
+          });
+        }
+      }
+    }
+  } catch (err) {
+    console.warn(`Erro ao ler pasta ${dirPath}:`, err);
+  }
+  return results;
+}
+
+// 5. Resolução nativa de caminhos no disco do Windows
+ipcMain.handle('resolve-disk-path', async (event, { folderName, relPath }) => {
+  return resolveDiskPathInternal(folderName, relPath);
+});
+
+// 5.1. Varredura nativa completa de pasta no disco
+ipcMain.handle('scan-folder-disk', async (event, targetPathOrName) => {
+  if (!targetPathOrName) return { success: false, message: 'Caminho não fornecido' };
+
+  let targetFolder = targetPathOrName;
+  if (!fs.existsSync(targetFolder)) {
+    const resolved = resolveDiskPathInternal(targetPathOrName);
+    if (resolved.success && resolved.rootFolder) {
+      targetFolder = resolved.rootFolder;
+    } else {
+      return { success: false, message: 'Pasta não encontrada no disco' };
+    }
+  }
+
+  try {
+    const stat = await fs.promises.stat(targetFolder);
+    if (!stat.isDirectory()) {
+      return { success: false, message: 'O caminho não é uma pasta' };
+    }
+    const files = await scanDirectoryDiskRecursive(targetFolder, targetFolder);
+    return {
+      success: true,
+      folderPath: targetFolder,
+      folderName: path.basename(targetFolder),
+      files
+    };
+  } catch (err) {
+    return { success: false, message: err.message };
+  }
+});
+
+// 5.2. Leitura nativa de arquivo no disco
+ipcMain.handle('read-file', async (event, filePath) => {
+  if (!filePath || !fs.existsSync(filePath)) {
+    throw new Error('Arquivo não encontrado: ' + filePath);
+  }
+  return await fs.promises.readFile(filePath);
+});
+
+// 5.3. Leitura nativa de fatia/chunk de arquivo no disco
+ipcMain.handle('read-file-chunk', async (event, { filePath, start, length }) => {
+  if (!filePath || !fs.existsSync(filePath)) {
+    throw new Error('Arquivo não encontrado: ' + filePath);
+  }
+  let fileHandle = null;
+  try {
+    fileHandle = await fs.promises.open(filePath, 'r');
+    const buffer = Buffer.alloc(length);
+    const { bytesRead } = await fileHandle.read(buffer, 0, length, start);
+    return buffer.subarray(0, bytesRead);
+  } finally {
+    if (fileHandle) await fileHandle.close();
+  }
+});
+
+// 5.4. Diálogo nativo do Windows para seleção de pasta
+ipcMain.handle('select-folder-dialog', async (event, defaultPath) => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Selecionar Pasta de Modelos 3D',
+    defaultPath: defaultPath && fs.existsSync(defaultPath) ? defaultPath : undefined,
+    properties: ['openDirectory']
+  });
+  if (result.canceled || !result.filePaths || result.filePaths.length === 0) {
+    return { canceled: true };
+  }
+  const folderPath = result.filePaths[0];
+  return {
+    canceled: false,
+    folderPath,
+    folderName: path.basename(folderPath)
+  };
 });
 
 // 6. Abrir arquivo 3D diretamente no Fatiador associado pelo Windows (Bambu, Orca, Cura, etc.)

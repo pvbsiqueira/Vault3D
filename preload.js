@@ -10,6 +10,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Resolução nativa de caminho no disco (dispensa servidor companion no Desktop)
   resolveDiskPath: (folderName, relPath) => ipcRenderer.invoke('resolve-disk-path', { folderName, relPath }),
 
+  // Varredura nativa completa de pasta no disco
+  scanFolderDisk: (folderPathOrName) => ipcRenderer.invoke('scan-folder-disk', folderPathOrName),
+
+  // Leitura nativa de arquivo no disco
+  readFile: (filePath) => ipcRenderer.invoke('read-file', filePath),
+
+  // Leitura nativa de fatia/chunk de arquivo no disco
+  readFileChunk: (filePath, start, length) => ipcRenderer.invoke('read-file-chunk', { filePath, start, length }),
+
+  // Diálogo nativo de seleção de pasta no Windows
+  selectFolderDialog: (defaultPath) => ipcRenderer.invoke('select-folder-dialog', defaultPath),
+
   // Abrir pasta ou arquivo no Windows Explorer
   openInExplorer: (filePath) => ipcRenderer.invoke('open-in-explorer', filePath),
 

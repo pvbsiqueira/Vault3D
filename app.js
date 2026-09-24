@@ -628,6 +628,41 @@ async function handleChooseFolder() {
  * Executa a seleção da pasta no navegador
  */
 async function proceedWithDirectoryPicker() {
+  if (window.electronAPI && typeof window.electronAPI.selectFolderDialog === 'function') {
+    try {
+      const res = await window.electronAPI.selectFolderDialog();
+      if (!res.canceled && res.folderPath) {
+        if (state.folders.some(f => f.name.toLowerCase() === res.folderName.toLowerCase())) {
+          showToast(`A pasta "${res.folderName}" já está na biblioteca.`, 'warning');
+          return;
+        }
+        const scanRes = await window.electronAPI.scanFolderDisk(res.folderPath);
+        if (scanRes && scanRes.success && scanRes.files && scanRes.files.length > 0) {
+          const files = scanRes.files.map(item => ({
+            file: createDesktopFileProxy(item.fullDiskPath, item.name, item.size, item.lastModified),
+            name: item.name,
+            size: item.size,
+            lastModified: item.lastModified,
+            type: item.type,
+            path: item.path,
+            fullDiskPath: item.fullDiskPath,
+            fullFolderDirectory: scanRes.folderPath + '\\',
+            handle: null,
+            parentHandle: null
+          }));
+          state.folderDiskPaths[res.folderName] = res.folderPath;
+          saveFolderDiskPaths();
+          await addFilesToLibrary(files, res.folderName, null, true);
+        } else {
+          showToast(`Nenhum arquivo 3D (.STL ou .3MF) foi encontrado em "${res.folderName}".`, 'warning');
+        }
+      }
+      return;
+    } catch (e) {
+      console.warn('Erro ao selecionar pasta via diálogo nativo:', e);
+    }
+  }
+
   if ('showDirectoryPicker' in window) {
     try {
       const dirHandle = await window.showDirectoryPicker({ mode: 'read' });
@@ -1263,6 +1298,7 @@ async function saveFolderToDB(folderData) {
         handle: folderData.handle || null,
         count: folderData.count || 0,
         isSample: !!folderData.isSample,
+        diskPath: folderData.diskPath || (state.folderDiskPaths && state.folderDiskPaths[folderData.name]) || null,
         savedAt: Date.now()
       });
     };
@@ -1337,6 +1373,55 @@ async function getAllFoldersFromDB() {
   }
 }
 
+/**
+ * Cria um objeto compatível com a interface Web File para arquivos no modo Desktop (Electron)
+ * Permite leitura sob demanda (lazy) sem carregar gigabytes de arquivos na memória RAM.
+ */
+function createDesktopFileProxy(fullDiskPath, name, size, lastModified) {
+  return {
+    name,
+    size: size || 0,
+    lastModified: lastModified || Date.now(),
+    fullDiskPath,
+    async arrayBuffer() {
+      if (window.electronAPI && typeof window.electronAPI.readFile === 'function') {
+        const raw = await window.electronAPI.readFile(fullDiskPath);
+        if (raw instanceof ArrayBuffer) return raw;
+        if (raw && raw.buffer instanceof ArrayBuffer) {
+          return raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength);
+        }
+        return raw;
+      }
+      const res = await fetch('file:///' + fullDiskPath.replace(/\\/g, '/'));
+      return await res.arrayBuffer();
+    },
+    slice(start = 0, end = size) {
+      const targetStart = Math.max(0, start);
+      const targetEnd = Math.min(size, end !== undefined ? end : size);
+      const chunkLength = Math.max(0, targetEnd - targetStart);
+      return {
+        size: chunkLength,
+        async arrayBuffer() {
+          if (window.electronAPI && typeof window.electronAPI.readFileChunk === 'function') {
+            const raw = await window.electronAPI.readFileChunk(fullDiskPath, targetStart, chunkLength);
+            if (raw instanceof ArrayBuffer) return raw;
+            if (raw && raw.buffer instanceof ArrayBuffer) {
+              return raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength);
+            }
+            return raw;
+          }
+          const fullBuf = await this.arrayBuffer();
+          return fullBuf.slice(targetStart, targetEnd);
+        }
+      };
+    },
+    async getBlob() {
+      const buf = await this.arrayBuffer();
+      return new Blob([buf], { type: 'application/octet-stream' });
+    }
+  };
+}
+
 let isRestoringSavedFolders = false;
 
 /**
@@ -1354,8 +1439,14 @@ async function checkAndRestoreSavedFolders() {
       return;
     }
 
-    // Filtrar pastas válidas
-    const validSaved = savedFolders.filter(f => f.isSample || (f.handle && typeof f.handle.queryPermission === 'function'));
+    const isElectron = !!(window.electronAPI && window.electronAPI.isElectron);
+
+    // Filtrar pastas válidas (no desktop, suporta handle OU caminho no disco)
+    const validSaved = savedFolders.filter(f => 
+      f.isSample || 
+      (f.handle && typeof f.handle.queryPermission === 'function') ||
+      (isElectron && (f.diskPath || state.folderDiskPaths?.[f.name] || f.name))
+    );
     if (validSaved.length === 0) {
       if (savedFoldersCard) savedFoldersCard.style.display = 'none';
       return;
@@ -1370,7 +1461,57 @@ async function checkAndRestoreSavedFolders() {
       return;
     }
 
-    // Verificar se todas as pastas com handle já possuem permissão concedida
+    // 1. MODO DESKTOP (ELECTRON): Restauração nativa direta e silenciosa!
+    // Sem prompts de permissão, abrindo a biblioteca instantaneamente ao iniciar o app.
+    if (isElectron) {
+      let restoredCount = 0;
+      for (const f of validSaved) {
+        if (state.folders.some(sf => sf.id === f.id || (sf.name && sf.name.toLowerCase() === f.name.toLowerCase()))) {
+          continue;
+        }
+
+        if (f.isSample) {
+          await loadSampleModels(false);
+          restoredCount++;
+          continue;
+        }
+
+        const diskPathCandidate = f.diskPath || state.folderDiskPaths?.[f.name] || f.name;
+        try {
+          const scanRes = await window.electronAPI.scanFolderDisk(diskPathCandidate);
+          if (scanRes && scanRes.success && scanRes.files && scanRes.files.length > 0) {
+            const files = scanRes.files.map(item => ({
+              file: createDesktopFileProxy(item.fullDiskPath, item.name, item.size, item.lastModified),
+              name: item.name,
+              size: item.size,
+              lastModified: item.lastModified,
+              type: item.type,
+              path: item.path,
+              fullDiskPath: item.fullDiskPath,
+              fullFolderDirectory: scanRes.folderPath + '\\',
+              handle: f.handle || null,
+              parentHandle: null
+            }));
+
+            state.folderDiskPaths[f.name] = scanRes.folderPath;
+            saveFolderDiskPaths();
+
+            await addFilesToLibrary(files, f.name, f.handle, false, f.id);
+            restoredCount++;
+          }
+        } catch (err) {
+          console.warn('Falha na restauração nativa da pasta salva:', f.name, err);
+        }
+      }
+
+      if (restoredCount > 0 || state.folders.length > 0) {
+        if (savedFoldersCard) savedFoldersCard.style.display = 'none';
+        showToast(`Biblioteca restaurada com ${state.folders.length} pasta(s) salva(s)! 📂`, 'success');
+        return;
+      }
+    }
+
+    // 2. MODO WEB (File System Access API): Verificar se permissão já está concedida
     let allGranted = true;
     for (const f of validSaved) {
       if (!f.isSample && f.handle) {
@@ -1457,7 +1598,40 @@ async function reconnectAllSavedFolders() {
     if (f.isSample) {
       await loadSampleModels(false);
       reconnectedCount++;
-    } else if (f.handle) {
+      continue;
+    }
+
+    // No desktop, tenta primeiro via varredura nativa do disco
+    if (window.electronAPI && typeof window.electronAPI.scanFolderDisk === 'function') {
+      try {
+        const diskPathCandidate = f.diskPath || state.folderDiskPaths?.[f.name] || f.name;
+        const scanRes = await window.electronAPI.scanFolderDisk(diskPathCandidate);
+        if (scanRes && scanRes.success && scanRes.files && scanRes.files.length > 0) {
+          const files = scanRes.files.map(item => ({
+            file: createDesktopFileProxy(item.fullDiskPath, item.name, item.size, item.lastModified),
+            name: item.name,
+            size: item.size,
+            lastModified: item.lastModified,
+            type: item.type,
+            path: item.path,
+            fullDiskPath: item.fullDiskPath,
+            fullFolderDirectory: scanRes.folderPath + '\\',
+            handle: f.handle || null,
+            parentHandle: null
+          }));
+          state.folderDiskPaths[f.name] = scanRes.folderPath;
+          saveFolderDiskPaths();
+          await addFilesToLibrary(files, f.name, f.handle, false, f.id);
+          reconnectedCount++;
+          continue;
+        }
+      } catch (errN) {
+        console.warn('Falha na reconexão nativa:', f.name, errN);
+      }
+    }
+
+    // Fallback Web com File System Access Handle
+    if (f.handle) {
       try {
         let perm = await f.handle.queryPermission({ mode: 'read' });
         if (perm !== 'granted') {
@@ -1601,7 +1775,8 @@ async function addFilesToLibrary(files, folderName, dirHandle = null, persistToD
       name: folderName,
       handle: dirHandle,
       count: newModels.length,
-      isSample: folderName.includes('sample_models')
+      isSample: folderName.includes('sample_models'),
+      diskPath: state.folderDiskPaths?.[folderName] || null
     });
   }
 
@@ -2245,23 +2420,29 @@ function setupModelDraggable(element, getModelFn) {
 
     if (file) {
       if (!target._blobUrl) {
-        target._blobUrl = URL.createObjectURL(file);
+        if (file instanceof Blob) {
+          target._blobUrl = URL.createObjectURL(file);
+        }
       }
       const blobUrl = target._blobUrl;
 
       // 1. DownloadURL nativo do Chromium para arrastar para a janela do fatiador ou Windows Explorer
-      e.dataTransfer.setData('DownloadURL', `application/octet-stream:${fileName}:${blobUrl}`);
+      if (blobUrl) {
+        e.dataTransfer.setData('DownloadURL', `application/octet-stream:${fileName}:${blobUrl}`);
+      }
 
       // 2. DataTransfer Items para navegadores / Electron
       try {
-        if (e.dataTransfer.items) {
+        if (e.dataTransfer.items && file instanceof Blob) {
           e.dataTransfer.items.add(file);
         }
       } catch (_) {}
 
       // 3. Fallback text/plain e URI list
       e.dataTransfer.setData('text/plain', fullPath || fileName);
-      e.dataTransfer.setData('text/uri-list', blobUrl);
+      if (blobUrl) {
+        e.dataTransfer.setData('text/uri-list', blobUrl);
+      }
     } else if (fullPath) {
       e.dataTransfer.setData('text/plain', fullPath);
     }
