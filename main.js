@@ -41,6 +41,7 @@ function createWindow() {
     backgroundColor: '#0a0e17',
     show: true,
     title: 'Vault3D - Gerenciador 3D',
+    icon: path.join(__dirname, 'build', 'icon.ico'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
@@ -66,7 +67,7 @@ function createWindow() {
   });
 
   // Carregar a aplicação local
-  mainWindow.loadFile('index.html');
+  mainWindow.loadFile('app.html');
 
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();

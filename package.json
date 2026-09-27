@@ -47,9 +47,12 @@
       "!.git/*",
       "!.github/*",
       "!*.bat",
-      "!*.ps1"
+      "!*.ps1",
+      "!sample_models/*",
+      "!Imagens/*"
     ],
     "win": {
+      "icon": "build/icon.ico",
       "target": [
         {
           "target": "nsis",
@@ -64,7 +67,10 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Vault3D"
+      "shortcutName": "Vault3D",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico"
     },
     "publish": [
       {
