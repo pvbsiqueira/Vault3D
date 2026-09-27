@@ -50,7 +50,7 @@
       </nav>
 
       <div class="nav-actions">
-        <a href="https://github.com/pvbsiqueira/Vault3D/releases/latest/download/Vault3D-Setup-1.0.0.exe" class="btn-nav-download" id="btnNavDownload">
+        <a href="https://github.com/pvbsiqueira/Vault3D/releases/latest/download/Vault3D.Setup.1.0.0.exe" class="btn-nav-download" id="btnNavDownload">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
             <polyline points="7 10 12 15 17 10"></polyline>
@@ -82,7 +82,7 @@
         </p>
 
         <div class="hero-cta-wrap">
-          <a href="https://github.com/pvbsiqueira/Vault3D/releases/latest/download/Vault3D-Setup-1.0.0.exe" class="btn-primary-download" id="btnHeroDownload">
+          <a href="https://github.com/pvbsiqueira/Vault3D/releases/latest/download/Vault3D.Setup.1.0.0.exe" class="btn-primary-download" id="btnHeroDownload">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
               <polyline points="7 10 12 15 17 10"></polyline>
@@ -285,7 +285,7 @@
           <h2>Pronto para organizar sua biblioteca 3D?</h2>
           <p>Baixe o Vault3D gratuitamente e aproveite o melhor desempenho na visualização e envio direto para fatiadores.</p>
 
-          <a href="https://github.com/pvbsiqueira/Vault3D/releases/latest/download/Vault3D-Setup-1.0.0.exe" class="btn-primary-download" id="btnBottomDownload">
+          <a href="https://github.com/pvbsiqueira/Vault3D/releases/latest/download/Vault3D.Setup.1.0.0.exe" class="btn-primary-download" id="btnBottomDownload">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
               <polyline points="7 10 12 15 17 10"></polyline>
@@ -309,10 +309,30 @@
     </div>
   </footer>
 
-  <!-- Script para Interceptação de Deep Link / Magic Link no Navegador -->
+  <!-- Scripts -->
   <script>
     (function() {
-      // Se o usuário clicou no Magic Link no e-mail e foi redirecionado para a página web
+      // 1. Resolução dinâmica do link de download da release mais recente do GitHub
+      fetch('https://api.github.com/repos/pvbsiqueira/Vault3D/releases/latest')
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+          if (data && data.assets && Array.isArray(data.assets)) {
+            var exeAsset = data.assets.find(function(a) {
+              return a.name && a.name.toLowerCase().endsWith('.exe');
+            });
+            if (exeAsset && exeAsset.browser_download_url) {
+              var downloadBtns = document.querySelectorAll('#btnNavDownload, #btnHeroDownload, #btnBottomDownload');
+              downloadBtns.forEach(function(btn) {
+                btn.href = exeAsset.browser_download_url;
+              });
+            }
+          }
+        })
+        .catch(function(err) {
+          console.warn('Fallback para download padrão:', err);
+        });
+
+      // 2. Se o usuário clicou no Magic Link no e-mail e foi redirecionado para a página web
       const hash = window.location.hash || '';
       const search = window.location.search || '';
 
