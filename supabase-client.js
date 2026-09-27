@@ -56,7 +56,9 @@ export async function signInWithMagicLink(email) {
     throw new Error('Por favor, informe um endereço de e-mail válido.');
   }
 
-  const options = {};
+  const options = {
+    shouldCreateUser: true
+  };
   if (typeof window !== 'undefined' && window.location && window.location.protocol && window.location.protocol.startsWith('http')) {
     options.emailRedirectTo = `${window.location.origin}/auth/callback`;
   }
