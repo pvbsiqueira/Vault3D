@@ -23,13 +23,13 @@
         </div>
         <div class="auth-badge">ACESSO SEGURO</div>
         <h2 class="auth-title">Vault3D</h2>
-        <p class="auth-subtitle">Entre com seu e-mail para receber um link de acesso instantâneo sem necessidade de senha.</p>
+        <p class="auth-subtitle">Entre com seu e-mail para receber seu código de acesso instantâneo sem necessidade de senha.</p>
       </div>
 
       <!-- Banner de Alerta / Erro -->
       <div class="auth-alert-banner" id="authAlertBanner" style="display: none;"></div>
 
-      <!-- Formulário de Envio do Magic Link -->
+      <!-- Formulário de Envio do Código -->
       <form class="auth-form" id="authLoginForm" novalidate>
         <div class="auth-input-group">
           <label for="authEmailInput" class="auth-label">E-mail</label>
@@ -51,7 +51,7 @@
 
         <button type="submit" class="btn-auth-submit" id="btnSendMagicLink">
           <span class="btn-spinner" style="display: none;"></span>
-          <span class="btn-text">Entrar com Magic Link</span>
+          <span class="btn-text">Receber meu código</span>
           <svg class="btn-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <line x1="22" y1="2" x2="11" y2="13"></line>
             <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
@@ -69,8 +69,8 @@
         </div>
         <h3 class="auth-success-title">Verifique sua caixa de entrada!</h3>
         <p class="auth-success-desc">
-          Enviamos um link mágico de acesso para <strong id="authSuccessSentEmail"></strong>.
-          Basta clicar no link recebido para entrar diretamente.
+          Enviamos seu código de acesso para <strong id="authSuccessSentEmail"></strong>.
+          Digite o código de 6 dígitos abaixo para entrar.
         </p>
 
         <!-- Campo para digitar o código numérico de 6 dígitos recebido por e-mail -->
@@ -113,7 +113,7 @@
         </div>
 
         <div class="auth-success-actions">
-          <button type="button" class="btn-auth-secondary" id="btnResendMagicLink">Reenviar link</button>
+          <button type="button" class="btn-auth-secondary" id="btnResendMagicLink">Reenviar código</button>
           <button type="button" class="btn-auth-text" id="btnUseOtherEmail">Usar outro e-mail</button>
         </div>
       </div>

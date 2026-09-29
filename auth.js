@@ -104,11 +104,11 @@ function setLoading(isLoading) {
 
   if (isLoading) {
     btnSubmit.disabled = true;
-    if (btnText) btnText.textContent = 'Enviando Link...';
+    if (btnText) btnText.textContent = 'Enviando código...';
     if (btnSpinner) btnSpinner.style.display = 'inline-block';
   } else {
     btnSubmit.disabled = false;
-    if (btnText) btnText.textContent = 'Entrar com Magic Link';
+    if (btnText) btnText.textContent = 'Receber meu código';
     if (btnSpinner) btnSpinner.style.display = 'none';
   }
 }
@@ -229,7 +229,7 @@ async function handleLoginSubmit(e) {
 
     if (error) {
       console.error('Erro retornado pelo signInWithMagicLink:', error);
-      showError(error.message || 'Erro ao enviar o link de acesso. Verifique suas credenciais.');
+      showError(error.message || 'Erro ao enviar o código de acesso. Verifique suas credenciais.');
       return;
     }
 
