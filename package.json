@@ -1,6 +1,6 @@
 {
   "name": "vault3d",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "Visualizador e Gerenciador 3D para Impressão 3D (STL e 3MF)",
   "main": "main.js",
   "scripts": {
