@@ -64,6 +64,7 @@ p { margin: 0; }
 .top { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 1.15rem; letter-spacing: -0.02em; }
 .brand img { width: 32px; height: 32px; border-radius: 9px; }
+.brand b { color: var(--accent); font-weight: inherit; }
 .top-meta { display: flex; align-items: center; gap: 18px; color: var(--muted); font-size: .88rem; }
 
 /* ---------- Banner de login ---------- */
