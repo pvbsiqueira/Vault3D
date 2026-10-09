@@ -93,6 +93,7 @@ const allFoldersBadge = document.getElementById('allFoldersBadge');
 const fileCountBadge = document.getElementById('fileCountBadge');
 const sidebarStlCountBadge = document.getElementById('sidebarStlCountBadge');
 const sidebar3mfCountBadge = document.getElementById('sidebar3mfCountBadge');
+const statsScopeLabel = document.getElementById('statsScopeLabel');
 
 // Elementos DOM do Topbar & Filtros
 const currentViewTitle = document.getElementById('currentViewTitle');
@@ -1912,6 +1913,7 @@ function selectFolder(folderId, subfolderPath = null) {
   state.activeSubfolderPath = subfolderPath;
   state.currentPage = 1;
   updateFolderSelectionUI();
+  updateStatsBadge();
   renderGallery();
 }
 
@@ -1923,6 +1925,7 @@ function resetFolderFilter() {
   state.activeSubfolderPath = null;
   state.currentPage = 1;
   updateFolderSelectionUI();
+  updateStatsBadge();
   renderGallery();
 }
 
@@ -2118,8 +2121,6 @@ function updateStatsBadge() {
   const totalItems = displayItems.length;
   const projectCount = displayItems.filter(m => m.isProject).length;
   const totalFiles = state.models.length;
-  const stlCount = state.models.filter(m => m.type === 'stl').length;
-  const tmfCount = state.models.filter(m => m.type === '3mf').length;
   const favCount = displayItems.filter(m => m.isFavorite).length;
   const dupCount = state.models.filter(m => m.isDuplicate).length;
   const foldersCount = state.folders.length;
@@ -2133,19 +2134,48 @@ function updateStatsBadge() {
     navDuplicates.style.display = dupCount > 0 ? 'flex' : 'none';
   }
 
-  if (fileCountBadge) {
-    if (projectCount > 0) {
-      fileCountBadge.textContent = `${totalItems} itens (${projectCount} projeto${projectCount === 1 ? '' : 's'}, ${totalFiles} arquivos)`;
+  // Faixa de resumo: conta apenas a pasta/subpasta selecionada (ou tudo, se nenhuma)
+  const hasFolderScope = Boolean(state.activeFolderId);
+  const scopedModels = hasFolderScope
+    ? state.models.filter(m => isModelInFolderFilter(m, state.activeFolderId, state.activeSubfolderPath))
+    : state.models;
+  const scopedItems = hasFolderScope
+    ? displayItems.filter(item => item.isProject
+        ? item.parts && item.parts.some(p => isModelInFolderFilter(p, state.activeFolderId, state.activeSubfolderPath))
+        : isModelInFolderFilter(item, state.activeFolderId, state.activeSubfolderPath))
+    : displayItems;
+  const scopedProjectCount = scopedItems.filter(m => m.isProject).length;
+  const scopedFiles = scopedModels.length;
+
+  if (statsScopeLabel) {
+    if (hasFolderScope) {
+      const activeFolder = state.folders.find(f => f.id === state.activeFolderId);
+      const scopeName = state.activeSubfolderPath
+        ? state.activeSubfolderPath.split('/').pop()
+        : (activeFolder ? activeFolder.name : 'Pasta');
+      statsScopeLabel.textContent = `Pasta: ${scopeName}`;
+      statsScopeLabel.title = state.activeSubfolderPath
+        ? `${activeFolder ? activeFolder.name + '/' : ''}${state.activeSubfolderPath}`
+        : scopeName;
     } else {
-      fileCountBadge.textContent = `${totalFiles} modelo${totalFiles === 1 ? '' : 's'}`;
+      statsScopeLabel.textContent = 'Coleção';
+      statsScopeLabel.title = '';
+    }
+  }
+
+  if (fileCountBadge) {
+    if (scopedProjectCount > 0) {
+      fileCountBadge.textContent = `${scopedItems.length} itens (${scopedProjectCount} projeto${scopedProjectCount === 1 ? '' : 's'}, ${scopedFiles} arquivos)`;
+    } else {
+      fileCountBadge.textContent = `${scopedFiles} modelo${scopedFiles === 1 ? '' : 's'}`;
     }
   }
 
   if (sidebarStlCountBadge) {
-    sidebarStlCountBadge.textContent = `${stlCount}.STL`;
+    sidebarStlCountBadge.textContent = `${scopedModels.filter(m => m.type === 'stl').length}.STL`;
   }
   if (sidebar3mfCountBadge) {
-    sidebar3mfCountBadge.textContent = `${tmfCount}.3MF`;
+    sidebar3mfCountBadge.textContent = `${scopedModels.filter(m => m.type === '3mf').length}.3MF`;
   }
   if (sidebarFoldersCountBadge) {
     sidebarFoldersCountBadge.textContent = foldersCount;

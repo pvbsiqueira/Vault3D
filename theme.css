@@ -778,3 +778,4 @@ body.dashboard-body {
 }
 .format-filter .sidebar-format-btn { height: 26px; padding: 0 10px; }
 .format-filter[hidden] { display: none; }
+#statsScopeLabel { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
