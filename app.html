@@ -4,7 +4,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Vault3D - Visualizador & Organizador STL e 3MF</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap">
   <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="theme.css">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220%22%20viewBox=%220%200%20100%20100%22><text y=%22.9em%22 font-size=%2290%22>📦</text></svg>">
 </head>
 <body class="dashboard-body">
@@ -154,14 +158,14 @@
   </div>
 
   <div class="dashboard-layout" id="dashboardLayout">
-    
+
     <!-- Sidebar Lateral Esquerda -->
     <aside class="dashboard-sidebar" id="appSidebar">
       <!-- Marca do Topo da Sidebar -->
       <div class="sidebar-header">
         <div class="brand">
           <div class="brand-icon">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
               <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
               <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
               <line x1="12" y1="22.08" x2="12" y2="12"></line>
@@ -170,22 +174,20 @@
           <div class="brand-text">
             <div class="brand-title-wrap">
               <span class="brand-title">Vault3D</span>
-              <span class="brand-badge">PRO</span>
             </div>
-            <span class="brand-sub">Gerenciador STL / 3MF</span>
           </div>
+          <span class="brand-badge">PRO</span>
         </div>
       </div>
 
       <!-- Ação Primária da Sidebar -->
       <div class="sidebar-actions-wrap">
         <button id="btnSelectFolder" class="btn btn-primary sidebar-btn-add" title="Adicionar pasta local à biblioteca 3D">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
-            <line x1="12" y1="11" x2="12" y2="17"></line>
-            <line x1="9" y1="14" x2="15" y2="14"></line>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
           </svg>
-          <span>Adicionar Pasta</span>
+          <span>Adicionar pasta</span>
         </button>
 
         <input type="file" id="folderInputFallback" webkitdirectory directory multiple style="display: none;">
@@ -193,19 +195,56 @@
 
       <!-- Menus e Filtros de Navegação -->
       <div class="sidebar-scrollable-content">
-        
+
+        <!-- Seção: Navegação da Biblioteca -->
+        <div class="sidebar-section">
+          <div class="sidebar-section-title">Biblioteca</div>
+          <nav class="sidebar-nav">
+            <button class="sidebar-nav-item active" id="navAllModels" data-section="all" type="button">
+              <span class="nav-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"></rect><rect x="14" y="3" width="7" height="7" rx="1"></rect><rect x="3" y="14" width="7" height="7" rx="1"></rect><rect x="14" y="14" width="7" height="7" rx="1"></rect></svg>
+              </span>
+              <span class="nav-label">Todos os modelos</span>
+              <span class="nav-badge" id="sidebarAllCountBadge">0</span>
+            </button>
+            <button class="sidebar-nav-item" id="navProjects" data-section="projects" type="button">
+              <span class="nav-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+              </span>
+              <span class="nav-label">Projetos</span>
+              <span class="nav-badge" id="sidebarProjectsCountBadge">0</span>
+            </button>
+            <button class="sidebar-nav-item" id="navFavorites" data-section="favorites" type="button">
+              <span class="nav-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+              </span>
+              <span class="nav-label">Favoritos</span>
+              <span class="nav-badge" id="sidebarFavoritesCountBadge">0</span>
+            </button>
+            <button class="sidebar-nav-item item-duplicates" id="navDuplicates" data-section="duplicates" type="button" style="display: none;">
+              <span class="nav-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="12" height="12" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+              </span>
+              <span class="nav-label">Duplicados</span>
+              <span class="nav-badge badge-warning" id="sidebarDuplicatesCountBadge">0</span>
+            </button>
+          </nav>
+        </div>
+
         <!-- Seção: Pastas Conectadas -->
         <div class="sidebar-section sidebar-folders-section" id="sidebarFoldersSection">
           <div class="sidebar-section-header">
-            <div class="sidebar-section-title">PASTAS CONECTADAS</div>
+            <div class="sidebar-section-title">Pastas conectadas</div>
             <span class="sidebar-folders-count" id="sidebarFoldersCountBadge">0</span>
           </div>
 
           <!-- Chamada secundária: Exibir todas as pastas -->
           <div class="sidebar-all-folders-wrap" id="sidebarAllFoldersWrap" style="display: none;">
             <button class="btn-show-all-folders active" id="btnShowAllFolders" type="button" title="Exibir arquivos de todas as pastas conectadas">
-              <span class="all-folders-icon">🗂️</span>
-              <span class="all-folders-text">Exibir todas as pastas</span>
+              <span class="all-folders-icon">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+              </span>
+              <span class="all-folders-text">Todas as pastas</span>
               <span class="all-folders-badge" id="allFoldersBadge"></span>
             </button>
           </div>
@@ -215,127 +254,107 @@
           </div>
         </div>
 
-        <!-- Seção: Navegação da Biblioteca -->
-        <div class="sidebar-section">
-          <div class="sidebar-section-title">BIBLIOTECA</div>
-          <nav class="sidebar-nav">
-            <button class="sidebar-nav-item active" id="navAllModels" data-section="all" type="button">
-              <span class="nav-icon">📁</span>
-              <span class="nav-label">Todos os Modelos</span>
-              <span class="nav-badge" id="sidebarAllCountBadge">0</span>
-            </button>
-            <button class="sidebar-nav-item" id="navProjects" data-section="projects" type="button">
-              <span class="nav-icon">📦</span>
-              <span class="nav-label">Projetos</span>
-              <span class="nav-badge" id="sidebarProjectsCountBadge">0</span>
-            </button>
-            <button class="sidebar-nav-item" id="navFavorites" data-section="favorites" type="button">
-              <span class="nav-icon">⭐</span>
-              <span class="nav-label">Favoritos</span>
-              <span class="nav-badge" id="sidebarFavoritesCountBadge">0</span>
-            </button>
-            <button class="sidebar-nav-item item-duplicates" id="navDuplicates" data-section="duplicates" type="button" style="display: none;">
-              <span class="nav-icon">⚠️</span>
-              <span class="nav-label">Duplicados</span>
-              <span class="nav-badge badge-warning" id="sidebarDuplicatesCountBadge">0</span>
-            </button>
-          </nav>
-        </div>
-
-        <!-- Seção: Filtro de Formatos -->
-        <div class="sidebar-section">
-          <div class="sidebar-section-title">FORMATOS</div>
-          <div class="sidebar-format-group">
-            <button class="sidebar-format-btn active pill-btn" data-filter="all" type="button">Todos</button>
-            <button class="sidebar-format-btn pill-btn" data-filter="stl" type="button"><span class="format-dot stl"></span>.STL</button>
-            <button class="sidebar-format-btn pill-btn" data-filter="3mf" type="button"><span class="format-dot tmf"></span>.3MF</button>
-          </div>
-        </div>
-
       </div>
 
-      <!-- Rodapé da Sidebar: Estatísticas -->
-      <div class="sidebar-footer" id="sidebarStatsWidget">
-        <div class="sidebar-stats-row">
-          <span class="stats-label">Coleção:</span>
-          <span class="stats-val" id="fileCountBadge">0 modelos</span>
-        </div>
-        <div class="sidebar-stats-bars">
-          <span class="stats-badge stl" id="sidebarStlCountBadge">0 STL</span>
-          <span class="stats-badge tmf" id="sidebar3mfCountBadge">0 3MF</span>
+      <!-- Rodapé da Sidebar: Usuário conectado e botão Sair -->
+      <div class="sidebar-user-footer">
+        <div class="topbar-user-wrap" id="topbarUserWrap" style="display: none;">
+          <div class="user-pill" id="authUserBadge" title="Usuário Conectado">
+            <span class="user-avatar" aria-hidden="true">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+              <span class="user-status-dot"></span>
+            </span>
+            <span class="user-meta">
+              <span class="user-email-text" id="topbarUserEmail">usuario@email.com</span>
+              <span class="user-session-text">Sessão ativa</span>
+            </span>
+          </div>
+          <button class="btn-logout" id="btnLogout" type="button" title="Encerrar sessão / Sair da conta">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+              <polyline points="16 17 21 12 16 7"></polyline>
+              <line x1="21" y1="12" x2="9" y2="12"></line>
+            </svg>
+            <span>Sair</span>
+          </button>
         </div>
       </div>
     </aside>
 
     <!-- Área Principal do Dashboard -->
     <div class="dashboard-main">
-      
-      <!-- Topbar do Dashboard -->
+
+      <!-- Topbar do Dashboard: trilha de navegação + busca -->
       <header class="dashboard-topbar">
-        <!-- Início do Topbar: Barra de Pesquisa -->
+        <nav class="topbar-crumbs" aria-label="Você está em">
+          <span class="crumb-root">Biblioteca</span>
+          <span class="crumb-sep" aria-hidden="true">/</span>
+          <span class="crumb-current" id="shellCrumb">Todos os modelos</span>
+        </nav>
+
         <div class="topbar-search-wrap">
           <div class="search-box">
             <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="11" cy="11" r="8"></circle>
               <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
             </svg>
-            <input type="text" id="searchInput" class="search-input" placeholder="Buscar modelo por nome...">
-          </div>
-        </div>
-
-        <div class="topbar-right">
-          <!-- Filtro de Ordenação -->
-          <div class="sort-control-wrap" id="sortControlWrap" style="display: none;">
-            <label for="selectSortOrder" class="sort-label" title="Ordenar lista de modelos">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="m3 16 4 4 4-4"></path>
-                <path d="M7 20V4"></path>
-                <path d="m21 8-4-4-4 4"></path>
-                <path d="M17 4v16"></path>
-              </svg>
-              <span>Ordenar:</span>
-            </label>
-            <div class="custom-select-box">
-              <select id="selectSortOrder" class="sort-select" title="Critério de ordenação da galeria">
-                <option value="date_desc">📅 Mais recentes</option>
-                <option value="date_asc">📅 Mais antigos</option>
-                <option value="name_asc">🔤 Nome (A → Z)</option>
-                <option value="name_desc">🔤 Nome (Z → A)</option>
-                <option value="size_desc">📦 Maior tamanho</option>
-                <option value="size_asc">📦 Menor tamanho</option>
-              </select>
-            </div>
-          </div>
-
-          <div class="top-page-size-wrap" id="topPageSizeWrap" style="display: none;">
-            <span class="pagination-label">Cards:</span>
-            <div class="page-size-buttons" id="topPageSizeButtons">
-              <button class="page-size-btn" data-size="50" type="button">50</button>
-              <button class="page-size-btn" data-size="100" type="button">100</button>
-              <button class="page-size-btn" data-size="150" type="button">150</button>
-            </div>
-          </div>
-
-          <!-- Perfil do Usuário e Botão Logout -->
-          <div class="topbar-user-wrap" id="topbarUserWrap" style="display: none;">
-            <div class="user-pill" id="authUserBadge" title="Usuário Conectado">
-              <span class="user-status-dot"></span>
-              <span class="user-email-text" id="topbarUserEmail">usuario@email.com</span>
-            </div>
-            <button class="btn-logout" id="btnLogout" type="button" title="Encerrar sessão / Sair da conta">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
-                <polyline points="16 17 21 12 16 7"></polyline>
-                <line x1="21" y1="12" x2="9" y2="12"></line>
-              </svg>
-              <span>Sair</span>
-            </button>
+            <input type="text" id="searchInput" class="search-input" placeholder="Buscar modelo por nome">
+            <kbd class="search-kbd" aria-hidden="true">Ctrl K</kbd>
           </div>
         </div>
       </header>
 
       <!-- Conteúdo do Dashboard -->
       <main class="main-content">
+
+        <!-- Cabeçalho da página com ações -->
+        <div class="page-head">
+          <div class="page-head-text">
+            <h1 class="page-title" id="shellTitle">Todos os modelos</h1>
+            <p class="page-subtitle">Seus arquivos STL e 3MF, lidos direto do seu computador.</p>
+          </div>
+
+          <div class="page-actions">
+            <!-- Filtro de Formatos -->
+            <div class="sidebar-format-group format-filter" id="formatFilterGroup" role="group" aria-label="Filtrar por formato">
+              <button class="sidebar-format-btn active pill-btn" data-filter="all" type="button">Todos</button>
+              <button class="sidebar-format-btn pill-btn" data-filter="stl" type="button"><span class="format-dot stl"></span>STL</button>
+              <button class="sidebar-format-btn pill-btn" data-filter="3mf" type="button"><span class="format-dot tmf"></span>3MF</button>
+            </div>
+
+            <!-- Filtro de Ordenação -->
+            <div class="sort-control-wrap" id="sortControlWrap" style="display: none;">
+              <label for="selectSortOrder" class="sort-label" title="Ordenar lista de modelos">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="m3 16 4 4 4-4"></path>
+                  <path d="M7 20V4"></path>
+                  <path d="m21 8-4-4-4 4"></path>
+                  <path d="M17 4v16"></path>
+                </svg>
+                <span>Ordenar</span>
+              </label>
+              <div class="custom-select-box">
+                <select id="selectSortOrder" class="sort-select" title="Critério de ordenação da galeria">
+                  <option value="date_desc">Mais recentes</option>
+                  <option value="date_asc">Mais antigos</option>
+                  <option value="name_asc">Nome (A → Z)</option>
+                  <option value="name_desc">Nome (Z → A)</option>
+                  <option value="size_desc">Maior tamanho</option>
+                  <option value="size_asc">Menor tamanho</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="top-page-size-wrap" id="topPageSizeWrap" style="display: none;">
+              <span class="pagination-label">Cards</span>
+              <div class="page-size-buttons" id="topPageSizeButtons">
+                <button class="page-size-btn" data-size="50" type="button">50</button>
+                <button class="page-size-btn" data-size="100" type="button">100</button>
+                <button class="page-size-btn" data-size="150" type="button">150</button>
+              </div>
+            </div>
+          </div>
+        </div>
         
         <!-- Estado Vazio / Dropzone Inicial -->
         <div class="empty-state" id="dropZone">
@@ -388,20 +407,39 @@
                 </svg>
                 Escolher Pasta no Meu Computador
               </button>
-              <button id="btnLoadSample" class="btn btn-secondary" title="Carrega modelos de teste prontos na pasta do projeto" type="button">
-                ✨ Testar com Modelos de Exemplo
-              </button>
             </div>
           </div>
         </div>
 
         <!-- Área de Conteúdo da Galeria -->
         <div id="galleryContainer" style="display: none;">
+          <!-- Faixa de resumo da coleção -->
+          <section class="stats-strip" id="sidebarStatsWidget" aria-label="Resumo da coleção">
+            <div class="stats-cell">
+              <span class="stats-label" id="statsScopeLabel">Coleção</span>
+              <span class="stats-val" id="fileCountBadge">0 modelos</span>
+            </div>
+            <div class="stats-cell">
+              <span class="stats-label"><span class="format-dot stl"></span>Arquivos STL</span>
+              <span class="stats-val stats-badge stl" id="sidebarStlCountBadge">0.STL</span>
+            </div>
+            <div class="stats-cell">
+              <span class="stats-label"><span class="format-dot tmf"></span>Arquivos 3MF</span>
+              <span class="stats-val stats-badge tmf" id="sidebar3mfCountBadge">0.3MF</span>
+            </div>
+            <div class="stats-cell stats-cell-dup" id="statsDuplicatesCell">
+              <span class="stats-label"><span class="format-dot dup"></span>Duplicados</span>
+              <span class="stats-val-row">
+                <span class="stats-val" id="statsDuplicatesCount">0</span>
+                <button class="stats-review-link" id="btnStatsReviewDuplicates" type="button" title="Ver os arquivos duplicados" hidden>Revisar</button>
+              </span>
+            </div>
+          </section>
           <!-- Seção Favoritos (exibida quando há itens favoritados) -->
           <section id="favoritesSection" class="gallery-section" style="display: none;">
             <div class="section-header">
               <div class="section-header-left">
-                <span class="section-icon">⭐</span>
+                <span class="section-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg></span>
                 <h2 class="section-title">Favoritos</h2>
                 <span class="section-badge" id="favoritesCountBadge">0</span>
               </div>
@@ -413,7 +451,7 @@
           <section id="allSection" class="gallery-section">
             <div class="section-header" id="allSectionHeader" style="display: none;">
               <div class="section-header-left">
-                <span class="section-icon">📁</span>
+                <span class="section-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"></rect><rect x="14" y="3" width="7" height="7" rx="1"></rect><rect x="3" y="14" width="7" height="7" rx="1"></rect><rect x="14" y="14" width="7" height="7" rx="1"></rect></svg></span>
                 <h2 class="section-title">Modelos</h2>
                 <span class="section-badge" id="allCountBadge">0</span>
               </div>
@@ -465,32 +503,37 @@
         <div class="modal-title-wrap">
           <span class="badge-format" id="modalBadge">STL</span>
           <div class="modal-title-path-wrap">
-            <h3 class="modal-title" id="modalFileName">
-              <span class="modal-path-folder" id="modalPathFolder"></span><span class="modal-path-name" id="modalPathName">Nome do Modelo.stl</span>
-            </h3>
-            <button class="btn-copy-path" id="btnCopyModalPath" title="Copiar caminho completo para a área de transferência" type="button">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-              </svg>
-            </button>
-            <button class="btn-modal-slicer" id="btnOpenModalSlicer" title="Abrir arquivo diretamente no Fatiador 3D" type="button" style="display: none;">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
-                <polyline points="15 3 21 3 21 9"></polyline>
-                <line x1="10" y1="14" x2="21" y2="3"></line>
-              </svg>
-              <span>Abrir no Fatiador</span>
-            </button>
+            <h3 class="modal-title" id="modalFileName"><span class="modal-path-name" id="modalPathName">Nome do Modelo.stl</span></h3>
+            <div class="modal-path-line" id="modalPathLine">
+              <span class="modal-path-folder" id="modalPathFolder"></span>
+              <span class="modal-path-short" id="modalPathShort"></span>
+              <span class="modal-path-meta" id="modalMetaSize"></span>
+              <span class="modal-path-meta" id="modalMetaDate"></span>
+            </div>
           </div>
-          <span class="modal-duplicate-badge" id="modalDuplicateBadge" style="display: none;">⚠️ Cópia Duplicada</span>
+          <div class="modal-head-chips">
+            <span class="modal-chip modal-chip-sliced" id="modalSlicedChip" hidden>Fatiado</span>
+            <span class="modal-chip modal-chip-multi" id="modalMultiChip" hidden></span>
+            <span class="modal-duplicate-badge" id="modalDuplicateBadge" style="display: none;">Duplicado</span>
+          </div>
         </div>
-        <button class="modal-close-btn" id="modalCloseBtn" title="Fechar visualizador (Esc)">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-          </svg>
-        </button>
+        <div class="modal-head-actions">
+          <button class="modal-icon-btn modal-fav-btn" id="btnModalFavorite" type="button" aria-pressed="false" title="Favoritar">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+          </button>
+          <span class="modal-head-sep" aria-hidden="true"></span>
+          <button class="modal-icon-btn" id="btnModalPrev" type="button" title="Modelo anterior (←)">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+          </button>
+          <span class="modal-nav-counter" id="modalNavCounter"></span>
+          <button class="modal-icon-btn" id="btnModalNext" type="button" title="Próximo modelo (→)">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+          </button>
+          <span class="modal-head-sep" aria-hidden="true"></span>
+          <button class="modal-close-btn modal-icon-btn" id="modalCloseBtn" type="button" title="Fechar visualizador (Esc)">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
       </div>
 
       <div class="modal-content">
@@ -499,25 +542,35 @@
           <canvas id="modalCanvas" class="viewer-canvas"></canvas>
           <img id="modalPlateImg" class="viewer-plate-image" style="display: none;" alt="Mesa de Impressão">
 
-          <!-- Botão Flutuante 'Visualizar 3D' sobre a imagem da mesa no lado esquerdo -->
-          <button class="btn-floating-view" id="btnOpen3DView" style="display: none;" title="Abrir visualização 3D da mesa selecionada">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
-              <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
-              <line x1="12" y1="22.08" x2="12" y2="12"></line>
-            </svg>
-            Visualizar 3D
-          </button>
+          <!-- Seletor de modo: foto da mesa (ou miniatura) e visualização 3D -->
+          <div class="viewer-seg" id="viewerModeSeg" role="group" aria-label="Modo de visualização" hidden>
+            <button class="viewer-seg-btn" id="btnBackToPlate" type="button" aria-pressed="true" title="Ver a foto da mesa">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
+              <span id="viewerSegPhotoLabel">Foto da mesa</span>
+            </button>
+            <button class="viewer-seg-btn" id="btnOpen3DView" type="button" aria-pressed="false" title="Abrir visualização 3D">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.27 6.96 12 12.01l8.73-5.05M12 22.08V12"/></svg>
+              <span>3D</span>
+            </button>
+          </div>
+          <span class="viewer-plate-label" id="viewerPlateLabel" hidden></span>
 
-          <!-- Botão Flutuante para retornar à foto da mesa quando em modo 3D -->
-          <button class="btn-floating-view btn-back-plate" id="btnBackToPlate" style="display: none;" title="Voltar para a foto da mesa">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-              <circle cx="8.5" cy="8.5" r="1.5"></circle>
-              <polyline points="21 15 16 10 5 21"></polyline>
-            </svg>
-            Ver Foto da Mesa
-          </button>
+          <!-- Faixa flutuante com as mesas de impressão (ou arquivos do projeto) -->
+          <div class="viewer-strip" id="platesSection">
+            <div class="viewer-strip-head">
+              <span id="platesHeading">Mesas de impressão</span>
+              <span id="platesCount"></span>
+            </div>
+            <div class="viewer-strip-row">
+              <button class="strip-nav" id="btnPlatesPrev" type="button" title="Mesas anteriores" aria-label="Mesas anteriores">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+              </button>
+              <div class="plates-grid" id="platesList"></div>
+              <button class="strip-nav" id="btnPlatesNext" type="button" title="Próximas mesas" aria-label="Próximas mesas">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+              </button>
+            </div>
+          </div>
 
           <!-- Indicador de carregamento suave da malha 3D -->
           <div class="viewer-loading-overlay" id="viewerLoadingOverlay" style="display: none;">
@@ -545,47 +598,70 @@
         <!-- Painel Lateral: Mesas de Impressão e Botão Fatiador Fixo no Rodapé -->
         <div class="modal-sidebar" id="modalSidebar">
           <div class="modal-sidebar-scroll" id="modalSidebarScroll">
-            <div class="sidebar-section plates-section" id="platesSection">
-              <div class="slicer-header-badge">
-                <h4>Mesas de Impressão (<span id="platesCount">0</span>)</h4>
-                <span class="badge-status-sliced">Multimesa</span>
-              </div>
-              <div class="plates-grid" id="platesList"></div>
-            </div>
-            <div class="modal-sidebar-info" id="modalSidebarInfo" style="display: none;">
-              <div class="sidebar-section">
-                <div class="slicer-header-badge">
-                  <h4>Detalhes do Modelo</h4>
+            <!-- Autor e origem (metadados do 3MF) -->
+            <section class="modal-sec" id="modalAuthorSection" hidden>
+              <div class="modal-sec-head"><h4>Autor e origem</h4></div>
+              <div class="modal-box">
+                <div class="modal-author">
+                  <span class="modal-author-avatar" id="modalAuthorAvatar"></span>
+                  <div class="modal-author-name">
+                    <b id="modalAuthorName"></b>
+                    <small id="modalAuthorSub"></small>
+                  </div>
+                  <p class="modal-author-desc" id="modalAuthorDesc" hidden></p>
+                  <div class="modal-author-pills" id="modalAuthorPills" hidden></div>
                 </div>
-                <div class="modal-info-list">
-                  <div class="info-item">
-                    <span class="info-label">Formato</span>
-                    <span class="info-val" id="modalInfoFormat">-</span>
+                <div class="modal-source" id="modalSourceRow" hidden>
+                  <div class="modal-source-site">
+                    <span class="modal-source-logo" id="modalSourceLogo"></span>
+                    <span id="modalSourceName"></span>
                   </div>
-                  <div class="info-item">
-                    <span class="info-label">Tamanho</span>
-                    <span class="info-val" id="modalInfoSize">-</span>
-                  </div>
-                  <div class="info-item" id="modalInfoDimensionsWrap">
-                    <span class="info-label">Dimensões</span>
-                    <span class="info-val" id="modalInfoDimensions">-</span>
-                  </div>
-                  <div class="info-item" id="modalInfoTrianglesWrap">
-                    <span class="info-label">Triângulos</span>
-                    <span class="info-val" id="modalInfoTriangles">-</span>
-                  </div>
+                  <a class="modal-source-link" id="modalSourceLink" href="#" target="_blank" rel="noopener noreferrer">
+                    Abrir página
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6M10 14 21 3"/></svg>
+                  </a>
                 </div>
               </div>
-            </div>
+            </section>
+
+            <!-- Configuração de impressão salva no projeto -->
+            <section class="modal-sec" id="modalPrintSection" hidden>
+              <div class="modal-sec-head"><h4>Impressão</h4></div>
+              <dl class="modal-box modal-specs" id="modalPrintGrid"></dl>
+            </section>
+
+            <!-- Filamentos e cores -->
+            <section class="modal-sec" id="modalFilamentSection" hidden>
+              <div class="modal-sec-head"><h4>Filamentos</h4><span class="modal-sec-count" id="modalFilamentTotal"></span></div>
+              <div class="modal-box" id="modalFilamentList"></div>
+            </section>
+
+            <!-- Detalhes do arquivo -->
+            <section class="modal-sec modal-sidebar-info" id="modalSidebarInfo" style="display: none;">
+              <div class="modal-sec-head"><h4>Detalhes</h4></div>
+              <dl class="modal-box modal-specs">
+                <div class="modal-spec" id="modalInfoDimensionsWrap"><dt>Dimensões</dt><dd id="modalInfoDimensions">-</dd></div>
+                <div class="modal-spec" id="modalInfoTrianglesWrap"><dt>Triângulos</dt><dd id="modalInfoTriangles">-</dd></div>
+                <div class="modal-spec" id="modalInfoPrintTimeWrap"><dt>Tempo estimado</dt><dd id="modalInfoPrintTime">-</dd></div>
+                <div class="modal-spec" id="modalInfoFilamentWrap"><dt>Filamento</dt><dd id="modalInfoFilament">-</dd></div>
+              </dl>
+            </section>
+
+            <!-- Fotos e documentos que o autor colocou dentro do 3MF -->
+            <section class="modal-sec" id="modalAttachSection" hidden>
+              <div class="modal-sec-head"><h4>Anexos do autor</h4><span class="modal-sec-count" id="modalAttachCount"></span></div>
+              <div class="modal-attach-grid" id="modalAttachGrid"></div>
+            </section>
           </div>
-          <!-- Rodapé Fixo e Flutuante com o Botão Copiar Caminho -->
+          <!-- Rodapé Fixo com o Botão Abrir no Fatiador -->
           <div class="modal-sidebar-footer" id="modalSidebarFooter">
-            <button class="btn-modal-slicer-footer" id="btnModalOpenSlicer" title="Copiar caminho para colar no fatiador ou Windows Explorer" type="button">
+            <button class="btn-modal-slicer-footer" id="btnModalOpenSlicer" title="Abrir arquivo diretamente no seu Fatiador 3D padrão (Bambu Studio, OrcaSlicer, etc.)" type="button">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                <polyline points="15 3 21 3 21 9"></polyline>
+                <line x1="10" y1="14" x2="21" y2="3"></line>
               </svg>
-              <span>Copiar caminho do arquivo</span>
+              <span>Abrir no Fatiador</span>
             </button>
           </div>
         </div>
@@ -721,5 +797,6 @@
 
   <!-- Script principal da aplicação como módulo ES -->
   <script type="module" src="app.js"></script>
+  <script src="ui-shell.js" defer></script>
 </body>
 </html>
