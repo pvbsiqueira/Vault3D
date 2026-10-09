@@ -769,3 +769,12 @@ body.dashboard-body {
 .auth-link-input:focus { border-color: var(--accent-line); box-shadow: 0 0 0 3px var(--accent-soft); }
 .btn-auth-submit { border-radius: var(--radius-sm); font-family: inherit; }
 .btn-selection-action, .selection-text { white-space: nowrap; }
+
+/* Filtro de formatos no cabeçalho da página (antes do Ordenar) */
+.format-filter {
+  display: inline-grid;
+  grid-template-columns: repeat(3, auto);
+  background: var(--bg-panel);
+}
+.format-filter .sidebar-format-btn { height: 26px; padding: 0 10px; }
+.format-filter[hidden] { display: none; }

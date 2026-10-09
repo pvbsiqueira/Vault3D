@@ -1,7 +1,8 @@
 /**
  * Vault3D · Casca visual do painel
  * Apenas apresentação: mantém o título da página e a trilha de navegação
- * em sincronia com o item ativo da barra lateral e adiciona o atalho Ctrl+K
+ * em sincronia com o item ativo da barra lateral, mostra os filtros de formato
+ * junto com o Ordenar e adiciona o atalho Ctrl+K
  * para a busca. Não altera estado nem regras da biblioteca (isso fica no app.js).
  */
 (function () {
@@ -20,6 +21,17 @@
   if (nav) {
     new MutationObserver(syncTitle).observe(nav, { subtree: true, attributes: true, attributeFilter: ['class'] });
     syncTitle();
+  }
+
+  // Filtros de formato aparecem junto com o Ordenar (só quando há modelos carregados)
+  const sortWrap = document.getElementById('sortControlWrap');
+  const formatGroup = document.getElementById('formatFilterGroup');
+  function syncFormatFilter() {
+    if (sortWrap && formatGroup) formatGroup.hidden = sortWrap.style.display === 'none';
+  }
+  if (sortWrap && formatGroup) {
+    new MutationObserver(syncFormatFilter).observe(sortWrap, { attributes: true, attributeFilter: ['style'] });
+    syncFormatFilter();
   }
 
   document.addEventListener('keydown', (e) => {

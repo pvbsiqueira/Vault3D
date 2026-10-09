@@ -254,16 +254,6 @@
           </div>
         </div>
 
-        <!-- Seção: Filtro de Formatos -->
-        <div class="sidebar-section">
-          <div class="sidebar-section-title">Formatos</div>
-          <div class="sidebar-format-group">
-            <button class="sidebar-format-btn active pill-btn" data-filter="all" type="button">Todos</button>
-            <button class="sidebar-format-btn pill-btn" data-filter="stl" type="button"><span class="format-dot stl"></span>STL</button>
-            <button class="sidebar-format-btn pill-btn" data-filter="3mf" type="button"><span class="format-dot tmf"></span>3MF</button>
-          </div>
-        </div>
-
       </div>
 
       <!-- Rodapé da Sidebar: Usuário conectado e botão Sair -->
@@ -325,6 +315,13 @@
           </div>
 
           <div class="page-actions">
+            <!-- Filtro de Formatos -->
+            <div class="sidebar-format-group format-filter" id="formatFilterGroup" role="group" aria-label="Filtrar por formato">
+              <button class="sidebar-format-btn active pill-btn" data-filter="all" type="button">Todos</button>
+              <button class="sidebar-format-btn pill-btn" data-filter="stl" type="button"><span class="format-dot stl"></span>STL</button>
+              <button class="sidebar-format-btn pill-btn" data-filter="3mf" type="button"><span class="format-dot tmf"></span>3MF</button>
+            </div>
+
             <!-- Filtro de Ordenação -->
             <div class="sort-control-wrap" id="sortControlWrap" style="display: none;">
               <label for="selectSortOrder" class="sort-label" title="Ordenar lista de modelos">
