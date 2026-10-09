@@ -34,6 +34,11 @@
     syncFormatFilter();
   }
 
+  // "Revisar" na faixa de resumo abre a seção Duplicados da barra lateral
+  const btnReviewDup = document.getElementById('btnStatsReviewDuplicates');
+  const navDup = document.getElementById('navDuplicates');
+  if (btnReviewDup && navDup) btnReviewDup.addEventListener('click', () => navDup.click());
+
   document.addEventListener('keydown', (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k' && search) {
       e.preventDefault();

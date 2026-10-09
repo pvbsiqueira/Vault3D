@@ -444,7 +444,7 @@ body.dashboard-body {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.stats-cell-local .stats-val { color: var(--accent); }
+
 
 /* Estado vazio */
 .empty-state {
@@ -779,3 +779,21 @@ body.dashboard-body {
 .format-filter .sidebar-format-btn { height: 26px; padding: 0 10px; }
 .format-filter[hidden] { display: none; }
 #statsScopeLabel { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Bloco de duplicados: degradê âmbar quando há cópias */
+.stats-val-row { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.format-dot.dup { background: var(--warn); }
+.stats-cell-dup.has-duplicates {
+  background: linear-gradient(90deg, var(--warn-soft), transparent 70%);
+}
+.stats-strip { overflow: hidden; }
+.stats-review-link {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: 500 12px var(--font-ui);
+  color: var(--warn);
+  cursor: pointer;
+}
+.stats-review-link:hover { text-decoration: underline; }
+.stats-review-link[hidden] { display: none; }

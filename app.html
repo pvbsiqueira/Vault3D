@@ -430,9 +430,12 @@
               <span class="stats-label"><span class="format-dot tmf"></span>Arquivos 3MF</span>
               <span class="stats-val stats-badge tmf" id="sidebar3mfCountBadge">0.3MF</span>
             </div>
-            <div class="stats-cell stats-cell-local">
-              <span class="stats-label">Privacidade</span>
-              <span class="stats-val">100% local</span>
+            <div class="stats-cell stats-cell-dup" id="statsDuplicatesCell">
+              <span class="stats-label"><span class="format-dot dup"></span>Duplicados</span>
+              <span class="stats-val-row">
+                <span class="stats-val" id="statsDuplicatesCount">0</span>
+                <button class="stats-review-link" id="btnStatsReviewDuplicates" type="button" title="Ver os arquivos duplicados" hidden>Revisar</button>
+              </span>
             </div>
           </section>
           <!-- Seção Favoritos (exibida quando há itens favoritados) -->

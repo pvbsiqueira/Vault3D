@@ -94,6 +94,9 @@ const fileCountBadge = document.getElementById('fileCountBadge');
 const sidebarStlCountBadge = document.getElementById('sidebarStlCountBadge');
 const sidebar3mfCountBadge = document.getElementById('sidebar3mfCountBadge');
 const statsScopeLabel = document.getElementById('statsScopeLabel');
+const statsDuplicatesCount = document.getElementById('statsDuplicatesCount');
+const statsDuplicatesCell = document.getElementById('statsDuplicatesCell');
+const btnStatsReviewDuplicates = document.getElementById('btnStatsReviewDuplicates');
 
 // Elementos DOM do Topbar & Filtros
 const currentViewTitle = document.getElementById('currentViewTitle');
@@ -1136,6 +1139,8 @@ function updateDuplicatesFilterButton(duplicatesCount) {
   if (duplicatesCount === 0 && state.activeSection === 'duplicates') {
     setNavSection('all');
   }
+  // Mantém o bloco de duplicados da faixa de resumo em dia após a varredura
+  updateStatsBadge();
 }
 
 // ==========================================
@@ -2177,6 +2182,11 @@ function updateStatsBadge() {
   if (sidebar3mfCountBadge) {
     sidebar3mfCountBadge.textContent = `${scopedModels.filter(m => m.type === '3mf').length}.3MF`;
   }
+
+  const scopedDupCount = scopedModels.filter(m => m.isDuplicate).length;
+  if (statsDuplicatesCount) statsDuplicatesCount.textContent = scopedDupCount;
+  if (statsDuplicatesCell) statsDuplicatesCell.classList.toggle('has-duplicates', scopedDupCount > 0);
+  if (btnStatsReviewDuplicates) btnStatsReviewDuplicates.hidden = scopedDupCount === 0;
   if (sidebarFoldersCountBadge) {
     sidebarFoldersCountBadge.textContent = foldersCount;
   }
