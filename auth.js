@@ -72,7 +72,31 @@ function showError(message) {
   if (!alertBanner) return;
   alertBanner.textContent = message;
   alertBanner.style.display = 'block';
-  if (successBanner) successBanner.style.display = 'none';
+}
+
+/**
+ * Alterna entre o passo do e-mail e o passo do código na tela de login
+ * @param {'email'|'code'} step
+ * @param {string} [email]
+ */
+function setAuthStep(step, email) {
+  const title = document.getElementById('authTitle');
+  const subtitle = document.getElementById('authSubtitle');
+  const isCode = step === 'code';
+
+  if (loginForm) loginForm.style.display = isCode ? 'none' : 'flex';
+  if (successBanner) successBanner.style.display = isCode ? 'flex' : 'none';
+  if (title) title.textContent = isCode ? 'Confira seu e-mail' : 'Entrar no Vault3D';
+  if (subtitle) {
+    subtitle.textContent = '';
+    if (isCode) {
+      const strong = document.createElement('strong');
+      strong.textContent = email || '';
+      subtitle.append('Enviamos um código de acesso para ', strong, '.');
+    } else {
+      subtitle.textContent = 'Receba um código de acesso no seu e-mail.';
+    }
+  }
 }
 
 /**
@@ -108,7 +132,7 @@ function setLoading(isLoading) {
     if (btnSpinner) btnSpinner.style.display = 'inline-block';
   } else {
     btnSubmit.disabled = false;
-    if (btnText) btnText.textContent = 'Receber meu código';
+    if (btnText) btnText.textContent = 'Receber código';
     if (btnSpinner) btnSpinner.style.display = 'none';
   }
 }
@@ -233,15 +257,11 @@ async function handleLoginSubmit(e) {
       return;
     }
 
-    // Sucesso: Exibir estado de confirmação para verificar a caixa de entrada
-    if (loginForm) loginForm.style.display = 'none';
-    if (successBanner) {
-      successBanner.style.display = 'block';
-      if (successSentEmail) successSentEmail.textContent = email;
-      if (authOtpInput) {
-        authOtpInput.value = '';
-        setTimeout(() => authOtpInput.focus(), 200);
-      }
+    // Sucesso: passa para o passo do código
+    setAuthStep('code', email);
+    if (authOtpInput) {
+      authOtpInput.value = '';
+      setTimeout(() => authOtpInput.focus(), 200);
     }
 
   } catch (err) {
@@ -261,7 +281,7 @@ async function handleVerifyOtp() {
 
   if (!token) {
     if (authOtpError) {
-      authOtpError.textContent = 'Digite o código de 6 dígitos recebido no seu e-mail.';
+      authOtpError.textContent = 'Digite o código que chegou no seu e-mail.';
       authOtpError.style.display = 'block';
     }
     authOtpInput.focus();
@@ -308,7 +328,7 @@ async function handleVerifyOtp() {
     }
   } finally {
     if (btnVerifyOtp) btnVerifyOtp.disabled = false;
-    if (btnText) btnText.textContent = 'Confirmar';
+    if (btnText) btnText.textContent = 'Entrar';
     if (btnSpinner) btnSpinner.style.display = 'none';
   }
 }
@@ -432,7 +452,6 @@ export async function handleExternalAuthUrl(rawUrlOrToken) {
     throw new Error('Não foi possível identificar credenciais válidas no link informado.');
   } catch (err) {
     console.error('Falha ao processar link de autenticação:', err);
-    if (successBanner) successBanner.style.display = 'block';
     if (authLinkError) {
       authLinkError.textContent = err.message || 'Falha ao validar o link de acesso.';
       authLinkError.style.display = 'block';
@@ -566,9 +585,8 @@ export async function initAuth(onAuthenticated) {
 
   if (btnUseOtherEmail) {
     btnUseOtherEmail.addEventListener('click', () => {
-      if (successBanner) successBanner.style.display = 'none';
-      if (loginForm) loginForm.style.display = 'flex';
-      if (authOtpError) authOtpError.style.display = 'none';
+      setAuthStep('email');
+      clearMessages();
       if (emailInput) {
         emailInput.select();
         emailInput.focus();
@@ -577,8 +595,15 @@ export async function initAuth(onAuthenticated) {
   }
 
   if (btnResendLink) {
-    btnResendLink.addEventListener('click', () => {
-      handleLoginSubmit();
+    btnResendLink.addEventListener('click', async () => {
+      btnResendLink.disabled = true;
+      btnResendLink.textContent = 'Enviando...';
+      await handleLoginSubmit();
+      btnResendLink.textContent = 'Código reenviado';
+      setTimeout(() => {
+        btnResendLink.disabled = false;
+        btnResendLink.textContent = 'Reenviar código';
+      }, 4000);
     });
   }
 
@@ -595,6 +620,8 @@ export async function initAuth(onAuthenticated) {
       }
     });
     authOtpInput.addEventListener('input', () => {
+      const digits = authOtpInput.value.replace(/\D/g, '');
+      if (digits !== authOtpInput.value) authOtpInput.value = digits;
       if (authOtpError && authOtpError.style.display !== 'none') {
         authOtpError.style.display = 'none';
       }
