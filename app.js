@@ -4796,7 +4796,7 @@ function initModalThree() {
   keyLight.position.set(100, 150, 100);
   state.modalScene.add(keyLight);
 
-  const fillLight = new THREE.DirectionalLight(0x60a5fa, 0.8);
+  const fillLight = new THREE.DirectionalLight(0x67e8f9, 0.8);
   fillLight.position.set(-100, 50, -100);
   state.modalScene.add(fillLight);
 
@@ -4927,7 +4927,7 @@ async function loadModelIntoModal(model, plateId = null) {
     const yOffset = (geometry.boundingBox.max.y - geometry.boundingBox.min.y) / 2;
 
     const material = new THREE.MeshStandardMaterial({
-      color: 0x3b82f6,
+      color: 0x1fb6cc,
       roughness: 0.35,
       metalness: 0.15,
       wireframe: state.isWireframe

@@ -46,7 +46,7 @@ function initOffscreenRenderer() {
   sharedCamera = new THREE.PerspectiveCamera(45, 4 / 3, 0.1, 1000);
 
   const material = new THREE.MeshStandardMaterial({
-    color: 0x3b82f6,
+    color: 0x1fb6cc,
     roughness: 0.35,
     metalness: 0.15
   });
