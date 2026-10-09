@@ -1289,3 +1289,12 @@ body.dashboard-body {
 #modalFilamentList.is-compact .modal-fil + .modal-fil { border-top: 0; }
 #modalFilamentList.is-compact .modal-fil-name small { display: none; }
 #modalFilamentList.is-compact .modal-fil-bar { grid-column: 1 / -1; margin-top: 6px; }
+
+/* Aviso de atualização em segundo plano */
+.update-installing{position:fixed;inset:0;z-index:10000;display:flex;align-items:center;justify-content:center;background:rgba(8,10,14,.82);backdrop-filter:blur(4px)}
+.update-installing-card{display:flex;flex-direction:column;gap:12px;width:min(360px,calc(100vw - 32px));padding:22px 24px;border:1px solid rgba(255,255,255,.08);border-radius:12px;background:#12151b;text-align:center}
+.update-installing-title{font-weight:600;font-size:15px;color:#e8eaee}
+.update-installing-sub{font-size:12.5px;color:#9aa3b2}
+.update-installing-bar{position:relative;height:6px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden}
+.update-installing-bar span{position:absolute;top:0;left:-40%;width:40%;height:100%;border-radius:inherit;background:#22d3ee;animation:update-installing-slide 1.1s ease-in-out infinite}
+@keyframes update-installing-slide{to{left:100%}}

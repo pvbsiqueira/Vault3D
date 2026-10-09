@@ -182,7 +182,8 @@ ipcMain.handle('check-for-updates', async () => {
 
 // 3. Reiniciar o app e aplicar a atualização baixada
 ipcMain.handle('restart-and-install-update', () => {
-  autoUpdater.quitAndInstall(false, true);
+  // Instalação silenciosa (sem o assistente do Windows) e reabre o app ao terminar
+  autoUpdater.quitAndInstall(true, true);
 });
 
 // 4. Abrir no Windows Explorer

@@ -223,9 +223,10 @@ function setupDesktopUpdater() {
 
   if (btnRestart) {
     btnRestart.addEventListener('click', () => {
-      if (window.electronAPI.restartAndInstallUpdate) {
-        window.electronAPI.restartAndInstallUpdate();
-      }
+      if (!window.electronAPI.restartAndInstallUpdate) return;
+      showUpdateInstallingOverlay();
+      // Dá tempo do aviso aparecer antes do app fechar para instalar em segundo plano
+      setTimeout(() => window.electronAPI.restartAndInstallUpdate(), 1200);
     });
   }
 
@@ -251,6 +252,20 @@ function setupDesktopUpdater() {
       console.warn('Auto-updater desktop:', data.message);
     }
   });
+}
+
+function showUpdateInstallingOverlay() {
+  if (document.getElementById('updateInstallingOverlay')) return;
+  const overlay = document.createElement('div');
+  overlay.id = 'updateInstallingOverlay';
+  overlay.className = 'update-installing';
+  overlay.innerHTML = `
+    <div class="update-installing-card">
+      <span class="update-installing-title">Atualizando o Vault3D</span>
+      <div class="update-installing-bar"><span></span></div>
+      <span class="update-installing-sub">O app vai fechar e reabrir sozinho em alguns segundos.</span>
+    </div>`;
+  document.body.appendChild(overlay);
 }
 
 // Inicialização de Eventos
