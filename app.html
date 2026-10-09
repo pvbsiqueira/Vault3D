@@ -506,20 +506,6 @@
             <h3 class="modal-title" id="modalFileName">
               <span class="modal-path-folder" id="modalPathFolder"></span><span class="modal-path-name" id="modalPathName">Nome do Modelo.stl</span>
             </h3>
-            <button class="btn-copy-path" id="btnCopyModalPath" title="Copiar caminho completo para a área de transferência" type="button">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-              </svg>
-            </button>
-            <button class="btn-modal-slicer" id="btnOpenModalSlicer" title="Abrir arquivo diretamente no Fatiador 3D" type="button" style="display: none;">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
-                <polyline points="15 3 21 3 21 9"></polyline>
-                <line x1="10" y1="14" x2="21" y2="3"></line>
-              </svg>
-              <span>Abrir no Fatiador</span>
-            </button>
           </div>
           <span class="modal-duplicate-badge" id="modalDuplicateBadge" style="display: none;">⚠️ Cópia Duplicada</span>
         </div>
@@ -616,14 +602,15 @@
               </div>
             </div>
           </div>
-          <!-- Rodapé Fixo e Flutuante com o Botão Copiar Caminho -->
+          <!-- Rodapé Fixo com o Botão Abrir no Fatiador -->
           <div class="modal-sidebar-footer" id="modalSidebarFooter">
-            <button class="btn-modal-slicer-footer" id="btnModalOpenSlicer" title="Copiar caminho para colar no fatiador ou Windows Explorer" type="button">
+            <button class="btn-modal-slicer-footer" id="btnModalOpenSlicer" title="Abrir arquivo diretamente no seu Fatiador 3D padrão (Bambu Studio, OrcaSlicer, etc.)" type="button">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                <polyline points="15 3 21 3 21 9"></polyline>
+                <line x1="10" y1="14" x2="21" y2="3"></line>
               </svg>
-              <span>Copiar caminho do arquivo</span>
+              <span>Abrir no Fatiador</span>
             </button>
           </div>
         </div>

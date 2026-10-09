@@ -409,6 +409,11 @@ function init() {
   // Modal Controls
   modalCloseBtn.addEventListener('click', closeViewerModal);
   if (btnModalOpenSlicer) {
+    // Rótulo do botão principal conforme o ambiente (desktop abre no fatiador; web copia o caminho)
+    const footerCfg = getSlicerButtonConfig();
+    btnModalOpenSlicer.title = footerCfg.title;
+    btnModalOpenSlicer.innerHTML = `${footerCfg.icon}<span>${footerCfg.text}</span>`;
+
     setupModelDraggable(btnModalOpenSlicer, () => {
       return (state.activePlate && state.activePlate.model && !state.activePlate.isCustomCover ? state.activePlate.model : null)
         || (state.activeProject ? (state.activeProject.primaryPart || (state.activeProject.parts && state.activeProject.parts[0])) : null)
@@ -505,11 +510,6 @@ function init() {
     });
   }
 
-  if (modalFileName) {
-    modalFileName.addEventListener('click', () => {
-      copyModalFullPath();
-    });
-  }
 
   // Inicializar Autenticação com Supabase / Magic Link
   initAuth((user) => {
