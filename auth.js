@@ -253,23 +253,62 @@ async function handleLoginSubmit(e) {
 
     if (error) {
       console.error('Erro retornado pelo signInWithMagicLink:', error);
-      showError(error.message || 'Erro ao enviar o código de acesso. Verifique suas credenciais.');
-      return;
+      showError(translateSendError(error));
+      return false;
     }
 
     // Sucesso: passa para o passo do código
     setAuthStep('code', email);
+    startResendCooldown();
     if (authOtpInput) {
       authOtpInput.value = '';
       setTimeout(() => authOtpInput.focus(), 200);
     }
+    return true;
 
   } catch (err) {
     console.error('Falha ao autenticar:', err);
     showError(err.message || 'Ocorreu um erro ao processar o login. Tente novamente.');
+    return false;
   } finally {
     setLoading(false);
   }
+}
+
+/**
+ * Traduz o erro de envio do código (o Supabase limita um envio por minuto)
+ * @param {any} error
+ * @returns {string}
+ */
+function translateSendError(error) {
+  const msg = error?.message || '';
+  const wait = msg.match(/after (\d+) seconds?/i);
+  if (wait) return `Aguarde ${wait[1]} segundos para pedir um novo código.`;
+  if (/rate limit/i.test(msg)) return 'Muitos pedidos de código em pouco tempo. Tente de novo em alguns minutos.';
+  return msg || 'Erro ao enviar o código de acesso. Tente novamente.';
+}
+
+/**
+ * Bloqueia o "Reenviar código" por 60 s, o intervalo mínimo do Supabase entre envios
+ */
+let resendTimer = null;
+function startResendCooldown(seconds = 60) {
+  if (!btnResendLink) return;
+  clearInterval(resendTimer);
+  let left = seconds;
+  const tick = () => {
+    if (left <= 0) {
+      clearInterval(resendTimer);
+      btnResendLink.disabled = false;
+      btnResendLink.textContent = 'Reenviar código';
+      return;
+    }
+    btnResendLink.disabled = true;
+    btnResendLink.textContent = `Reenviar em ${left}s`;
+    left -= 1;
+  };
+  tick();
+  resendTimer = setInterval(tick, 1000);
 }
 
 /**
@@ -598,12 +637,14 @@ export async function initAuth(onAuthenticated) {
     btnResendLink.addEventListener('click', async () => {
       btnResendLink.disabled = true;
       btnResendLink.textContent = 'Enviando...';
-      await handleLoginSubmit();
-      btnResendLink.textContent = 'Código reenviado';
-      setTimeout(() => {
+      const sent = await handleLoginSubmit();
+      if (sent) {
+        const sub = document.getElementById('authSubtitle');
+        if (sub) sub.prepend('Novo código enviado. ');
+      } else {
         btnResendLink.disabled = false;
         btnResendLink.textContent = 'Reenviar código';
-      }, 4000);
+      }
     });
   }
 
