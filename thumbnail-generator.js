@@ -1,6 +1,7 @@
 import * as THREE from 'https://esm.sh/three@0.160.0';
 import JSZip from 'https://esm.sh/jszip@3.10.1';
 import { parseSTL } from './stl-parser.js';
+import { extract3MFExtras } from './threemf-extras.js';
 
 let sharedRenderer = null;
 let sharedScene = null;
@@ -117,6 +118,12 @@ export async function extract3MFThumbnail(arrayBuffer) {
     // Se encontrou a thumbnail oficial configurada, retorna o Data URL instantaneamente
     const slicerData = await extract3MFSlicerData(zip);
     const plates = await extract3MFPlates(zip);
+    let extras = null;
+    try {
+      extras = await extract3MFExtras(zip, plates, await readSliceInfoPlates(zip));
+    } catch (errExtras) {
+      console.warn('Erro ao ler informações extras do 3MF:', errExtras);
+    }
 
     if (thumbFile) {
       const base64 = await thumbFile.async('base64');
@@ -130,7 +137,8 @@ export async function extract3MFThumbnail(arrayBuffer) {
           thumbnailSource: thumbFile.name
         },
         slicerData,
-        plates
+        plates,
+        extras
       };
     }
 
@@ -160,7 +168,8 @@ export async function extract3MFThumbnail(arrayBuffer) {
       },
       geometry: parsed3MF.geometry,
       slicerData,
-      plates
+      plates,
+      extras
     };
   } catch (err) {
     console.warn('Erro ao processar pacote 3MF:', err);
@@ -579,9 +588,9 @@ export async function parse3MFGeometry(input, targetPlateId = null) {
  * Lê Metadata/slice_info.config (Bambu Studio / OrcaSlicer), que guarda por mesa
  * o tempo previsto (prediction, em segundos), o peso (weight, em gramas) e os
  * filamentos usados. Só existe com números quando o arquivo foi fatiado antes de salvar.
- * Retorna um Map: índice da mesa -> { prediction, weight, filamentTypes }
+ * Retorna um Map: índice da mesa -> { prediction, weight, filamentTypes, filaments }
  */
-async function readSliceInfoPlates(zip) {
+export async function readSliceInfoPlates(zip) {
   const result = new Map();
   const file = zip.file('Metadata/slice_info.config') ||
                zip.file(/^Metadata[\\\/]slice_info\.config$/i)?.[0];
@@ -599,16 +608,20 @@ async function readSliceInfoPlates(zip) {
       const prediction = parseFloat(metaValue(block, 'prediction')) || 0;
       let weight = parseFloat(metaValue(block, 'weight')) || 0;
       const filamentTypes = [];
+      const filaments = [];
       let usedSum = 0;
       for (const f of block.match(/<filament\b[^>]*>/gi) || []) {
         const type = (f.match(/\btype=["']([^"']+)["']/i) || [])[1];
         const used = parseFloat((f.match(/\bused_g=["']([\d.]+)["']/i) || [])[1]) || 0;
+        const id = parseInt((f.match(/\bid=["'](\d+)["']/i) || [])[1], 10) || null;
+        const color = (f.match(/\bcolor=["'](#[0-9a-f]{6,8})["']/i) || [])[1] || null;
         if (type && !filamentTypes.includes(type)) filamentTypes.push(type);
+        filaments.push({ id, type: type || null, color, usedG: used });
         usedSum += used;
       }
       if (!weight && usedSum) weight = usedSum;
       if (prediction > 0 || weight > 0) {
-        result.set(index, { prediction, weight, filamentTypes });
+        result.set(index, { prediction, weight, filamentTypes, filaments });
       }
     });
   } catch (e) {

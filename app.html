@@ -504,10 +504,16 @@
           <span class="badge-format" id="modalBadge">STL</span>
           <div class="modal-title-path-wrap">
             <h3 class="modal-title" id="modalFileName"><span class="modal-path-name" id="modalPathName">Nome do Modelo.stl</span></h3>
-            <div class="modal-path-line"><span class="modal-path-folder" id="modalPathFolder"></span></div>
+            <div class="modal-path-line" id="modalPathLine">
+              <span class="modal-path-folder" id="modalPathFolder"></span>
+              <span class="modal-path-short" id="modalPathShort"></span>
+              <span class="modal-path-meta" id="modalMetaSize"></span>
+              <span class="modal-path-meta" id="modalMetaDate"></span>
+            </div>
           </div>
           <div class="modal-head-chips">
             <span class="modal-chip modal-chip-sliced" id="modalSlicedChip" hidden>Fatiado</span>
+            <span class="modal-chip modal-chip-multi" id="modalMultiChip" hidden></span>
             <span class="modal-duplicate-badge" id="modalDuplicateBadge" style="display: none;">Duplicado</span>
           </div>
         </div>
@@ -548,7 +554,15 @@
             </button>
           </div>
           <span class="viewer-plate-label" id="viewerPlateLabel" hidden></span>
-          <span class="viewer-hint" id="viewerHint"><kbd>←</kbd> <kbd>→</kbd> trocar modelo · <kbd>Esc</kbd> fechar</span>
+
+          <!-- Faixa flutuante com as mesas de impressão (ou arquivos do projeto) -->
+          <div class="viewer-strip" id="platesSection">
+            <div class="viewer-strip-head">
+              <span id="platesHeading">Mesas de impressão</span>
+              <span id="platesCount"></span>
+            </div>
+            <div class="plates-grid" id="platesList"></div>
+          </div>
 
           <!-- Indicador de carregamento suave da malha 3D -->
           <div class="viewer-loading-overlay" id="viewerLoadingOverlay" style="display: none;">
@@ -576,54 +590,61 @@
         <!-- Painel Lateral: Mesas de Impressão e Botão Fatiador Fixo no Rodapé -->
         <div class="modal-sidebar" id="modalSidebar">
           <div class="modal-sidebar-scroll" id="modalSidebarScroll">
-            <div class="sidebar-section plates-section" id="platesSection">
-              <div class="slicer-header-badge modal-sec-head">
-                <h4 id="platesHeading">Mesas de impressão</h4>
-                <span class="modal-sec-count" id="platesCount">0</span>
-              </div>
-              <div class="plates-grid" id="platesList"></div>
-            </div>
-            <div class="modal-sidebar-info" id="modalSidebarInfo" style="display: none;">
-              <div class="sidebar-section">
-                <div class="slicer-header-badge modal-sec-head">
-                  <h4>Detalhes</h4>
+            <!-- Autor e origem (metadados do 3MF) -->
+            <section class="modal-sec" id="modalAuthorSection" hidden>
+              <div class="modal-sec-head"><h4>Autor e origem</h4></div>
+              <div class="modal-box">
+                <div class="modal-author">
+                  <span class="modal-author-avatar" id="modalAuthorAvatar"></span>
+                  <div class="modal-author-name">
+                    <b id="modalAuthorName"></b>
+                    <small id="modalAuthorSub"></small>
+                  </div>
+                  <p class="modal-author-desc" id="modalAuthorDesc" hidden></p>
+                  <div class="modal-author-pills" id="modalAuthorPills" hidden></div>
                 </div>
-                <div class="modal-info-list">
-                  <div class="info-item" id="modalInfoFormatWrap">
-                    <span class="info-label">Formato</span>
-                    <span class="info-val" id="modalInfoFormat">-</span>
+                <div class="modal-source" id="modalSourceRow" hidden>
+                  <div class="modal-source-site">
+                    <span class="modal-source-logo" id="modalSourceLogo"></span>
+                    <span id="modalSourceName"></span>
                   </div>
-                  <div class="info-item" id="modalInfoSizeWrap">
-                    <span class="info-label">Tamanho</span>
-                    <span class="info-val" id="modalInfoSize">-</span>
-                  </div>
-                  <div class="info-item" id="modalInfoModifiedWrap">
-                    <span class="info-label">Modificado</span>
-                    <span class="info-val" id="modalInfoModified">-</span>
-                  </div>
-                  <div class="info-item" id="modalInfoDimensionsWrap">
-                    <span class="info-label">Dimensões</span>
-                    <span class="info-val" id="modalInfoDimensions">-</span>
-                  </div>
-                  <div class="info-item" id="modalInfoTrianglesWrap">
-                    <span class="info-label">Triângulos</span>
-                    <span class="info-val" id="modalInfoTriangles">-</span>
-                  </div>
-                  <div class="info-item" id="modalInfoPrintTimeWrap">
-                    <span class="info-label">Tempo estimado</span>
-                    <span class="info-val" id="modalInfoPrintTime">-</span>
-                  </div>
-                  <div class="info-item" id="modalInfoFilamentWrap">
-                    <span class="info-label">Filamento</span>
-                    <span class="info-val" id="modalInfoFilament">-</span>
-                  </div>
-                  <div class="info-item" id="modalInfoFolderWrap">
-                    <span class="info-label">Pasta</span>
-                    <span class="info-val" id="modalInfoFolder">-</span>
-                  </div>
+                  <a class="modal-source-link" id="modalSourceLink" href="#" target="_blank" rel="noopener noreferrer">
+                    Abrir página
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6M10 14 21 3"/></svg>
+                  </a>
                 </div>
               </div>
-            </div>
+            </section>
+
+            <!-- Configuração de impressão salva no projeto -->
+            <section class="modal-sec" id="modalPrintSection" hidden>
+              <div class="modal-sec-head"><h4>Impressão</h4></div>
+              <dl class="modal-box modal-specs" id="modalPrintGrid"></dl>
+            </section>
+
+            <!-- Filamentos e cores -->
+            <section class="modal-sec" id="modalFilamentSection" hidden>
+              <div class="modal-sec-head"><h4>Filamentos</h4><span class="modal-sec-count" id="modalFilamentTotal"></span></div>
+              <div class="modal-box" id="modalFilamentList"></div>
+            </section>
+
+            <!-- Detalhes do arquivo -->
+            <section class="modal-sec modal-sidebar-info" id="modalSidebarInfo" style="display: none;">
+              <div class="modal-sec-head"><h4>Detalhes</h4></div>
+              <dl class="modal-box modal-specs">
+                <div class="modal-spec" id="modalInfoFormatWrap"><dt>Formato</dt><dd id="modalInfoFormat">-</dd></div>
+                <div class="modal-spec" id="modalInfoDimensionsWrap"><dt>Dimensões</dt><dd id="modalInfoDimensions">-</dd></div>
+                <div class="modal-spec" id="modalInfoTrianglesWrap"><dt>Triângulos</dt><dd id="modalInfoTriangles">-</dd></div>
+                <div class="modal-spec" id="modalInfoPrintTimeWrap"><dt>Tempo estimado</dt><dd id="modalInfoPrintTime">-</dd></div>
+                <div class="modal-spec" id="modalInfoFilamentWrap"><dt>Filamento</dt><dd id="modalInfoFilament">-</dd></div>
+              </dl>
+            </section>
+
+            <!-- Fotos e documentos que o autor colocou dentro do 3MF -->
+            <section class="modal-sec" id="modalAttachSection" hidden>
+              <div class="modal-sec-head"><h4>Anexos do autor</h4><span class="modal-sec-count" id="modalAttachCount"></span></div>
+              <div class="modal-attach-grid" id="modalAttachGrid"></div>
+            </section>
           </div>
           <!-- Rodapé Fixo com o Botão Abrir no Fatiador -->
           <div class="modal-sidebar-footer" id="modalSidebarFooter">

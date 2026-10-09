@@ -462,6 +462,9 @@ function init() {
       navigateViewerModal(e.key === 'ArrowLeft' ? -1 : 1);
     }
   });
+  if (modalPathFolder) {
+    new MutationObserver(syncModalPathShort).observe(modalPathFolder, { childList: true, characterData: true, subtree: true });
+  }
   if (btnModalPrev) btnModalPrev.addEventListener('click', () => navigateViewerModal(-1));
   if (btnModalNext) btnModalNext.addEventListener('click', () => navigateViewerModal(1));
   if (btnModalFavorite) {
@@ -1206,8 +1209,8 @@ function openFoldersDB() {
  */
 function getModelCacheKey(model) {
   const lastMod = model.file?.lastModified || 0;
-  // 3MF ganhou leitura de tempo/filamento do Bambu/Orca: prefixo força uma nova leitura uma única vez
-  const version = model.type === '3mf' ? 's2:' : '';
+  // 3MF ganhou leitura de tempo/filamento, autor, impressora e anexos: prefixo força uma nova leitura uma única vez
+  const version = model.type === '3mf' ? 's3:' : '';
   return `${version}${model.folderName || ''}:${model.path || model.name}:${model.size}:${lastMod}`;
 }
 
@@ -1248,6 +1251,7 @@ async function saveCachedThumbnail(key, data) {
       metadata: data.metadata || null,
       slicerData: data.slicerData || null,
       plates: data.plates || [],
+      extras: data.extras || null,
       cachedAt: Date.now()
     });
     return new Promise((resolve) => {
@@ -4069,6 +4073,7 @@ async function loadModelOnDemand(model) {
       model.metadata = cached.metadata || null;
       model.slicerData = cached.slicerData || null;
       model.plates = cached.plates || [];
+      model.extras = cached.extras || null;
       updateCardThumbnail(model);
       return model;
     }
@@ -4148,6 +4153,7 @@ async function extractModelThumbnailAndMeta(model, forceExtractPlates = false) {
         model.metadata = cached.metadata || null;
         model.slicerData = cached.slicerData || null;
         model.plates = cached.plates || [];
+        model.extras = cached.extras || null;
         return;
       }
     } catch (_) {}
@@ -4172,6 +4178,7 @@ async function extractModelThumbnailAndMeta(model, forceExtractPlates = false) {
     model.metadata = res.metadata;
     model.slicerData = res.slicerData;
     model.plates = res.plates || [];
+    model.extras = res.extras || null;
   }
 
   // Salvar no cache persistente do IndexedDB
@@ -4180,7 +4187,8 @@ async function extractModelThumbnailAndMeta(model, forceExtractPlates = false) {
       thumbnailUrl: model.thumbnailUrl,
       metadata: model.metadata,
       slicerData: model.slicerData,
-      plates: model.plates
+      plates: model.plates,
+      extras: model.extras || null
     });
   }
 }
@@ -4317,7 +4325,10 @@ function updateViewerPlateLabel(plate) {
     return;
   }
   const name = plate.isCustomCover ? 'Capa do projeto' : (plate.isProjectPart ? (plate.name || '') : `Mesa ${plate.id}`);
-  viewerPlateLabel.textContent = plate.printTimeFormatted ? `${name} · ${plate.printTimeFormatted}` : name;
+  const bits = [name];
+  if (plate.objectCount) bits.push(`${plate.objectCount} ${plate.objectCount === 1 ? 'peça' : 'peças'}`);
+  if (plate.printTimeFormatted) bits.push(plate.printTimeFormatted);
+  viewerPlateLabel.innerHTML = `<span>${escapeHtml(bits.join(' · '))}</span>${colorDotsHtml(plate.colors, 6)}`;
   viewerPlateLabel.hidden = !name;
 }
 
@@ -4383,27 +4394,22 @@ function fillModalDetails(model) {
     const val = document.getElementById(`modalInfo${key}`);
     if (!wrap || !val) return;
     const has = value !== null && value !== undefined && value !== '';
-    wrap.style.display = has ? 'flex' : 'none';
-    if (has) val.textContent = value;
+    wrap.style.display = has ? '' : 'none';
+    if (has) {
+      val.textContent = value;
+      val.title = value;
+    }
   };
 
   const isProject = !!model.isProject;
   const ref = isProject ? (model.primaryPart || (model.parts && model.parts[0])) : model;
   const type = (model.type || 'stl').toUpperCase();
-  const plateTotal = (model.plates || []).filter(p => !p.isCustomCover).length;
-
   let format = `.${type}`;
   if (isProject) {
     const n = model.partsCount || (model.parts ? model.parts.length : 0);
     format = `Projeto · ${n} ${n === 1 ? 'arquivo' : 'arquivos'}`;
-  } else if (plateTotal > 1) {
-    format = `.${type} · ${plateTotal} mesas`;
   }
   setRow('Format', format);
-  setRow('Size', model.size ? formatBytes(model.size) : '');
-
-  const mod = model.lastModified || (model.file && model.file.lastModified) || 0;
-  setRow('Modified', mod ? new Date(mod).toLocaleDateString('pt-BR') : '');
 
   const meta = !isProject && ref ? ref.metadata : null;
   const dims = meta && meta.dimensions;
@@ -4411,17 +4417,275 @@ function fillModalDetails(model) {
     ? `${Math.round(dims.x)} × ${Math.round(dims.y)} × ${Math.round(dims.z)} mm` : '');
   setRow('Triangles', meta && meta.triangleCount ? meta.triangleCount.toLocaleString('pt-BR') : '');
 
+  // Tempo e filamento só aparecem aqui quando não há a seção Filamentos
   const slicer = ref && ref.slicerData;
-  setRow('PrintTime', slicer && slicer.printTimeFormatted ? slicer.printTimeFormatted : '');
-  setRow('Filament', slicer && slicer.filamentGrams
+  const hasFilamentSection = !!(ref && ref.extras && ref.extras.filaments && ref.extras.filaments.length);
+  setRow('PrintTime', !hasFilamentSection && slicer && slicer.printTimeFormatted ? slicer.printTimeFormatted : '');
+  setRow('Filament', !hasFilamentSection && slicer && slicer.filamentGrams
     ? `${slicer.filamentGrams} g${slicer.filamentType ? ' ' + slicer.filamentType : ''}` : '');
 
-  const folderInfo = getModelParentFolderInfo(model);
-  setRow('Folder', (folderInfo && folderInfo.name) || model.folderName || '');
-  const folderWrap = document.getElementById('modalInfoFolderWrap');
-  if (folderWrap) folderWrap.title = (folderInfo && folderInfo.full) || '';
+  // Tamanho e data ficam na linha do caminho, no cabeçalho
+  const metaSize = document.getElementById('modalMetaSize');
+  const metaDate = document.getElementById('modalMetaDate');
+  if (metaSize) metaSize.textContent = model.size ? formatBytes(model.size) : '';
+  const mod = model.lastModified || (model.file && model.file.lastModified) || 0;
+  if (metaDate) metaDate.textContent = mod ? `modificado ${new Date(mod).toLocaleDateString('pt-BR')}` : '';
 
   modalSidebarInfo.style.display = 'block';
+  fillModalExtras(model);
+}
+
+/**
+ * Pasta resumida (as duas últimas pastas) na linha abaixo do nome; o caminho completo fica no título
+ */
+function syncModalPathShort() {
+  const full = (modalPathFolder && modalPathFolder.textContent) || '';
+  const shortEl = document.getElementById('modalPathShort');
+  const line = document.getElementById('modalPathLine');
+  if (!shortEl) return;
+  const parts = full.split(/[\\/]+/).filter(Boolean);
+  shortEl.textContent = parts.slice(-2).join(' › ');
+  if (line) line.title = full + ((modalPathName && modalPathName.textContent) || '');
+}
+
+const SOURCE_SITES = {
+  makerworld: { name: 'MakerWorld', short: 'MW', bg: '#00ae42', fg: '#ffffff' },
+  printables: { name: 'Printables', short: 'P', bg: '#fa6831', fg: '#ffffff' },
+  thingiverse: { name: 'Thingiverse', short: 'T', bg: '#248bfb', fg: '#ffffff' },
+  cults3d: { name: 'Cults3D', short: 'C', bg: '#822ef5', fg: '#ffffff' },
+  myminifactory: { name: 'MyMiniFactory', short: 'M', bg: '#ff5a5f', fg: '#ffffff' },
+  thangs: { name: 'Thangs', short: 'Th', bg: '#2b2d42', fg: '#ffffff' },
+  web: { name: 'Página do modelo', short: 'www', bg: '#1f2a37', fg: '#eef3f8' }
+};
+
+function colorDotsHtml(colors, max = 6) {
+  const list = (colors || []).filter(Boolean).slice(0, max);
+  if (!list.length) return '';
+  return `<span class="color-stack">${list.map(c => `<i style="background:${escapeHtml(c)}"></i>`).join('')}</span>`;
+}
+
+function getModelExtras(model) {
+  if (!model) return null;
+  const ref = model.isProject ? (model.primaryPart || (model.parts && model.parts[0])) : model;
+  return (ref && ref.extras) || null;
+}
+
+/**
+ * Painel lateral: Autor e origem, Impressão, Filamentos e Anexos (dados de dentro do 3MF)
+ */
+function fillModalExtras(model) {
+  const extras = getModelExtras(model);
+  const ref = model && model.isProject ? (model.primaryPart || (model.parts && model.parts[0])) : model;
+  const show = (id, visible) => { const el = document.getElementById(id); if (el) el.hidden = !visible; };
+
+  // Autor e origem
+  const hasAuthor = !!(extras && (extras.designer || extras.description || extras.license || extras.source));
+  show('modalAuthorSection', hasAuthor);
+  if (hasAuthor) {
+    const name = extras.designer || 'Autor não informado';
+    const initials = name.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase() || '?';
+    document.getElementById('modalAuthorAvatar').textContent = initials;
+    document.getElementById('modalAuthorName').textContent = name;
+    let sub = '';
+    if (extras.created) {
+      const d = new Date(extras.created);
+      sub = isNaN(d) ? extras.created : `criado em ${d.toLocaleDateString('pt-BR')}`;
+    }
+    if (extras.title && extras.title !== name) sub = sub ? `${extras.title} · ${sub}` : extras.title;
+    document.getElementById('modalAuthorSub').textContent = sub;
+
+    const desc = document.getElementById('modalAuthorDesc');
+    desc.textContent = extras.description || '';
+    desc.title = extras.description || '';
+    desc.hidden = !extras.description;
+
+    const pills = document.getElementById('modalAuthorPills');
+    const pillHtml = [];
+    if (extras.license) {
+      const nc = /\bNC\b|non.?commercial|não.?comercial/i.test(extras.license);
+      pillHtml.push(`<span class="modal-pill${nc ? ' warn' : ''}" title="${nc ? 'Uso não comercial' : 'Licença'}">${escapeHtml(extras.license)}</span>`);
+    }
+    if (extras.copyright && extras.copyright !== extras.designer) {
+      pillHtml.push(`<span class="modal-pill" title="Direitos autorais">© ${escapeHtml(extras.copyright)}</span>`);
+    }
+    pills.innerHTML = pillHtml.join('');
+    pills.hidden = pillHtml.length === 0;
+
+    const src = extras.source;
+    const site = src ? (SOURCE_SITES[src.site] || SOURCE_SITES.web) : null;
+    show('modalSourceRow', !!site);
+    if (site) {
+      const logo = document.getElementById('modalSourceLogo');
+      logo.textContent = site.short;
+      logo.style.background = site.bg;
+      logo.style.color = site.fg;
+      document.getElementById('modalSourceName').textContent = site.name;
+      const link = document.getElementById('modalSourceLink');
+      link.hidden = !src.url;
+      if (src.url) {
+        link.href = src.url;
+        link.title = src.url;
+      }
+    }
+  }
+
+  // Impressão
+  const grid = document.getElementById('modalPrintGrid');
+  const specs = extras ? [
+    ['Impressora', extras.printer, extras.printerFull],
+    ['Bico', extras.nozzle],
+    ['Camada', extras.layerHeight],
+    ['Preenchimento', extras.infill],
+    ['Suporte', extras.support],
+    ['Peças', extras.pieces ? String(extras.pieces) : null]
+  ].filter(s => s[1]) : [];
+  show('modalPrintSection', specs.length > 0);
+  if (grid) {
+    grid.innerHTML = specs.map(([label, value, full]) =>
+      `<div class="modal-spec"><dt>${label}</dt><dd title="${escapeHtml(full || value)}">${escapeHtml(value)}</dd></div>`).join('');
+    if (extras && extras.profile) grid.title = `Perfil: ${extras.profile}`;
+  }
+
+  // Filamentos
+  const filaments = (extras && extras.filaments) || [];
+  show('modalFilamentSection', filaments.length > 0);
+  const list = document.getElementById('modalFilamentList');
+  if (list && filaments.length) {
+    const totalGrams = filaments.reduce((sum, f) => sum + (f.grams || 0), 0);
+    list.innerHTML = filaments.map(f => {
+      const title = f.name || f.type || 'Filamento';
+      const sub = f.name && f.type && !f.name.toUpperCase().includes(f.type.toUpperCase()) ? f.type : '';
+      return `<div class="modal-fil">
+        <span class="modal-fil-swatch" style="background:${escapeHtml(f.color || '#5b6878')}" title="${escapeHtml(f.color || '')}"></span>
+        <div class="modal-fil-name"><b>${escapeHtml(title)}</b>${sub ? `<small>${escapeHtml(sub)}</small>` : ''}</div>
+        <span class="modal-fil-grams">${f.grams ? `${f.grams.toLocaleString('pt-BR')} g` : ''}</span>
+      </div>`;
+    }).join('') + (totalGrams > 0 && filaments.length > 1
+      ? `<div class="modal-fil-bar">${filaments.map(f => `<i style="width:${(100 * (f.grams || 0) / totalGrams).toFixed(1)}%;background:${escapeHtml(f.color || '#5b6878')}"></i>`).join('')}</div>`
+      : '');
+    const slicer = ref && ref.slicerData;
+    const parts = [];
+    if (slicer && slicer.printTimeFormatted) parts.push(slicer.printTimeFormatted);
+    if (totalGrams > 0) parts.push(`${Math.round(totalGrams).toLocaleString('pt-BR')} g`);
+    else if (slicer && slicer.filamentGrams) parts.push(`${slicer.filamentGrams} g`);
+    document.getElementById('modalFilamentTotal').textContent = parts.join(' · ');
+  }
+
+  // Selo Multicor no cabeçalho
+  const multi = document.getElementById('modalMultiChip');
+  if (multi) {
+    const colors = Array.from(new Set(filaments.map(f => f.color).filter(Boolean)));
+    multi.hidden = colors.length < 2;
+    if (colors.length >= 2) multi.innerHTML = `${colorDotsHtml(colors)}Multicor · ${colors.length}`;
+  }
+
+  renderModalAttachments(model, extras);
+}
+
+/**
+ * Anexos do autor: fotos viram miniaturas (abrem no visualizador), PDFs e outros abrem à parte
+ */
+function renderModalAttachments(model, extras) {
+  const section = document.getElementById('modalAttachSection');
+  const gridEl = document.getElementById('modalAttachGrid');
+  const items = (extras && extras.attachments) || [];
+  if (!section || !gridEl) return;
+  section.hidden = items.length === 0;
+  gridEl.innerHTML = '';
+  if (!items.length) return;
+  document.getElementById('modalAttachCount').textContent = items.length;
+
+  const source = model && model.isProject ? (model.primaryPart || (model.parts && model.parts[0])) : model;
+  const maxTiles = 10;
+  items.slice(0, maxTiles).forEach((item, i) => {
+    const tile = document.createElement('button');
+    tile.type = 'button';
+    tile.className = `modal-attach modal-attach-${item.kind}`;
+    tile.title = `${item.name}${item.size ? ' · ' + formatBytes(item.size) : ''}`;
+    if (i === maxTiles - 1 && items.length > maxTiles) {
+      tile.innerHTML = `<span class="modal-attach-more">+${items.length - maxTiles + 1}</span>`;
+      tile.title = `${items.length - maxTiles + 1} anexos a mais: ${items.slice(maxTiles - 1).map(x => x.name).join(', ')}`;
+      tile.disabled = true;
+    } else if (item.kind === 'image') {
+      tile.innerHTML = '<span class="modal-attach-loading"></span>';
+    } else {
+      tile.innerHTML = `<span class="modal-attach-ext">${escapeHtml((item.ext || 'arq').toUpperCase().slice(0, 4))}</span><small>${item.size ? formatBytes(item.size) : ''}</small>`;
+    }
+    tile.dataset.index = String(i);
+    tile.addEventListener('click', () => openModalAttachment(source, item));
+    gridEl.appendChild(tile);
+  });
+
+  // Carrega as fotos sob demanda (só enquanto este modelo estiver aberto)
+  const images = items.slice(0, maxTiles).filter(x => x.kind === 'image');
+  if (images.length) {
+    loadAttachmentUrls(source, images).then(urls => {
+      if (state.modalItem !== model) return;
+      gridEl.querySelectorAll('.modal-attach-image').forEach(tile => {
+        const item = items[parseInt(tile.dataset.index, 10)];
+        const url = item && urls[item.path];
+        if (url) tile.innerHTML = `<img src="${url}" alt="${escapeHtml(item.name)}" loading="lazy">`;
+        else tile.innerHTML = `<span class="modal-attach-ext">IMG</span>`;
+      });
+    });
+  }
+}
+
+/** Lê os anexos pedidos de dentro do 3MF e devolve URLs (blob) reaproveitadas pelo modelo */
+async function loadAttachmentUrls(model, items) {
+  if (!model) return {};
+  model._attachmentUrls = model._attachmentUrls || {};
+  const missing = items.filter(it => !model._attachmentUrls[it.path]);
+  if (missing.length) {
+    try {
+      if (!model.file && model.handle && typeof model.handle.getFile === 'function') {
+        model.file = await model.handle.getFile();
+      }
+      if (!model.file) return model._attachmentUrls;
+      const zip = await JSZip.loadAsync(await model.file.arrayBuffer());
+      for (const it of missing) {
+        const entry = zip.file(it.path);
+        if (!entry) continue;
+        const blob = await entry.async('blob');
+        const mime = it.kind === 'pdf' ? 'application/pdf'
+          : it.kind === 'image' ? `image/${it.ext === 'jpg' ? 'jpeg' : it.ext}` : 'application/octet-stream';
+        model._attachmentUrls[it.path] = URL.createObjectURL(new Blob([blob], { type: mime }));
+      }
+    } catch (err) {
+      console.warn('Erro ao ler anexos do 3MF:', err);
+    }
+  }
+  return model._attachmentUrls;
+}
+
+async function openModalAttachment(model, item) {
+  const urls = await loadAttachmentUrls(model, [item]);
+  const url = urls[item.path];
+  if (!url) {
+    showToast(`Não foi possível abrir "${item.name}".`, 'warning');
+    return;
+  }
+  if (item.kind === 'image') {
+    // Mostra a foto do autor no visualizador, no lugar da foto da mesa
+    setViewerMode('plate');
+    modalPlateImg.src = url;
+    if (viewerPlateLabel) {
+      viewerPlateLabel.textContent = item.name;
+      viewerPlateLabel.hidden = false;
+    }
+    document.querySelectorAll('.plate-square-card.active').forEach(c => c.classList.remove('active'));
+    return;
+  }
+  if (item.kind === 'pdf') {
+    window.open(url, '_blank');
+    return;
+  }
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = item.name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
 }
 
 /**
@@ -4429,6 +4693,7 @@ function fillModalDetails(model) {
  */
 function setViewerMode(mode) {
   state.currentViewerMode = mode;
+  if (modalCanvas && modalCanvas.parentElement) modalCanvas.parentElement.classList.toggle('is-3d', mode === '3d');
 
   const hasPlates = (state.activeProject && state.activeProject.plates && state.activeProject.plates.length > 0) ||
                     (state.activeModel && state.activeModel.plates && state.activeModel.plates.length > 0);
@@ -4472,7 +4737,12 @@ function renderPlatesList(plates) {
 
   if (modalSidebar) modalSidebar.style.display = 'flex';
   if (platesSection) platesSection.style.display = 'flex';
-  if (platesCount) platesCount.textContent = plates.length;
+  if (platesCount) {
+    const realPlates = plates.filter(p => !p.isCustomCover);
+    const label = state.activeProject ? (realPlates.length === 1 ? 'arquivo' : 'arquivos') : (realPlates.length === 1 ? 'mesa' : 'mesas');
+    const totalSeconds = realPlates.reduce((sum, p) => sum + (p.printTimeSeconds || 0), 0);
+    platesCount.textContent = `${realPlates.length} ${label}${totalSeconds ? ' · ' + formatDurationShort(totalSeconds) : ''}`;
+  }
 
   plates.forEach(plate => {
     const card = document.createElement('div');
@@ -4490,7 +4760,7 @@ function renderPlatesList(plates) {
         ? `<img class="plate-square-img" src="${currentImg}" alt="${escapeHtml(plate.name)}">`
         : `<div class="plate-square-placeholder"><span style="font-size: 1.4rem;">🖨️</span></div>`
       }
-      <span class="plate-square-label" title="${escapeHtml(plate.fullName || plate.name)}">${escapeHtml(plate.printTimeFormatted || plate.name)}</span>
+      <span class="plate-square-label" title="${escapeHtml(plate.fullName || plate.name)}"><span class="plate-square-text">${escapeHtml(plate.printTimeFormatted || plate.name)}</span>${colorDotsHtml(plate.colors, 4)}</span>
     `;
 
     card.addEventListener('click', () => {
@@ -4915,10 +5185,13 @@ async function openViewerModal(model) {
     model.plates.some(p => !p.imageUrl && !p.isCustomCover)
   );
 
-  if (!model.thumbnailUrl || needsPlateExtraction) {
+  // 3MF lido antes desta versão ainda não tem autor/impressora/anexos: lê de novo em segundo plano
+  const needsExtras = model.type === '3mf' && model.extras === undefined;
+
+  if (!model.thumbnailUrl || needsPlateExtraction || needsExtras) {
     (async () => {
       try {
-        await extractModelThumbnailAndMeta(model, needsPlateExtraction);
+        await extractModelThumbnailAndMeta(model, needsPlateExtraction || needsExtras);
         updateCardThumbnail(model);
 
         // Se este mesmo modelo ainda estiver ativo no modal, atualiza os dados na tela
@@ -4928,11 +5201,16 @@ async function openViewerModal(model) {
             renderPlatesList(model.plates);
             if (!state.activePlate) {
               selectPlate(model.plates[0]);
+            } else {
+              // A releitura cria novos objetos de mesa: mantém a mesma mesa selecionada
+              const same = model.plates.find(p => p.id === state.activePlateId);
+              if (same) state.activePlate = same;
             }
           }
           fillModalDetails(model);
           updateModalHeaderExtras();
           updateViewerModeSeg();
+          if (state.activePlate) updateViewerPlateLabel(state.activePlate);
         }
       } catch (e) {
         console.warn('Erro ao extrair metadados e mesas do modelo em background:', e);
@@ -5187,6 +5465,13 @@ function closeViewerModal() {
 }
 
 // Utilitários
+function formatDurationShort(totalSeconds) {
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.round((totalSeconds % 3600) / 60);
+  if (h > 0) return m > 0 ? `${h}h ${m}min` : `${h}h`;
+  return `${Math.max(1, m)} min`;
+}
+
 function formatBytes(bytes) {
   if (bytes === 0) return '0 B';
   const k = 1024;
