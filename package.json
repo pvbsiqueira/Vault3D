@@ -1,6 +1,6 @@
 {
   "name": "vault3d",
-  "version": "1.1.3",
+  "version": "1.1.4",
   "description": "Visualizador e Gerenciador 3D para Impressão 3D (STL e 3MF)",
   "main": "main.js",
   "scripts": {
@@ -51,6 +51,12 @@
       "!sample_models/*",
       "!Imagens/*"
     ],
+    "extraResources": [
+      {
+        "from": "build/icon.ico",
+        "to": "shortcut-icon.ico"
+      }
+    ],
     "win": {
       "icon": "build/icon.ico",
       "target": [
@@ -70,7 +76,8 @@
       "shortcutName": "Vault3D",
       "installerIcon": "build/icon.ico",
       "uninstallerIcon": "build/icon.ico",
-      "installerHeaderIcon": "build/icon.ico"
+      "installerHeaderIcon": "build/icon.ico",
+      "include": "build/installer.nsh"
     },
     "publish": [
       {

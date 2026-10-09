@@ -431,29 +431,7 @@ if (!gotTheLock && app.isPackaged) {
     }
   });
 
-  app.whenReady().then(() => {
-    createWindow();
-    refreshWindowsIconCacheAfterUpdate();
-  });
-}
-
-// Depois de uma atualização o Windows continua mostrando o ícone antigo nos
-// atalhos (cache de ícones). Na primeira abertura de cada versão nova, pede
-// ao Windows para recarregar os ícones.
-function refreshWindowsIconCacheAfterUpdate() {
-  if (process.platform !== 'win32' || !app.isPackaged) return;
-  try {
-    const marker = path.join(app.getPath('userData'), 'last-icon-refresh.txt');
-    const current = app.getVersion();
-    const last = fs.existsSync(marker) ? fs.readFileSync(marker, 'utf8').trim() : '';
-    if (last === current) return;
-    const { spawn } = require('child_process');
-    const ie4uinit = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'ie4uinit.exe');
-    spawn(ie4uinit, ['-show'], { detached: true, stdio: 'ignore', windowsHide: true }).on('error', () => {}).unref();
-    fs.writeFileSync(marker, current);
-  } catch (err) {
-    console.warn('Não foi possível atualizar o cache de ícones:', err);
-  }
+  app.whenReady().then(createWindow);
 }
 
 // Handler de Deep Link no macOS
