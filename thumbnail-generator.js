@@ -576,6 +576,48 @@ export async function parse3MFGeometry(input, targetPlateId = null) {
 }
 
 /**
+ * Lê Metadata/slice_info.config (Bambu Studio / OrcaSlicer), que guarda por mesa
+ * o tempo previsto (prediction, em segundos), o peso (weight, em gramas) e os
+ * filamentos usados. Só existe com números quando o arquivo foi fatiado antes de salvar.
+ * Retorna um Map: índice da mesa -> { prediction, weight, filamentTypes }
+ */
+async function readSliceInfoPlates(zip) {
+  const result = new Map();
+  const file = zip.file('Metadata/slice_info.config') ||
+               zip.file(/^Metadata[\\\/]slice_info\.config$/i)?.[0];
+  if (!file) return result;
+  try {
+    const text = await file.async('string');
+    const metaValue = (block, key) => {
+      const m = block.match(new RegExp(`<metadata\\s+[^>]*?key=["']${key}["'][^>]*?value=["']([^"']*)["']`, 'i')) ||
+                block.match(new RegExp(`<metadata\\s+[^>]*?value=["']([^"']*)["'][^>]*?key=["']${key}["']`, 'i'));
+      return m ? m[1] : null;
+    };
+    const blocks = text.match(/<plate\b[\s\S]*?<\/plate>/gi) || [];
+    blocks.forEach((block, i) => {
+      const index = parseInt(metaValue(block, 'index'), 10) || (i + 1);
+      const prediction = parseFloat(metaValue(block, 'prediction')) || 0;
+      let weight = parseFloat(metaValue(block, 'weight')) || 0;
+      const filamentTypes = [];
+      let usedSum = 0;
+      for (const f of block.match(/<filament\b[^>]*>/gi) || []) {
+        const type = (f.match(/\btype=["']([^"']+)["']/i) || [])[1];
+        const used = parseFloat((f.match(/\bused_g=["']([\d.]+)["']/i) || [])[1]) || 0;
+        if (type && !filamentTypes.includes(type)) filamentTypes.push(type);
+        usedSum += used;
+      }
+      if (!weight && usedSum) weight = usedSum;
+      if (prediction > 0 || weight > 0) {
+        result.set(index, { prediction, weight, filamentTypes });
+      }
+    });
+  } catch (e) {
+    console.warn('Erro ao ler Metadata/slice_info.config:', e);
+  }
+  return result;
+}
+
+/**
  * Extrai todas as mesas de impressão (plates) contidas no arquivo 3MF
  */
 export async function extract3MFPlates(zip) {
@@ -609,6 +651,9 @@ export async function extract3MFPlates(zip) {
       }
     } catch (_) {}
   }
+
+  const sliceInfo = await readSliceInfoPlates(zip);
+  for (const idx of sliceInfo.keys()) plateIndices.add(idx);
 
   const sortedIndices = Array.from(plateIndices).sort((a, b) => a - b);
 
@@ -669,6 +714,21 @@ export async function extract3MFPlates(zip) {
       }
     }
 
+    // 3. Tempo e filamento gravados pelo fatiador em slice_info.config
+    const sliced = sliceInfo.get(index);
+    if (sliced) {
+      if (!printTimeSeconds && sliced.prediction > 0) {
+        printTimeSeconds = Math.round(sliced.prediction);
+        printTimeFormatted = formatSecondsToTime(printTimeSeconds);
+      }
+      if (!filamentGrams && sliced.weight > 0) {
+        filamentGrams = parseFloat(sliced.weight.toFixed(1));
+      }
+      if (!filamentType && sliced.filamentTypes.length) {
+        filamentType = sliced.filamentTypes.join(' + ');
+      }
+    }
+
     plates.push({
       id: index,
       name,
@@ -696,53 +756,65 @@ export async function extract3MFSlicerData(zip) {
   let isSliced = false;
 
   // 1. Verificar arquivos JSON de fatiamento (Bambu Studio / OrcaSlicer)
-  const plateJsonFiles = zip.file(/^Metadata\/plate_.*\.json$/i);
+  const plateJsonFiles = zip.file(/^Metadata[\\\/]plate_.*\.json$/i);
   if (plateJsonFiles.length > 0) {
+    // Soma tempo e peso de todas as mesas (cada plate_N.json traz só a sua)
+    let totalSeconds = 0, totalGrams = 0;
+    const types = [];
     for (const file of plateJsonFiles) {
       try {
         const text = await file.async('string');
         const json = JSON.parse(text);
 
         // Tempo estimado (em segundos)
-        if (json.prediction !== undefined && json.prediction > 0) {
-          printTimeSeconds = Math.round(json.prediction);
-          isSliced = true;
-        } else if (json.print_time !== undefined && json.print_time > 0) {
-          printTimeSeconds = Math.round(json.print_time);
-          isSliced = true;
-        }
+        const seconds = json.prediction > 0 ? json.prediction : (json.print_time > 0 ? json.print_time : 0);
+        totalSeconds += seconds;
 
         // Peso do filamento (em gramas)
-        if (json.weight !== undefined && json.weight > 0) {
-          filamentGrams = parseFloat(json.weight.toFixed(1));
-          isSliced = true;
-        } else if (json.filament_weight !== undefined && json.filament_weight > 0) {
-          filamentGrams = parseFloat(json.filament_weight.toFixed(1));
-          isSliced = true;
-        }
+        const grams = json.weight > 0 ? json.weight : (json.filament_weight > 0 ? json.filament_weight : 0);
+        totalGrams += grams;
 
         // Tipo de filamento
-        if (json.filament_type) {
-          filamentType = Array.isArray(json.filament_type) ? json.filament_type[0] : json.filament_type;
-        }
-        if (json.filament_colors && json.filament_colors.length > 0) {
+        const ft = json.filament_type;
+        (Array.isArray(ft) ? ft : (ft ? [ft] : [])).forEach(t => { if (t && !types.includes(t)) types.push(t); });
+        if (!filamentColor && json.filament_colors && json.filament_colors.length > 0) {
           filamentColor = json.filament_colors[0];
         }
-
-        if (isSliced) break;
       } catch (e) {
         console.warn('Erro ao ler JSON de fatiamento do 3MF:', e);
       }
     }
+    if (totalSeconds > 0) printTimeSeconds = Math.round(totalSeconds);
+    if (totalGrams > 0) filamentGrams = parseFloat(totalGrams.toFixed(1));
+    if (types.length) filamentType = types.join(' + ');
+    isSliced = totalSeconds > 0 || totalGrams > 0;
   }
 
-  // 2. Verificar arquivos de configuração ou gcode embutido (PrusaSlicer, SuperSlicer, Anycubic, etc.)
+  // 2. Bambu Studio / OrcaSlicer: slice_info.config traz tempo e peso por mesa (soma de todas)
+  if (!isSliced) {
+    const sliceInfo = await readSliceInfoPlates(zip);
+    if (sliceInfo.size > 0) {
+      let totalSeconds = 0, totalGrams = 0;
+      const types = [];
+      for (const info of sliceInfo.values()) {
+        totalSeconds += info.prediction || 0;
+        totalGrams += info.weight || 0;
+        info.filamentTypes.forEach(t => { if (!types.includes(t)) types.push(t); });
+      }
+      if (totalSeconds > 0) printTimeSeconds = Math.round(totalSeconds);
+      if (totalGrams > 0) filamentGrams = parseFloat(totalGrams.toFixed(1));
+      if (types.length) filamentType = types.join(' + ');
+      isSliced = totalSeconds > 0 || totalGrams > 0;
+    }
+  }
+
+  // 3. Verificar arquivos de configuração ou gcode embutido (PrusaSlicer, SuperSlicer, Anycubic, etc.)
   if (!isSliced) {
     const configOrGcodeFiles = [
-      ...zip.file(/^Metadata\/.*\.gcode$/i),
-      ...zip.file(/^Metadata\/.*\.config$/i),
-      ...zip.file(/^Metadata\/.*\.ini$/i),
-      ...zip.file(/^Metadata\/slice_info.*$/i)
+      ...zip.file(/^Metadata[\\\/].*\.gcode$/i),
+      ...zip.file(/^Metadata[\\\/].*\.config$/i),
+      ...zip.file(/^Metadata[\\\/].*\.ini$/i),
+      ...zip.file(/^Metadata[\\\/]slice_info.*$/i)
     ];
 
     for (const file of configOrGcodeFiles) {

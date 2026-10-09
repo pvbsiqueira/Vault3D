@@ -1206,7 +1206,9 @@ function openFoldersDB() {
  */
 function getModelCacheKey(model) {
   const lastMod = model.file?.lastModified || 0;
-  return `${model.folderName || ''}:${model.path || model.name}:${model.size}:${lastMod}`;
+  // 3MF ganhou leitura de tempo/filamento do Bambu/Orca: prefixo força uma nova leitura uma única vez
+  const version = model.type === '3mf' ? 's2:' : '';
+  return `${version}${model.folderName || ''}:${model.path || model.name}:${model.size}:${lastMod}`;
 }
 
 /**
