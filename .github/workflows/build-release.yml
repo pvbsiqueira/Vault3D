@@ -5,6 +5,12 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
+  pull_request:
+    paths:
+      - 'package.json'
+      - 'main.js'
+      - 'build/**'
+      - '.github/workflows/build-release.yml'
 
 jobs:
   build:
@@ -27,6 +33,12 @@ jobs:
         run: npm install
 
       - name: Build & Publish Release to GitHub
+        if: github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npm run dist:win -- --publish always
+
+      # Em PRs só compila o instalador, para pegar erros antes do release.
+      - name: Build Installer (no publish)
+        if: github.event_name == 'pull_request'
+        run: npm run dist:win -- --publish never
