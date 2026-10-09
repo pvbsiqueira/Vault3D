@@ -2,367 +2,107 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Vault3D - Gerenciador e Visualizador 3D para Impressão 3D | Download Desktop</title>
-  <meta name="description" content="Baixe o Vault3D para Windows. Organize modelos STL e 3MF, inspecione mesas de impressão em segundos e abra diretamente no Bambu Studio, OrcaSlicer, PrusaSlicer e Cura.">
-  
-  <!-- Open Graph / Meta -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#05080c">
+  <title>Vault3D · Organizador e visualizador de STL e 3MF, grátis</title>
+  <meta name="description" content="Vault3D é um app gratuito para Windows que organiza sua pasta de STL e 3MF: veja várias peças de uma vez, encontre duplicados, renomeie, agrupe STLs em projetos e abra no seu fatiador. Seus arquivos não saem do seu computador.">
   <meta property="og:type" content="website">
-  <meta property="og:title" content="Vault3D - Download para Windows">
-  <meta property="og:description" content="O visualizador e organizador definitivo de arquivos 3D para impressão 3D (STL e 3MF). 100% nativo e offline.">
+  <meta property="og:title" content="Vault3D · Sua biblioteca de impressão 3D em ordem">
+  <meta property="og:description" content="Gratuito e local. Feito por quem imprime, para quem imprime.">
   <meta property="og:image" content="build/icon.png">
-
-  <!-- Favicon -->
   <link rel="icon" type="image/png" href="build/icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap">
   <link rel="stylesheet" href="landing.css">
 </head>
 <body>
 
-  <!-- Banner de Captura de Magic Link / Deep Link -->
-  <div class="deep-link-banner" id="deepLinkBanner">
-    <span>✨ <strong>Link de Login Detectado!</strong> Você pode abrir diretamente no Vault3D instalado no seu computador.</span>
-    <a href="#" class="btn-open-app-direct" id="btnOpenDeepLink">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
-        <polyline points="15 3 21 3 21 9"></polyline>
-        <line x1="10" y1="14" x2="21" y2="3"></line>
-      </svg>
-      Abrir no Vault3D
-    </a>
+  <div class="deep-link-banner" id="deepLinkBanner" role="status">
+    <span>Você abriu o link de login. Continue no Vault3D instalado no seu computador.</span>
+    <a href="#" id="btnOpenDeepLink">Abrir o Vault3D</a>
   </div>
 
-  <!-- Header & Navbar -->
-  <header class="navbar">
-    <div class="container navbar-inner">
-      <a href="#" class="brand">
-        <img src="build/icon.png" alt="Logo Vault3D" class="brand-icon">
-        <span class="brand-title">Vault3D</span>
-        <span class="brand-tag">Desktop</span>
-      </a>
-
-      <nav>
-        <ul class="nav-links">
-          <li><a href="#recursos" class="nav-link">Recursos</a></li>
-          <li><a href="#fatiadores" class="nav-link">Fatiadores</a></li>
-          <li><a href="#como-instalar" class="nav-link">Como Instalar</a></li>
-          <li><a href="https://github.com/pvbsiqueira/Vault3D" target="_blank" rel="noopener noreferrer" class="nav-link">GitHub</a></li>
-        </ul>
-      </nav>
-
-      <div class="nav-actions">
-        <a href="https://github.com/pvbsiqueira/Vault3D/releases/latest/download/Vault3D-Setup-1.0.1.exe" class="btn-nav-download" id="btnNavDownload">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-            <polyline points="7 10 12 15 17 10"></polyline>
-            <line x1="12" y1="15" x2="12" y2="3"></line>
-          </svg>
-          Baixar .exe
-        </a>
+  <div class="page">
+    <!-- Topo -->
+    <header class="top inner">
+      <a href="#" class="brand"><img src="build/icon.png" alt="" width="32" height="32">Vault3D</a>
+      <div class="top-meta">
+        <span>Windows 10 e 11 · 64 bits</span>
+        <a href="https://github.com/pvbsiqueira/Vault3D/releases/latest/download/Vault3D-Setup-1.0.1.exe" class="btn btn-primary btn-sm" data-download>Baixar grátis</a>
       </div>
-    </div>
-  </header>
+    </header>
 
-  <!-- Hero Section -->
-  <main>
-    <section class="hero">
-      <div class="container">
-        
-        <div class="hero-badge-pill">
-          <span class="pulse-dot"></span>
-          <span id="versionBadge">Versão 1.0.1 Oficial para Windows</span>
-        </div>
-
-        <h1 class="hero-title">
-          O Gerenciador & Visualizador 3D <br>
-          <span class="hero-title-gradient">Definitivo para Impressão 3D</span>
-        </h1>
-
-        <p class="hero-subtitle">
-          Organize seus arquivos STL e 3MF, inspecione mesas de impressão em segundos e abra diretamente no Bambu Studio, OrcaSlicer, PrusaSlicer e Cura em 1 clique.
-        </p>
-
-        <div class="hero-cta-wrap">
-          <a href="https://github.com/pvbsiqueira/Vault3D/releases/latest/download/Vault3D-Setup-1.0.1.exe" class="btn-primary-download" id="btnHeroDownload">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-              <polyline points="7 10 12 15 17 10"></polyline>
-              <line x1="12" y1="15" x2="12" y2="3"></line>
-            </svg>
-            <span>Baixar Vault3D para Windows</span>
+    <!-- Texto + visualizador -->
+    <main class="main inner">
+      <div class="copy">
+        <span class="eyebrow"><span class="dot"></span>Versão <span data-version>1.0.1</span> · 100% gratuito</span>
+        <h1>Sua biblioteca de impressão 3D, <span class="grad">organizada e à vista.</span></h1>
+        <p class="lead">O Vault3D lê a pasta onde você já guarda seus <strong>STL e 3MF</strong> e mostra tudo em miniatura e em 3D. Você encontra o que procura sem abrir arquivo por arquivo no fatiador, e nada sai do seu computador.</p>
+        <div class="cta">
+          <a href="https://github.com/pvbsiqueira/Vault3D/releases/latest/download/Vault3D-Setup-1.0.1.exe" class="btn btn-primary" data-download>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
+            Baixar para Windows
           </a>
-
-          <div class="download-meta">
-            <span>💻 Windows 10 e 11 (64-bit)</span>
-            <span>📦 Instalador NSIS (~82 MB)</span>
-            <span>🔄 Atualizações Automáticas</span>
-            <span>🛡️ 100% Gratuito</span>
-          </div>
-        </div>
-
-        <!-- Showcase Mockup do App Desktop -->
-        <div class="app-preview-wrap">
-          <div class="app-preview-window">
-            <div class="preview-titlebar">
-              <div class="preview-dots">
-                <div class="preview-dot dot-red"></div>
-                <div class="preview-dot dot-yellow"></div>
-                <div class="preview-dot dot-green"></div>
-              </div>
-              <div class="preview-titlebar-text">Vault3D - Gerenciador 3D Nativo</div>
-              <div style="width: 48px;"></div>
-            </div>
-
-            <div class="preview-body">
-              <!-- Sidebar do Mockup -->
-              <div class="preview-sidebar">
-                <div style="font-size: 0.75rem; text-transform: uppercase; color: #64748b; font-weight: 700; margin-bottom: 4px;">Pastas Conectadas</div>
-                <div class="preview-side-item active">📁 Meus Modelos 3D</div>
-                <div class="preview-side-item">📁 Miniaturas & RPG</div>
-                <div class="preview-side-item">📁 Peças Funcionais</div>
-                <div style="margin-top: auto; font-size: 0.72rem; color: #475569;">Autenticado com Magic Link</div>
-              </div>
-
-              <!-- Galeria do Mockup -->
-              <div class="preview-main-content">
-                <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 10px;">
-                  <span style="font-size: 0.9rem; font-weight: 600; color: #94a3b8;">Biblioteca (320 modelos)</span>
-                  <span style="font-size: 0.8rem; background: rgba(99,102,241,0.2); color: #818cf8; padding: 2px 8px; border-radius: 4px;">Modo Fatiador Ativo</span>
-                </div>
-
-                <div class="preview-gallery-grid">
-                  <!-- Card 1 -->
-                  <div class="preview-card">
-                    <div class="preview-card-thumb">
-                      <span class="preview-card-badge badge-3mf">3MF</span>
-                      🎲
-                    </div>
-                    <div class="preview-card-title">Torre_Dados_Castelo.3mf</div>
-                    <div class="preview-card-footer">
-                      <span>4 Mesas</span>
-                      <span class="preview-btn-slicer">Abrir Fatiador ↗</span>
-                    </div>
-                  </div>
-
-                  <!-- Card 2 -->
-                  <div class="preview-card">
-                    <div class="preview-card-thumb">
-                      <span class="preview-card-badge badge-stl">STL</span>
-                      🚀
-                    </div>
-                    <div class="preview-card-title">Suporte_Carretel_Filamento.stl</div>
-                    <div class="preview-card-footer">
-                      <span>14.2 MB</span>
-                      <span class="preview-btn-slicer">Abrir Fatiador ↗</span>
-                    </div>
-                  </div>
-
-                  <!-- Card 3 -->
-                  <div class="preview-card">
-                    <div class="preview-card-thumb">
-                      <span class="preview-card-badge badge-3mf">3MF</span>
-                      🤖
-                    </div>
-                    <div class="preview-card-title">Articulated_Dragon_V2.3mf</div>
-                    <div class="preview-card-footer">
-                      <span>2 Mesas</span>
-                      <span class="preview-btn-slicer">Abrir Fatiador ↗</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-      </div>
-    </section>
-
-    <!-- Recursos Principais -->
-    <section class="features-section" id="recursos">
-      <div class="container">
-        <div class="section-header">
-          <div class="section-tag">Poder Nativo</div>
-          <h2 class="section-title">Por que o Vault3D Desktop é a escolha definitiva?</h2>
-          <p class="section-desc">Construído do zero para entusiastas e profissionais de impressão 3D que precisam de velocidade, controle e organização sem atritos.</p>
-        </div>
-
-        <div class="features-grid">
-          <div class="feature-card">
-            <div class="feature-icon-wrap">⚡</div>
-            <h3>Desempenho Nativo com GPU</h3>
-            <p>Esqueça abas travando por estouro de memória. O Vault3D renderiza malhas pesadas e centenas de peças com aceleração por hardware nativa.</p>
-          </div>
-
-          <div class="feature-card">
-            <div class="feature-icon-wrap">📂</div>
-            <h3>Pastas Conectadas Permanentes</h3>
-            <p>Conecte suas pastas locais ou HDs externos uma única vez. Sem janelas chatas pedindo autorização a cada sessão como acontecia na web.</p>
-          </div>
-
-          <div class="feature-card">
-            <div class="feature-icon-wrap">🖨️</div>
-            <h3>1 Clique para o Fatiador</h3>
-            <p>Clique no botão do card e o modelo abre imediatamente no seu fatiador favorito (Bambu Studio, OrcaSlicer, PrusaSlicer ou Cura).</p>
-          </div>
-
-          <div class="feature-card">
-            <div class="feature-icon-wrap">📦</div>
-            <h3>Projetos Multi-Mesas (.3MF)</h3>
-            <p>Extraia e inspecione as fotos oficiais das mesas de impressão de arquivos Bambu/OrcaSlicer diretamente no visualizador interativo.</p>
-          </div>
-
-          <div class="feature-card">
-            <div class="feature-icon-wrap">🔒</div>
-            <h3>100% Seguro e Offline</h3>
-            <p>Seus arquivos 3D ficam exclusivamente no seu computador. Nenhum STL ou 3MF é enviado para servidores externos. Privacidade absoluta.</p>
-          </div>
-
-          <div class="feature-card">
-            <div class="feature-icon-wrap">🔄</div>
-            <h3>Atualizações Silenciosas</h3>
-            <p>O aplicativo detecta novas versões automaticamente e atualiza em segundo plano, sem você precisar entrar no site para baixar de novo.</p>
+          <div class="facts">
+            <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg>Sem plano pago</span>
+            <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg>Arquivos ficam no seu PC</span>
+            <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg>Atualiza sozinho</span>
           </div>
         </div>
       </div>
-    </section>
 
-    <!-- Fatiadores Suportados -->
-    <section class="slicers-section" id="fatiadores">
-      <div class="container text-center" style="text-align: center;">
-        <div class="section-tag">Compatibilidade Universal</div>
-        <h2 class="section-title">Integrado aos seus Fatiadores Favoritos</h2>
-        <p class="section-desc" style="max-width: 600px; margin: 0 auto;">Abra modelos instantaneamente nos fatiadores mais populares do mercado com suporte aos protocolos do Windows.</p>
-
-        <div class="slicers-list">
-          <div class="slicer-pill">🎋 Bambu Studio</div>
-          <div class="slicer-pill">🐋 OrcaSlicer</div>
-          <div class="slicer-pill">🟧 PrusaSlicer</div>
-          <div class="slicer-pill">🔷 Ultimaker Cura</div>
-          <div class="slicer-pill">🐉 Creality Print</div>
-          <div class="slicer-pill">⚡ Anycubic Studio</div>
+      <div class="viewer" id="viewer3d" aria-label="Visualizador 3D de exemplo: várias peças STL de um mesmo projeto sobre a mesa de impressão. Arraste para girar.">
+        <div class="vbar top-bar">
+          <span class="chip">kit_mesa_rpg · 6 peças</span>
+          <span class="chip" role="group" aria-label="Modo de exibição" style="padding:3px">
+            <button type="button" data-view="solid" aria-pressed="true" class="seg-btn">Sólido</button>
+            <button type="button" data-view="wire" aria-pressed="false" class="seg-btn">Aramado</button>
+          </span>
+        </div>
+        <div class="vbar bottom-bar">
+          <span class="chip caption" id="caption" aria-live="polite"><span class="k">Galeria</span><span class="txt">6 modelos à vista, sem abrir um por um</span></span>
+          <span class="hint">Arraste para girar</span>
         </div>
       </div>
-    </section>
+    </main>
 
-    <!-- Guia de Instalação -->
-    <section class="install-section" id="como-instalar">
-      <div class="container">
-        <div class="section-header">
-          <div class="section-tag">Instalação Simples</div>
-          <h2 class="section-title">Como começar a usar em 3 passos</h2>
-          <p class="section-desc">Instalação rápida em menos de 1 minuto no seu Windows 10 ou 11.</p>
-        </div>
+    <!-- Funcionalidades -->
+    <ul class="features inner" id="features" aria-label="Funcionalidades">
+      <li><button type="button" class="feat" data-name="many" data-k="Galeria" data-caption="6 modelos à vista, sem abrir um por um">
+        <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></span>
+        <h3>Veja tudo de uma vez</h3>
+        <p>Miniatura e 3D de cada peça, sem abrir uma a uma.</p>
+        <span class="bar"></span>
+      </button></li>
+      <li><button type="button" class="feat" data-name="dup" data-k="Duplicado" data-caption="dado_d20 (1).stl é cópia de dado_d20.stl">
+        <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="13" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></svg></span>
+        <h3>Ache os duplicados</h3>
+        <p>As cópias "(1)" e "(2)" aparecem marcadas.</p>
+        <span class="bar"></span>
+      </button></li>
+      <li><button type="button" class="feat" data-name="slicer" data-k="1 clique" data-caption="vaso_espiral.stl abrindo no seu fatiador">
+        <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7"/><path d="M8 7h9v9"/></svg></span>
+        <h3>Abra no fatiador</h3>
+        <p>Bambu Studio, OrcaSlicer, Cura ou o que você já usa.</p>
+        <span class="bar"></span>
+      </button></li>
+      <li><button type="button" class="feat" data-name="rename" data-k="Renomear" data-caption="<s>dado_d20 (1)</s> → <b>dado_d20_reserva</b>.stl">
+        <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></span>
+        <h3>Renomeie ali mesmo</h3>
+        <p>O nome muda no disco, a extensão fica protegida.</p>
+        <span class="bar"></span>
+      </button></li>
+      <li><button type="button" class="feat" data-name="project" data-k="Projeto" data-caption="6 STL agrupados em kit_mesa_rpg">
+        <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 13 9 5 9-5"/></svg></span>
+        <h3>Junte STLs em projetos</h3>
+        <p>Agrupe peças soltas sem mexer nos arquivos.</p>
+        <span class="bar"></span>
+      </button></li>
+    </ul>
+  </div>
 
-        <div class="steps-grid">
-          <div class="step-card">
-            <div class="step-num">1</div>
-            <h3>Baixe o Instalador</h3>
-            <p>Clique no botão de download para baixar o arquivo executável <strong>Vault3D Setup.exe</strong> diretamente para o seu computador.</p>
-          </div>
-
-          <div class="step-card">
-            <div class="step-num">2</div>
-            <h3>Execute a Instalação</h3>
-            <p>Dê dois cliques no instalador. O Vault3D criará o atalho na sua Área de Trabalho e no Menu Iniciar automaticamente.</p>
-            <div class="smartscreen-tip">
-              💡 <strong>Dica do Windows:</strong> Se o SmartScreen exibir *"O Windows protegeu o seu PC"*, basta clicar em <em>Mais informações</em> ➔ <em>Executar assim mesmo</em>.
-            </div>
-          </div>
-
-          <div class="step-card">
-            <div class="step-num">3</div>
-            <h3>Conecte suas Pastas</h3>
-            <p>Abra o app, acesse com seu código de verificação recebido por e-mail e adicione a pasta onde estão seus arquivos 3D. Pronto, sua biblioteca estará organizada!</p>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- CTA Final -->
-    <section class="bottom-cta-section">
-      <div class="container">
-        <div class="bottom-cta-card">
-          <h2>Pronto para organizar sua biblioteca 3D?</h2>
-          <p>Baixe o Vault3D gratuitamente e aproveite o melhor desempenho na visualização e envio direto para fatiadores.</p>
-
-          <a href="https://github.com/pvbsiqueira/Vault3D/releases/latest/download/Vault3D-Setup-1.0.1.exe" class="btn-primary-download" id="btnBottomDownload">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-              <polyline points="7 10 12 15 17 10"></polyline>
-              <line x1="12" y1="15" x2="12" y2="3"></line>
-            </svg>
-            <span>Baixar Vault3D para Windows (64-bit)</span>
-          </a>
-        </div>
-      </div>
-    </section>
-  </main>
-
-  <!-- Footer -->
-  <footer class="footer">
-    <div class="container">
-      <p>© 2026 Vault3D. Todos os direitos reservados. Feito para a comunidade Maker & Impressão 3D.</p>
-      <p style="margin-top: 8px;">
-        <a href="https://github.com/pvbsiqueira/Vault3D" target="_blank" rel="noopener noreferrer">Repositório GitHub</a> • 
-        <a href="https://github.com/pvbsiqueira/Vault3D/releases" target="_blank" rel="noopener noreferrer">Notas de Lançamento</a>
-      </p>
-    </div>
-  </footer>
-
-  <!-- Scripts -->
-  <script>
-    (function() {
-      // 1. Resolução dinâmica do link de download da release mais recente do GitHub
-      fetch('https://api.github.com/repos/pvbsiqueira/Vault3D/releases/latest')
-        .then(function(res) { return res.json(); })
-        .then(function(data) {
-          if (data && data.assets && Array.isArray(data.assets)) {
-            var exeAsset = data.assets.find(function(a) {
-              return a.name && a.name.toLowerCase().endsWith('.exe');
-            });
-            if (exeAsset && exeAsset.browser_download_url) {
-              var downloadBtns = document.querySelectorAll('#btnNavDownload, #btnHeroDownload, #btnBottomDownload');
-              downloadBtns.forEach(function(btn) {
-                btn.href = exeAsset.browser_download_url;
-              });
-            }
-          }
-        })
-        .catch(function(err) {
-          console.warn('Fallback para download padrão:', err);
-        });
-
-      // 2. Se o usuário clicou no Magic Link no e-mail e foi redirecionado para a página web
-      const hash = window.location.hash || '';
-      const search = window.location.search || '';
-
-      const hasAuthTokens = hash.includes('access_token=') || 
-                            hash.includes('code=') || 
-                            search.includes('code=') || 
-                            hash.includes('token_hash=') || 
-                            search.includes('token_hash=');
-
-      if (hasAuthTokens) {
-        const banner = document.getElementById('deepLinkBanner');
-        const btnOpen = document.getElementById('btnOpenDeepLink');
-        
-        // Formatar URL do protocolo desktop vault3d://auth...
-        const deepLinkUrl = 'vault3d://auth' + (hash ? hash : '') + (search ? (hash ? '&' : '?') + search.substring(1) : '');
-
-        if (banner && btnOpen) {
-          btnOpen.href = deepLinkUrl;
-          banner.classList.add('active');
-
-          // Tentar disparar abertura do protocolo do Windows automaticamente
-          try {
-            window.location.href = deepLinkUrl;
-          } catch (e) {
-            console.warn('Auto-redirect para vault3d:// bloqueado pelo navegador:', e);
-          }
-        }
-      }
-    })();
-  </script>
-
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="landing.js"></script>
 </body>
 </html>
