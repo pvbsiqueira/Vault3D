@@ -165,7 +165,6 @@ const platesList = document.getElementById('platesList');
 const modalPathFolder = document.getElementById('modalPathFolder');
 const modalPathName = document.getElementById('modalPathName');
 const modalSidebarInfo = document.getElementById('modalSidebarInfo');
-const modalInfoFormat = document.getElementById('modalInfoFormat');
 const modalInfoSize = document.getElementById('modalInfoSize');
 const modalInfoDimensions = document.getElementById('modalInfoDimensions');
 const modalInfoDimensionsWrap = document.getElementById('modalInfoDimensionsWrap');
@@ -464,6 +463,22 @@ function init() {
   });
   if (modalPathFolder) {
     new MutationObserver(syncModalPathShort).observe(modalPathFolder, { childList: true, characterData: true, subtree: true });
+  }
+  const btnPlatesPrev = document.getElementById('btnPlatesPrev');
+  const btnPlatesNext = document.getElementById('btnPlatesNext');
+  if (btnPlatesPrev) btnPlatesPrev.addEventListener('click', () => scrollPlates(-1));
+  if (btnPlatesNext) btnPlatesNext.addEventListener('click', () => scrollPlates(1));
+  if (platesList) {
+    platesList.addEventListener('scroll', updatePlatesNav, { passive: true });
+    // Roda do mouse sobre a faixa também passa as mesas
+    platesList.addEventListener('wheel', (e) => {
+      if (platesList.scrollWidth <= platesList.clientWidth) return;
+      if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+        e.preventDefault();
+        platesList.scrollBy({ left: e.deltaY });
+      }
+    }, { passive: false });
+    if (window.ResizeObserver) new ResizeObserver(updatePlatesNav).observe(platesList);
   }
   if (btnModalPrev) btnModalPrev.addEventListener('click', () => navigateViewerModal(-1));
   if (btnModalNext) btnModalNext.addEventListener('click', () => navigateViewerModal(1));
@@ -4315,6 +4330,38 @@ function updateViewerModeSeg() {
 }
 
 /**
+ * Faixa das mesas: as setas passam uma "página" de mesas, sem barra de rolagem
+ */
+function updatePlatesNav() {
+  const prev = document.getElementById('btnPlatesPrev');
+  const next = document.getElementById('btnPlatesNext');
+  if (!platesList || !prev || !next) return;
+  const overflow = platesList.scrollWidth - platesList.clientWidth > 2;
+  prev.hidden = !overflow;
+  next.hidden = !overflow;
+  prev.disabled = platesList.scrollLeft <= 2;
+  next.disabled = platesList.scrollLeft >= platesList.scrollWidth - platesList.clientWidth - 2;
+}
+
+function scrollPlates(direction) {
+  if (!platesList) return;
+  const card = platesList.querySelector('.plate-square-card');
+  const step = card ? card.getBoundingClientRect().width + 6 : 110;
+  const visible = Math.max(1, Math.floor(platesList.clientWidth / step));
+  platesList.scrollBy({ left: direction * step * visible, behavior: 'smooth' });
+}
+
+function revealActivePlate() {
+  if (!platesList) return;
+  const active = platesList.querySelector('.plate-square-card.active');
+  if (!active) return;
+  const left = active.offsetLeft - platesList.offsetLeft;
+  const right = left + active.offsetWidth;
+  if (left < platesList.scrollLeft) platesList.scrollTo({ left, behavior: 'smooth' });
+  else if (right > platesList.scrollLeft + platesList.clientWidth) platesList.scrollTo({ left: right - platesList.clientWidth, behavior: 'smooth' });
+}
+
+/**
  * Rótulo no canto do visualizador com a mesa ativa (nome e tempo de impressão)
  */
 function updateViewerPlateLabel(plate) {
@@ -4403,14 +4450,6 @@ function fillModalDetails(model) {
 
   const isProject = !!model.isProject;
   const ref = isProject ? (model.primaryPart || (model.parts && model.parts[0])) : model;
-  const type = (model.type || 'stl').toUpperCase();
-  let format = `.${type}`;
-  if (isProject) {
-    const n = model.partsCount || (model.parts ? model.parts.length : 0);
-    format = `Projeto · ${n} ${n === 1 ? 'arquivo' : 'arquivos'}`;
-  }
-  setRow('Format', format);
-
   const meta = !isProject && ref ? ref.metadata : null;
   const dims = meta && meta.dimensions;
   setRow('Dimensions', dims && (dims.x || dims.y || dims.z)
@@ -4431,7 +4470,8 @@ function fillModalDetails(model) {
   const mod = model.lastModified || (model.file && model.file.lastModified) || 0;
   if (metaDate) metaDate.textContent = mod ? `modificado ${new Date(mod).toLocaleDateString('pt-BR')}` : '';
 
-  modalSidebarInfo.style.display = 'block';
+  const anyRow = Array.from(modalSidebarInfo.querySelectorAll('.modal-spec')).some(el => el.style.display !== 'none');
+  modalSidebarInfo.style.display = anyRow ? 'block' : 'none';
   fillModalExtras(model);
 }
 
@@ -4552,6 +4592,7 @@ function fillModalExtras(model) {
   const list = document.getElementById('modalFilamentList');
   if (list && filaments.length) {
     const totalGrams = filaments.reduce((sum, f) => sum + (f.grams || 0), 0);
+    list.classList.toggle('is-compact', filaments.length > 4);
     list.innerHTML = filaments.map(f => {
       const title = f.name || f.type || 'Filamento';
       const sub = f.name && f.type && !f.name.toUpperCase().includes(f.type.toUpperCase()) ? f.type : '';
@@ -4768,6 +4809,7 @@ function renderPlatesList(plates) {
     });
 
     platesList.appendChild(card);
+    requestAnimationFrame(updatePlatesNav);
 
     // Se for parte de projeto e ainda não possuir miniatura, carregar sob demanda
     if (plate.isProjectPart && !currentImg && plate.model) {
@@ -4848,6 +4890,7 @@ async function selectPlate(plate) {
   document.querySelectorAll('.plate-square-card').forEach(c => {
     c.classList.toggle('active', parseInt(c.dataset.plateId, 10) === plate.id);
   });
+  revealActivePlate();
 
   // Se for a capa personalizada do projeto
   if (plate.isCustomCover) {

@@ -561,7 +561,15 @@
               <span id="platesHeading">Mesas de impressão</span>
               <span id="platesCount"></span>
             </div>
-            <div class="plates-grid" id="platesList"></div>
+            <div class="viewer-strip-row">
+              <button class="strip-nav" id="btnPlatesPrev" type="button" title="Mesas anteriores" aria-label="Mesas anteriores">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+              </button>
+              <div class="plates-grid" id="platesList"></div>
+              <button class="strip-nav" id="btnPlatesNext" type="button" title="Próximas mesas" aria-label="Próximas mesas">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+              </button>
+            </div>
           </div>
 
           <!-- Indicador de carregamento suave da malha 3D -->
@@ -632,7 +640,6 @@
             <section class="modal-sec modal-sidebar-info" id="modalSidebarInfo" style="display: none;">
               <div class="modal-sec-head"><h4>Detalhes</h4></div>
               <dl class="modal-box modal-specs">
-                <div class="modal-spec" id="modalInfoFormatWrap"><dt>Formato</dt><dd id="modalInfoFormat">-</dd></div>
                 <div class="modal-spec" id="modalInfoDimensionsWrap"><dt>Dimensões</dt><dd id="modalInfoDimensions">-</dd></div>
                 <div class="modal-spec" id="modalInfoTrianglesWrap"><dt>Triângulos</dt><dd id="modalInfoTriangles">-</dd></div>
                 <div class="modal-spec" id="modalInfoPrintTimeWrap"><dt>Tempo estimado</dt><dd id="modalInfoPrintTime">-</dd></div>

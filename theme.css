@@ -1255,3 +1255,37 @@ body.dashboard-body {
 }
 #modalInfoDimensionsWrap { grid-column: span 2; }
 #modalInfoFormatWrap:has(+ #modalInfoDimensionsWrap[style*="none"]) { grid-column: auto; }
+
+/* Faixa das mesas sem barra de rolagem: setas passam as mesas */
+.viewer-strip-row { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.viewer-strip .plates-grid {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  scrollbar-width: none;
+  padding: 0;
+}
+.viewer-strip .plates-grid::-webkit-scrollbar { display: none; }
+.strip-nav {
+  flex: none;
+  width: 26px;
+  align-self: stretch;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0;
+}
+.strip-nav:hover:not(:disabled) { color: var(--text-primary); border-color: var(--line-strong); background: var(--bg-card-hover); }
+.strip-nav:disabled { opacity: .3; cursor: default; }
+.strip-nav[hidden] { display: none; }
+
+/* Muitos filamentos: duas colunas para não precisar rolar o painel */
+#modalFilamentList.is-compact { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+#modalFilamentList.is-compact .modal-fil { padding: 6px 10px; gap: 8px; box-shadow: 1px 0 0 var(--line), 0 1px 0 var(--line); }
+#modalFilamentList.is-compact .modal-fil + .modal-fil { border-top: 0; }
+#modalFilamentList.is-compact .modal-fil-name small { display: none; }
+#modalFilamentList.is-compact .modal-fil-bar { grid-column: 1 / -1; margin-top: 6px; }
