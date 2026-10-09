@@ -1,6 +1,6 @@
 {
   "name": "vault3d",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "Visualizador e Gerenciador 3D para Impressão 3D (STL e 3MF)",
   "main": "main.js",
   "scripts": {
@@ -76,7 +76,8 @@
       {
         "provider": "github",
         "owner": "pvbsiqueira",
-        "repo": "Vault3D"
+        "repo": "Vault3D",
+        "releaseType": "release"
       }
     ]
   }
