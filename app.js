@@ -171,6 +171,15 @@ const modalInfoDimensions = document.getElementById('modalInfoDimensions');
 const modalInfoDimensionsWrap = document.getElementById('modalInfoDimensionsWrap');
 const modalInfoTriangles = document.getElementById('modalInfoTriangles');
 const modalInfoTrianglesWrap = document.getElementById('modalInfoTrianglesWrap');
+const viewerModeSeg = document.getElementById('viewerModeSeg');
+const viewerSegPhotoLabel = document.getElementById('viewerSegPhotoLabel');
+const viewerPlateLabel = document.getElementById('viewerPlateLabel');
+const platesHeading = document.getElementById('platesHeading');
+const modalSlicedChip = document.getElementById('modalSlicedChip');
+const btnModalFavorite = document.getElementById('btnModalFavorite');
+const btnModalPrev = document.getElementById('btnModalPrev');
+const btnModalNext = document.getElementById('btnModalNext');
+const modalNavCounter = document.getElementById('modalNavCounter');
 const btnCopyModalPath = document.getElementById('btnCopyModalPath');
 const btnOpenModalSlicer = document.getElementById('btnOpenModalSlicer');
 
@@ -439,10 +448,30 @@ function init() {
     if (e.target === viewerModal) closeViewerModal();
   });
   window.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && viewerModal.classList.contains('active')) {
+    if (!viewerModal.classList.contains('active')) return;
+    if (e.key === 'Escape') {
       closeViewerModal();
+      return;
+    }
+    // Setas trocam de modelo, exceto quando o foco está num campo de texto
+    if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !e.altKey && !e.ctrlKey && !e.metaKey) {
+      const t = e.target;
+      const typing = t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
+      if (typing) return;
+      e.preventDefault();
+      navigateViewerModal(e.key === 'ArrowLeft' ? -1 : 1);
     }
   });
+  if (btnModalPrev) btnModalPrev.addEventListener('click', () => navigateViewerModal(-1));
+  if (btnModalNext) btnModalNext.addEventListener('click', () => navigateViewerModal(1));
+  if (btnModalFavorite) {
+    btnModalFavorite.addEventListener('click', () => {
+      const item = state.modalItem;
+      if (!item) return;
+      toggleFavorite(item);
+      updateModalHeaderExtras();
+    });
+  }
 
   btnResetView.addEventListener('click', resetModalCamera);
   btnToggleRotate.addEventListener('click', () => {
@@ -2386,7 +2415,7 @@ async function renameModelFile(model, newBaseName) {
       modalFileName.textContent = newFullName;
     }
     if (modalFileName && model.fullDiskPath) {
-      modalFileName.title = `${model.fullDiskPath} (Clique para copiar)`;
+      modalFileName.title = `${model.fullDiskPath}`;
     }
   }
 
@@ -4259,6 +4288,141 @@ function generatePlaceholderThumb(name, type) {
 }
 
 /**
+ * Seletor Foto/3D do visualizador: aparece quando existe foto da mesa ou miniatura
+ */
+function updateViewerModeSeg() {
+  if (!viewerModeSeg) return;
+  const hasPlates = (state.activeProject && state.activeProject.plates && state.activeProject.plates.length > 0) ||
+                    (state.activeModel && state.activeModel.plates && state.activeModel.plates.length > 0);
+  const hasPhoto = hasPlates || !!(state.activeModel && state.activeModel.thumbnailUrl);
+  viewerModeSeg.hidden = !hasPhoto;
+  if (viewerSegPhotoLabel) {
+    viewerSegPhotoLabel.textContent = state.activeProject ? 'Foto' : (hasPlates ? 'Foto da mesa' : 'Miniatura');
+  }
+  const is3d = state.currentViewerMode === '3d';
+  if (btnBackToPlate) btnBackToPlate.setAttribute('aria-pressed', String(!is3d));
+  if (btnOpen3DView) btnOpen3DView.setAttribute('aria-pressed', String(is3d));
+}
+
+/**
+ * Rótulo no canto do visualizador com a mesa ativa (nome e tempo de impressão)
+ */
+function updateViewerPlateLabel(plate) {
+  if (!viewerPlateLabel) return;
+  if (!plate) {
+    viewerPlateLabel.hidden = true;
+    viewerPlateLabel.textContent = '';
+    return;
+  }
+  const name = plate.isCustomCover ? 'Capa do projeto' : (plate.isProjectPart ? (plate.name || '') : `Mesa ${plate.id}`);
+  viewerPlateLabel.textContent = plate.printTimeFormatted ? `${name} · ${plate.printTimeFormatted}` : name;
+  viewerPlateLabel.hidden = !name;
+}
+
+/**
+ * Posição do item aberto na lista atual da galeria (respeita busca, filtros e ordenação)
+ */
+function getViewerNavIndex() {
+  const items = state.currentDisplayItems || [];
+  const current = state.modalItem;
+  if (!current) return -1;
+  let idx = items.indexOf(current);
+  if (idx === -1 && current.id != null) idx = items.findIndex(it => it && it.id === current.id);
+  return idx;
+}
+
+/**
+ * Cabeçalho do visualizador: favorito, selo Fatiado e navegação anterior/próximo
+ */
+function updateModalHeaderExtras() {
+  const item = state.modalItem;
+  if (!item) return;
+
+  if (btnModalFavorite) {
+    const fav = !!item.isFavorite;
+    btnModalFavorite.setAttribute('aria-pressed', String(fav));
+    btnModalFavorite.title = fav ? 'Remover dos favoritos' : 'Favoritar';
+  }
+
+  if (modalSlicedChip) {
+    const ref = item.isProject ? (item.primaryPart || (item.parts && item.parts[0])) : item;
+    modalSlicedChip.hidden = !(ref && ref.slicerData && ref.slicerData.isSliced);
+  }
+
+  const items = state.currentDisplayItems || [];
+  const idx = getViewerNavIndex();
+  if (modalNavCounter) {
+    modalNavCounter.textContent = idx >= 0 ? `${idx + 1} / ${items.length}` : '';
+  }
+  if (btnModalPrev) btnModalPrev.disabled = idx <= 0;
+  if (btnModalNext) btnModalNext.disabled = idx === -1 || idx >= items.length - 1;
+}
+
+/**
+ * Abre o modelo anterior (-1) ou o próximo (+1) da galeria sem fechar o visualizador
+ */
+function navigateViewerModal(delta) {
+  const items = state.currentDisplayItems || [];
+  const idx = getViewerNavIndex();
+  if (idx === -1) return;
+  const next = items[idx + delta];
+  if (!next) return;
+  openViewerModal(next);
+}
+
+/**
+ * Bloco "Detalhes" do painel lateral. Linhas sem dado ficam ocultas.
+ */
+function fillModalDetails(model) {
+  if (!modalSidebarInfo || !model) return;
+
+  const setRow = (key, value) => {
+    const wrap = document.getElementById(`modalInfo${key}Wrap`);
+    const val = document.getElementById(`modalInfo${key}`);
+    if (!wrap || !val) return;
+    const has = value !== null && value !== undefined && value !== '';
+    wrap.style.display = has ? 'flex' : 'none';
+    if (has) val.textContent = value;
+  };
+
+  const isProject = !!model.isProject;
+  const ref = isProject ? (model.primaryPart || (model.parts && model.parts[0])) : model;
+  const type = (model.type || 'stl').toUpperCase();
+  const plateTotal = (model.plates || []).filter(p => !p.isCustomCover).length;
+
+  let format = `.${type}`;
+  if (isProject) {
+    const n = model.partsCount || (model.parts ? model.parts.length : 0);
+    format = `Projeto · ${n} ${n === 1 ? 'arquivo' : 'arquivos'}`;
+  } else if (plateTotal > 1) {
+    format = `.${type} · ${plateTotal} mesas`;
+  }
+  setRow('Format', format);
+  setRow('Size', model.size ? formatBytes(model.size) : '');
+
+  const mod = model.lastModified || (model.file && model.file.lastModified) || 0;
+  setRow('Modified', mod ? new Date(mod).toLocaleDateString('pt-BR') : '');
+
+  const meta = !isProject && ref ? ref.metadata : null;
+  const dims = meta && meta.dimensions;
+  setRow('Dimensions', dims && (dims.x || dims.y || dims.z)
+    ? `${Math.round(dims.x)} × ${Math.round(dims.y)} × ${Math.round(dims.z)} mm` : '');
+  setRow('Triangles', meta && meta.triangleCount ? meta.triangleCount.toLocaleString('pt-BR') : '');
+
+  const slicer = ref && ref.slicerData;
+  setRow('PrintTime', slicer && slicer.printTimeFormatted ? slicer.printTimeFormatted : '');
+  setRow('Filament', slicer && slicer.filamentGrams
+    ? `${slicer.filamentGrams} g${slicer.filamentType ? ' ' + slicer.filamentType : ''}` : '');
+
+  const folderInfo = getModelParentFolderInfo(model);
+  setRow('Folder', (folderInfo && folderInfo.name) || model.folderName || '');
+  const folderWrap = document.getElementById('modalInfoFolderWrap');
+  if (folderWrap) folderWrap.title = (folderInfo && folderInfo.full) || '';
+
+  modalSidebarInfo.style.display = 'block';
+}
+
+/**
  * Alterna entre a visualização 2D da Mesa de Impressão e o Visualizador 3D
  */
 function setViewerMode(mode) {
@@ -4268,29 +4432,19 @@ function setViewerMode(mode) {
                     (state.activeModel && state.activeModel.plates && state.activeModel.plates.length > 0);
 
   if (mode === 'plate') {
+    // Modelo sem mesas: a "foto" é a miniatura do próprio arquivo
+    if (!hasPlates && state.activeModel && state.activeModel.thumbnailUrl) {
+      modalPlateImg.src = state.activeModel.thumbnailUrl;
+    }
     modalPlateImg.style.display = 'block';
     modalCanvas.style.display = 'none';
     viewerControlsBar.style.display = 'none';
-
-    if (hasPlates) {
-      if (btnOpen3DView) btnOpen3DView.style.display = 'inline-flex';
-      if (btnBackToPlate) btnBackToPlate.style.display = 'none';
-    } else {
-      if (btnOpen3DView) btnOpen3DView.style.display = 'none';
-      if (btnBackToPlate) btnBackToPlate.style.display = 'none';
-    }
+    updateViewerModeSeg();
   } else {
     modalPlateImg.style.display = 'none';
     modalCanvas.style.display = 'block';
     viewerControlsBar.style.display = 'flex';
-
-    if (hasPlates) {
-      if (btnOpen3DView) btnOpen3DView.style.display = 'none';
-      if (btnBackToPlate) btnBackToPlate.style.display = 'inline-flex';
-    } else {
-      if (btnOpen3DView) btnOpen3DView.style.display = 'none';
-      if (btnBackToPlate) btnBackToPlate.style.display = 'none';
-    }
+    updateViewerModeSeg();
 
     initModalThree();
     onModalResize();
@@ -4334,7 +4488,7 @@ function renderPlatesList(plates) {
         ? `<img class="plate-square-img" src="${currentImg}" alt="${escapeHtml(plate.name)}">`
         : `<div class="plate-square-placeholder"><span style="font-size: 1.4rem;">🖨️</span></div>`
       }
-      <span class="plate-square-label" title="${escapeHtml(plate.fullName || plate.name)}">${escapeHtml(plate.name)}</span>
+      <span class="plate-square-label" title="${escapeHtml(plate.fullName || plate.name)}">${escapeHtml(plate.printTimeFormatted || plate.name)}</span>
     `;
 
     card.addEventListener('click', () => {
@@ -4416,6 +4570,7 @@ async function extractPlateImageOnDemand(model, plateId) {
 async function selectPlate(plate) {
   state.activePlateId = plate.id;
   state.activePlate = plate;
+  updateViewerPlateLabel(plate);
 
   // Atualizar estilo ativo nos cards quadrados
   document.querySelectorAll('.plate-square-card').forEach(c => {
@@ -4541,7 +4696,7 @@ async function updateModalFilePath(model) {
   if (model.fullDiskPath && model.fullFolderDirectory) {
     if (modalPathFolder) modalPathFolder.textContent = model.fullFolderDirectory;
     if (modalPathName) modalPathName.textContent = model.name;
-    if (modalFileName) modalFileName.title = `${model.fullDiskPath} (Clique para copiar)`;
+    if (modalFileName) modalFileName.title = `${model.fullDiskPath}`;
     return;
   }
 
@@ -4564,7 +4719,7 @@ async function updateModalFilePath(model) {
 
     if (modalPathFolder) modalPathFolder.textContent = folderDir;
     if (modalPathName) modalPathName.textContent = fName;
-    if (modalFileName) modalFileName.title = `${combined} (Clique para copiar)`;
+    if (modalFileName) modalFileName.title = `${combined}`;
     return;
   }
 
@@ -4588,7 +4743,7 @@ async function updateModalFilePath(model) {
 
   if (modalPathFolder) modalPathFolder.textContent = estimatedDir;
   if (modalPathName) modalPathName.textContent = model.name;
-  if (modalFileName) modalFileName.title = `${estimatedDir}${model.name} (Clique para copiar)`;
+  if (modalFileName) modalFileName.title = `${estimatedDir}${model.name}`;
 
   // 4. Consulta para obter o caminho 100% real do Windows (Nativo no Electron ou via servidor companion na Web)
   try {
@@ -4623,7 +4778,7 @@ async function updateModalFilePath(model) {
       if (state.activeModel && state.activeModel.id === model.id) {
         if (modalPathFolder) modalPathFolder.textContent = data.folderPath;
         if (modalPathName) modalPathName.textContent = data.fileName || model.name;
-        if (modalFileName) modalFileName.title = `${data.fullPath} (Clique para copiar)`;
+        if (modalFileName) modalFileName.title = `${data.fullPath}`;
       }
     }
   } catch (err) {
@@ -4641,10 +4796,13 @@ async function openViewerModal(model) {
   }
 
   // 1. Vincular modelo ativo no estado
+  state.modalItem = model;
   state.activeModel = model;
   state.activePlate = null;
   state.activePlateId = 1;
   state.isMeshLoaded = false;
+  updateViewerPlateLabel(null);
+  if (modalPlateImg) modalPlateImg.removeAttribute('src');
 
   if (state.modalMesh) {
     if (state.modalScene) state.modalScene.remove(state.modalMesh);
@@ -4661,7 +4819,7 @@ async function openViewerModal(model) {
     if (model.isDuplicate) {
       modalDuplicateBadge.style.display = 'inline-flex';
       modalDuplicateBadge.title = `Arquivo idêntico encontrado em: ${model.duplicateOrigins}`;
-      modalDuplicateBadge.textContent = `⚠️ Cópia Duplicada (${model.duplicatesCount})`;
+      modalDuplicateBadge.textContent = `Duplicado · ${model.duplicatesCount}`;
     } else {
       modalDuplicateBadge.style.display = 'none';
     }
@@ -4681,7 +4839,7 @@ async function openViewerModal(model) {
       if (dupParts.length > 0) {
         modalDuplicateBadge.style.display = 'inline-flex';
         modalDuplicateBadge.title = `Arquivos duplicados detectados neste projeto`;
-        modalDuplicateBadge.textContent = `⚠️ Cópias Duplicadas (${dupParts.length})`;
+        modalDuplicateBadge.textContent = `Duplicados · ${dupParts.length}`;
       } else {
         modalDuplicateBadge.style.display = 'none';
       }
@@ -4689,11 +4847,14 @@ async function openViewerModal(model) {
 
     if (modalSidebar) modalSidebar.style.display = 'flex';
     if (platesSection) platesSection.style.display = 'flex';
-    if (modalSidebarInfo) modalSidebarInfo.style.display = 'none';
+    if (platesHeading) platesHeading.textContent = 'Arquivos do projeto';
+    fillModalDetails(model);
+    updateModalHeaderExtras();
 
     renderPlatesList(model.plates);
     if (model.plates && model.plates.length > 0) {
       state.activePlateId = model.plates[0].id;
+      state.currentViewerMode = 'plate';
       selectPlate(model.plates[0]);
     }
     setViewerMode('plate');
@@ -4713,51 +4874,27 @@ async function openViewerModal(model) {
   }
 
   if (modalSidebar) modalSidebar.style.display = 'flex';
+  if (platesHeading) platesHeading.textContent = 'Mesas de impressão';
+  fillModalDetails(model);
+  updateModalHeaderExtras();
 
   // 4. Exibição imediata: se já possui mesas ou se é modelo convencional
   const hasPlates = model.plates && model.plates.length > 0;
 
   if (hasPlates) {
     if (platesSection) platesSection.style.display = 'flex';
-    if (modalSidebarInfo) modalSidebarInfo.style.display = 'none';
     state.activePlateId = model.plates[0].id;
+    state.currentViewerMode = 'plate';
     renderPlatesList(model.plates);
     selectPlate(model.plates[0]);
     setViewerMode('plate');
   } else {
     // Modelo comum (sem mesas ou STL)
     if (platesSection) platesSection.style.display = 'none';
-    if (modalSidebarInfo) {
-      modalSidebarInfo.style.display = 'block';
-      if (modalInfoFormat) modalInfoFormat.textContent = `.${(model.type || 'stl').toUpperCase()}`;
-      if (modalInfoSize) modalInfoSize.textContent = formatBytes(model.size);
-      if (modalInfoDimensions) {
-        if (model.metadata?.dimensions) {
-          modalInfoDimensions.textContent = `${Math.round(model.metadata.dimensions.x)} × ${Math.round(model.metadata.dimensions.y)} × ${Math.round(model.metadata.dimensions.z)} mm`;
-          if (modalInfoDimensionsWrap) modalInfoDimensionsWrap.style.display = 'flex';
-        } else {
-          if (modalInfoDimensionsWrap) modalInfoDimensionsWrap.style.display = 'none';
-        }
-      }
-      if (modalInfoTriangles) {
-        if (model.metadata?.triangleCount) {
-          modalInfoTriangles.textContent = model.metadata.triangleCount.toLocaleString('pt-BR');
-          if (modalInfoTrianglesWrap) modalInfoTrianglesWrap.style.display = 'flex';
-        } else {
-          if (modalInfoTrianglesWrap) modalInfoTrianglesWrap.style.display = 'none';
-        }
-      }
-    }
 
     // Se já tiver miniatura oficial de capa, exibe de imediato enquanto prepara 3D
     if (model.thumbnailUrl) {
-      modalPlateImg.src = model.thumbnailUrl;
-      modalPlateImg.style.display = 'block';
-      if (modalCanvas) modalCanvas.style.display = 'none';
-      if (viewerControlsBar) viewerControlsBar.style.display = 'none';
-      if (btnOpen3DView) btnOpen3DView.style.display = 'inline-flex';
-      if (btnBackToPlate) btnBackToPlate.style.display = 'none';
-      state.currentViewerMode = 'plate';
+      setViewerMode('plate');
     } else {
       setViewerMode('3d');
     }
@@ -4786,21 +4923,14 @@ async function openViewerModal(model) {
         if (state.activeModel && state.activeModel.id === model.id) {
           if (model.plates && model.plates.length > 0) {
             if (platesSection) platesSection.style.display = 'flex';
-            if (modalSidebarInfo) modalSidebarInfo.style.display = 'none';
             renderPlatesList(model.plates);
             if (!state.activePlate) {
               selectPlate(model.plates[0]);
             }
-          } else {
-            if (modalInfoDimensions && model.metadata?.dimensions) {
-              modalInfoDimensions.textContent = `${Math.round(model.metadata.dimensions.x)} × ${Math.round(model.metadata.dimensions.y)} × ${Math.round(model.metadata.dimensions.z)} mm`;
-              if (modalInfoDimensionsWrap) modalInfoDimensionsWrap.style.display = 'flex';
-            }
-            if (modalInfoTriangles && model.metadata?.triangleCount) {
-              modalInfoTriangles.textContent = model.metadata.triangleCount.toLocaleString('pt-BR');
-              if (modalInfoTrianglesWrap) modalInfoTrianglesWrap.style.display = 'flex';
-            }
           }
+          fillModalDetails(model);
+          updateModalHeaderExtras();
+          updateViewerModeSeg();
         }
       } catch (e) {
         console.warn('Erro ao extrair metadados e mesas do modelo em background:', e);
@@ -4879,6 +5009,7 @@ function onModalResize() {
 }
 
 async function loadModelIntoModal(model, plateId = null) {
+  const loadToken = (state.modalLoadToken = (state.modalLoadToken || 0) + 1);
   const isProjectPart = !!(state.activeProject || (model && model.parentProject));
   const currentPlate = isProjectPart ? (plateId || 1) : (plateId || state.activePlateId || 1);
 
@@ -4958,6 +5089,9 @@ async function loadModelIntoModal(model, plateId = null) {
       }
     }
 
+    // Usuário já trocou de modelo/mesa enquanto esta malha carregava
+    if (loadToken !== state.modalLoadToken) return;
+
     if (!geometry) {
       console.warn('Geometria não pôde ser gerada para este modelo');
       return;
@@ -4998,7 +5132,7 @@ async function loadModelIntoModal(model, plateId = null) {
   } catch (err) {
     console.error('Erro ao carregar modelo no visualizador:', err);
   } finally {
-    viewerLoadingOverlay.style.display = 'none';
+    if (loadToken === state.modalLoadToken) viewerLoadingOverlay.style.display = 'none';
   }
 }
 
@@ -5042,8 +5176,10 @@ function closeViewerModal() {
     modalPlateImg.style.display = 'none';
   }
   if (modalCanvas) modalCanvas.style.display = 'none';
-  if (btnOpen3DView) btnOpen3DView.style.display = 'none';
-  if (btnBackToPlate) btnBackToPlate.style.display = 'none';
+  if (viewerModeSeg) viewerModeSeg.hidden = true;
+  updateViewerPlateLabel(null);
+  state.modalItem = null;
+  state.modalLoadToken = (state.modalLoadToken || 0) + 1;
   if (viewerControlsBar) viewerControlsBar.style.display = 'none';
   if (viewerLoadingOverlay) viewerLoadingOverlay.style.display = 'none';
 }

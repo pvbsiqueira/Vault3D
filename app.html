@@ -503,18 +503,31 @@
         <div class="modal-title-wrap">
           <span class="badge-format" id="modalBadge">STL</span>
           <div class="modal-title-path-wrap">
-            <h3 class="modal-title" id="modalFileName">
-              <span class="modal-path-folder" id="modalPathFolder"></span><span class="modal-path-name" id="modalPathName">Nome do Modelo.stl</span>
-            </h3>
+            <h3 class="modal-title" id="modalFileName"><span class="modal-path-name" id="modalPathName">Nome do Modelo.stl</span></h3>
+            <div class="modal-path-line"><span class="modal-path-folder" id="modalPathFolder"></span></div>
           </div>
-          <span class="modal-duplicate-badge" id="modalDuplicateBadge" style="display: none;">⚠️ Cópia Duplicada</span>
+          <div class="modal-head-chips">
+            <span class="modal-chip modal-chip-sliced" id="modalSlicedChip" hidden>Fatiado</span>
+            <span class="modal-duplicate-badge" id="modalDuplicateBadge" style="display: none;">Duplicado</span>
+          </div>
         </div>
-        <button class="modal-close-btn" id="modalCloseBtn" title="Fechar visualizador (Esc)">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-          </svg>
-        </button>
+        <div class="modal-head-actions">
+          <button class="modal-icon-btn modal-fav-btn" id="btnModalFavorite" type="button" aria-pressed="false" title="Favoritar">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+          </button>
+          <span class="modal-head-sep" aria-hidden="true"></span>
+          <button class="modal-icon-btn" id="btnModalPrev" type="button" title="Modelo anterior (←)">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+          </button>
+          <span class="modal-nav-counter" id="modalNavCounter"></span>
+          <button class="modal-icon-btn" id="btnModalNext" type="button" title="Próximo modelo (→)">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+          </button>
+          <span class="modal-head-sep" aria-hidden="true"></span>
+          <button class="modal-close-btn modal-icon-btn" id="modalCloseBtn" type="button" title="Fechar visualizador (Esc)">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
       </div>
 
       <div class="modal-content">
@@ -523,25 +536,19 @@
           <canvas id="modalCanvas" class="viewer-canvas"></canvas>
           <img id="modalPlateImg" class="viewer-plate-image" style="display: none;" alt="Mesa de Impressão">
 
-          <!-- Botão Flutuante 'Visualizar 3D' sobre a imagem da mesa no lado esquerdo -->
-          <button class="btn-floating-view" id="btnOpen3DView" style="display: none;" title="Abrir visualização 3D da mesa selecionada">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
-              <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
-              <line x1="12" y1="22.08" x2="12" y2="12"></line>
-            </svg>
-            Visualizar 3D
-          </button>
-
-          <!-- Botão Flutuante para retornar à foto da mesa quando em modo 3D -->
-          <button class="btn-floating-view btn-back-plate" id="btnBackToPlate" style="display: none;" title="Voltar para a foto da mesa">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-              <circle cx="8.5" cy="8.5" r="1.5"></circle>
-              <polyline points="21 15 16 10 5 21"></polyline>
-            </svg>
-            Ver Foto da Mesa
-          </button>
+          <!-- Seletor de modo: foto da mesa (ou miniatura) e visualização 3D -->
+          <div class="viewer-seg" id="viewerModeSeg" role="group" aria-label="Modo de visualização" hidden>
+            <button class="viewer-seg-btn" id="btnBackToPlate" type="button" aria-pressed="true" title="Ver a foto da mesa">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
+              <span id="viewerSegPhotoLabel">Foto da mesa</span>
+            </button>
+            <button class="viewer-seg-btn" id="btnOpen3DView" type="button" aria-pressed="false" title="Abrir visualização 3D">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.27 6.96 12 12.01l8.73-5.05M12 22.08V12"/></svg>
+              <span>3D</span>
+            </button>
+          </div>
+          <span class="viewer-plate-label" id="viewerPlateLabel" hidden></span>
+          <span class="viewer-hint" id="viewerHint"><kbd>←</kbd> <kbd>→</kbd> trocar modelo · <kbd>Esc</kbd> fechar</span>
 
           <!-- Indicador de carregamento suave da malha 3D -->
           <div class="viewer-loading-overlay" id="viewerLoadingOverlay" style="display: none;">
@@ -570,25 +577,29 @@
         <div class="modal-sidebar" id="modalSidebar">
           <div class="modal-sidebar-scroll" id="modalSidebarScroll">
             <div class="sidebar-section plates-section" id="platesSection">
-              <div class="slicer-header-badge">
-                <h4>Mesas de Impressão (<span id="platesCount">0</span>)</h4>
-                <span class="badge-status-sliced">Multimesa</span>
+              <div class="slicer-header-badge modal-sec-head">
+                <h4 id="platesHeading">Mesas de impressão</h4>
+                <span class="modal-sec-count" id="platesCount">0</span>
               </div>
               <div class="plates-grid" id="platesList"></div>
             </div>
             <div class="modal-sidebar-info" id="modalSidebarInfo" style="display: none;">
               <div class="sidebar-section">
-                <div class="slicer-header-badge">
-                  <h4>Detalhes do Modelo</h4>
+                <div class="slicer-header-badge modal-sec-head">
+                  <h4>Detalhes</h4>
                 </div>
                 <div class="modal-info-list">
-                  <div class="info-item">
+                  <div class="info-item" id="modalInfoFormatWrap">
                     <span class="info-label">Formato</span>
                     <span class="info-val" id="modalInfoFormat">-</span>
                   </div>
-                  <div class="info-item">
+                  <div class="info-item" id="modalInfoSizeWrap">
                     <span class="info-label">Tamanho</span>
                     <span class="info-val" id="modalInfoSize">-</span>
+                  </div>
+                  <div class="info-item" id="modalInfoModifiedWrap">
+                    <span class="info-label">Modificado</span>
+                    <span class="info-val" id="modalInfoModified">-</span>
                   </div>
                   <div class="info-item" id="modalInfoDimensionsWrap">
                     <span class="info-label">Dimensões</span>
@@ -597,6 +608,18 @@
                   <div class="info-item" id="modalInfoTrianglesWrap">
                     <span class="info-label">Triângulos</span>
                     <span class="info-val" id="modalInfoTriangles">-</span>
+                  </div>
+                  <div class="info-item" id="modalInfoPrintTimeWrap">
+                    <span class="info-label">Tempo estimado</span>
+                    <span class="info-val" id="modalInfoPrintTime">-</span>
+                  </div>
+                  <div class="info-item" id="modalInfoFilamentWrap">
+                    <span class="info-label">Filamento</span>
+                    <span class="info-val" id="modalInfoFilament">-</span>
+                  </div>
+                  <div class="info-item" id="modalInfoFolderWrap">
+                    <span class="info-label">Pasta</span>
+                    <span class="info-val" id="modalInfoFolder">-</span>
                   </div>
                 </div>
               </div>
