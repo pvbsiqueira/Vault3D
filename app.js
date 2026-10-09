@@ -805,8 +805,10 @@ async function scanWebkitEntry(entry, results, path = '') {
  * Carrega os modelos de exemplo incluídos para teste imediato
  */
 async function loadSampleModels(persistToDB = true) {
-  btnLoadSample.disabled = true;
-  btnLoadSample.textContent = 'Carregando exemplos...';
+  if (btnLoadSample) {
+    btnLoadSample.disabled = true;
+    btnLoadSample.textContent = 'Carregando exemplos...';
+  }
 
   try {
     const sampleBaseTime = Date.now() - 3600000;
@@ -840,8 +842,10 @@ async function loadSampleModels(persistToDB = true) {
   } catch (err) {
     alert('Erro ao carregar arquivos de exemplo: ' + err.message);
   } finally {
-    btnLoadSample.disabled = false;
-    btnLoadSample.innerHTML = '✨ Testar com Modelos de Exemplo';
+    if (btnLoadSample) {
+      btnLoadSample.disabled = false;
+      btnLoadSample.innerHTML = '✨ Testar com Modelos de Exemplo';
+    }
   }
 }
 
