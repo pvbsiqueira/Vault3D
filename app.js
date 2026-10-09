@@ -2142,10 +2142,10 @@ function updateStatsBadge() {
   }
 
   if (sidebarStlCountBadge) {
-    sidebarStlCountBadge.textContent = `${stlCount} STL`;
+    sidebarStlCountBadge.textContent = `${stlCount}.STL`;
   }
   if (sidebar3mfCountBadge) {
-    sidebar3mfCountBadge.textContent = `${tmfCount} 3MF`;
+    sidebar3mfCountBadge.textContent = `${tmfCount}.3MF`;
   }
   if (sidebarFoldersCountBadge) {
     sidebarFoldersCountBadge.textContent = foldersCount;
