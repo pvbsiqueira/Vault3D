@@ -1225,7 +1225,7 @@ function openFoldersDB() {
 function getModelCacheKey(model) {
   const lastMod = model.file?.lastModified || 0;
   // 3MF ganhou leitura de tempo/filamento, autor, impressora e anexos: prefixo força uma nova leitura uma única vez
-  const version = model.type === '3mf' ? 's3:' : '';
+  const version = model.type === '3mf' ? 's4:' : '';
   return `${version}${model.folderName || ''}:${model.path || model.name}:${model.size}:${lastMod}`;
 }
 
@@ -4534,10 +4534,8 @@ function fillModalExtras(model) {
     if (extras.title && extras.title !== name) sub = sub ? `${extras.title} · ${sub}` : extras.title;
     document.getElementById('modalAuthorSub').textContent = sub;
 
-    const desc = document.getElementById('modalAuthorDesc');
-    desc.textContent = extras.description || '';
-    desc.title = extras.description || '';
-    desc.hidden = !extras.description;
+    // A descrição fica de fora para o painel caber sem rolagem; só a licença aparece
+    document.getElementById('modalAuthorDesc').hidden = true;
 
     const pills = document.getElementById('modalAuthorPills');
     const pillHtml = [];
@@ -4564,7 +4562,8 @@ function fillModalExtras(model) {
       link.hidden = !src.url;
       if (src.url) {
         link.href = src.url;
-        link.title = src.url;
+        link.title = src.search ? `Buscar "${extras.title || ''}" no ${site.name}` : src.url;
+        link.firstChild.textContent = src.search ? 'Buscar no site ' : 'Abrir página ';
       }
     }
   }

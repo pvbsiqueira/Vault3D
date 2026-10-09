@@ -75,10 +75,11 @@ function readModelHeader(file) {
 
 function parseModelMetadata(headerText) {
   const meta = {};
-  const re = /<metadata\s+name=["']([^"']+)["'][^>]*>([\s\S]*?)<\/metadata>/gi;
+  // Valores vêm escapados (sem "<"), então [^<]* não engole a tag seguinte quando uma vem vazia
+  const re = /<metadata\s+name=["']([^"']+)["'][^>]*?(?:\/>|>([^<]*)<\/metadata>)/gi;
   let m;
   while ((m = re.exec(headerText))) {
-    meta[m[1].trim()] = m[2].trim();
+    meta[m[1].trim()] = (m[2] || '').trim();
   }
   return meta;
 }
@@ -86,7 +87,10 @@ function parseModelMetadata(headerText) {
 function pickMeta(meta, ...keys) {
   for (const key of keys) {
     const found = Object.keys(meta).find(k => k.toLowerCase() === key.toLowerCase());
-    if (found && meta[found]) return decodeEntities(meta[found]).trim();
+    if (!found || !meta[found]) continue;
+    // Bambu grava listas vazias como "[]" (às vezes com aspas escapadas)
+    const value = decodeEntities(decodeEntities(meta[found])).replace(/^"|"$/g, '').trim();
+    if (value && value !== '[]') return value;
   }
   return null;
 }
@@ -106,8 +110,13 @@ function detectSource(meta) {
     const url = (c.match(/https?:\/\/[^\s"'<>]+/i) || [])[0];
     if (url) return { site: siteFromUrl(url), url };
   }
-  if (modelId || profileId || pickMeta(meta, 'DesignerUserId')) {
-    return { site: 'makerworld', url: null };
+  // MakerWorld novo: DesignModelId vem como código (ex.: USba2e42ffa38e4e), que não forma o endereço
+  // da página. Nesse caso o botão abre a busca do MakerWorld pelo título do modelo.
+  if (modelId || profileId || pickMeta(meta, 'DesignerUserId', 'ProfileUserId')) {
+    const title = pickMeta(meta, 'Title');
+    return title
+      ? { site: 'makerworld', url: `https://makerworld.com/en/search/models?keyword=${encodeURIComponent(title)}`, search: true }
+      : { site: 'makerworld', url: null };
   }
   return null;
 }
