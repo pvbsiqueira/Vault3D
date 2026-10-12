@@ -3835,6 +3835,11 @@ function createModelCard(model) {
             <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
           </svg>
         </button>
+        <button class="btn-card-trash trash-only" title="Mover para a Lixeira" aria-label="Mover para a Lixeira" type="button">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 6h18"></path><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
+          </svg>
+        </button>
       </div>
       ${isSliced ? `
         <div class="card-slicer-info">
@@ -3909,6 +3914,14 @@ function createModelCard(model) {
       btnRename.addEventListener('click', (e) => {
         e.stopPropagation();
         enterRenameMode();
+      });
+    }
+
+    const btnTrash = titleRow.querySelector('.btn-card-trash');
+    if (btnTrash) {
+      btnTrash.addEventListener('click', (e) => {
+        e.stopPropagation();
+        trashModels([model]);
       });
     }
 
@@ -3993,6 +4006,11 @@ function createModelCard(model) {
             <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
           </svg>
         </button>
+        <button class="btn-card-trash trash-only" title="Mover para a Lixeira" aria-label="Mover para a Lixeira" type="button">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 6h18"></path><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
+          </svg>
+        </button>
       `;
       setupTitleRowEvents();
     };
@@ -4022,7 +4040,7 @@ function createModelCard(model) {
   setupTitleRowEvents();
 
   card.addEventListener('click', (e) => {
-    if (e.target.closest('.card-rename-box') || e.target.closest('.btn-card-rename') || e.target.closest('.btn-favorite') || e.target.closest('.btn-open-slicer') || e.target.closest('.btn-keep-only')) {
+    if (e.target.closest('.card-rename-box') || e.target.closest('.btn-card-rename') || e.target.closest('.btn-favorite') || e.target.closest('.btn-open-slicer') || e.target.closest('.btn-keep-only') || e.target.closest('.btn-card-trash')) {
       return;
     }
     if (e.target.closest('.card-select-checkbox') || state.isSelectionMode) {

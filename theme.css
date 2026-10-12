@@ -1443,3 +1443,21 @@ body:not(.can-trash) .trash-only { display: none !important; }
   transition: background 0.15s, color 0.15s;
 }
 .btn-keep-only:hover { background: var(--warn); color: #1a1204; }
+.btn-card-trash {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  margin-left: -2px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.2s, color 0.2s, background-color 0.2s;
+}
+.model-card:hover .btn-card-trash, .btn-card-trash:focus-visible { opacity: 0.85; }
+.btn-card-trash:hover { opacity: 1 !important; color: #f87171; background: rgba(248, 113, 113, 0.12); }
+body.selection-mode-active .btn-card-trash { display: none !important; }
