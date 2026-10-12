@@ -176,6 +176,14 @@ const viewerPlateLabel = document.getElementById('viewerPlateLabel');
 const platesHeading = document.getElementById('platesHeading');
 const modalSlicedChip = document.getElementById('modalSlicedChip');
 const btnModalFavorite = document.getElementById('btnModalFavorite');
+const btnModalTrash = document.getElementById('btnModalTrash');
+const btnTrashSelection = document.getElementById('btnTrashSelection');
+const trashConfirmModal = document.getElementById('trashConfirmModal');
+const trashConfirmDesc = document.getElementById('trashConfirmDesc');
+const trashConfirmList = document.getElementById('trashConfirmList');
+const btnConfirmTrash = document.getElementById('btnConfirmTrash');
+const btnCancelTrash = document.getElementById('btnCancelTrash');
+const trashConfirmBackdrop = document.getElementById('trashConfirmBackdrop');
 const btnModalPrev = document.getElementById('btnModalPrev');
 const btnModalNext = document.getElementById('btnModalNext');
 const modalNavCounter = document.getElementById('modalNavCounter');
@@ -272,6 +280,9 @@ function showUpdateInstallingOverlay() {
 function init() {
   // Monitorar atualizações automáticas no modo Desktop
   setupDesktopUpdater();
+
+  // Exclusão de arquivos (Lixeira do Windows) no modo Desktop
+  setupTrashFeature();
 
   if (btnSelectFolder) btnSelectFolder.addEventListener('click', handleChooseFolder);
   if (btnEmptySelectFolder) btnEmptySelectFolder.addEventListener('click', handleChooseFolder);
@@ -2462,6 +2473,302 @@ async function renameModelFile(model, newBaseName) {
   return true;
 }
 
+// ==========================================
+// Exclusão de arquivos (Lixeira do Windows)
+// ==========================================
+
+/**
+ * A exclusão só existe no app desktop: os arquivos vão para a Lixeira do Windows
+ * e podem ser restaurados por lá se a pessoa mudar de ideia.
+ */
+function isTrashSupported() {
+  return !!(window.electronAPI && typeof window.electronAPI.trashFiles === 'function');
+}
+
+/**
+ * Caminho real do arquivo no disco (o da varredura tem prioridade sobre o estimado)
+ */
+function getModelDiskPath(model) {
+  return (model && model.file && model.file.fullDiskPath) || (model && model.fullDiskPath) || null;
+}
+
+let trashConfirmResolver = null;
+
+/**
+ * Mostra a confirmação de envio para a Lixeira com os nomes dos arquivos.
+ * Resolve true quando a pessoa confirma.
+ */
+function askTrashConfirmation(models, { title, description, confirmLabel } = {}) {
+  if (!trashConfirmModal) return Promise.resolve(window.confirm(description || 'Mover para a Lixeira?'));
+
+  const count = models.length;
+  const titleEl = document.getElementById('trashConfirmTitle');
+  if (titleEl) titleEl.textContent = title || (count === 1 ? 'Mover arquivo para a Lixeira?' : `Mover ${count} arquivos para a Lixeira?`);
+  if (trashConfirmDesc) {
+    trashConfirmDesc.textContent = description || (count === 1
+      ? 'O arquivo sai da pasta e vai para a Lixeira do Windows. Dá para restaurar por lá se precisar.'
+      : 'Os arquivos saem da pasta e vão para a Lixeira do Windows. Dá para restaurar por lá se precisar.');
+  }
+
+  // Lista curta, sem rolagem: até 4 nomes e um resumo do restante
+  const MAX_NAMES = 4;
+  const shown = count > MAX_NAMES + 1 ? models.slice(0, MAX_NAMES) : models;
+  if (trashConfirmList) {
+    trashConfirmList.innerHTML = shown.map(m => {
+      const folder = getModelParentFolderInfo(m);
+      return `<li><span class="trash-name" title="${escapeHtml(getModelDiskPath(m) || m.name)}">${escapeHtml(m.name)}</span><span class="trash-folder">${escapeHtml(folder.name || '')}</span></li>`;
+    }).join('') + (count > shown.length ? `<li><span class="trash-more">e mais ${count - shown.length} arquivos</span></li>` : '');
+  }
+  if (btnConfirmTrash) {
+    btnConfirmTrash.textContent = confirmLabel || 'Mover para a Lixeira';
+    btnConfirmTrash.disabled = false;
+  }
+  if (btnCancelTrash) btnCancelTrash.disabled = false;
+
+  trashConfirmModal.style.display = 'flex';
+  setTimeout(() => btnConfirmTrash && btnConfirmTrash.focus(), 30);
+
+  return new Promise(resolve => {
+    trashConfirmResolver = resolve;
+  });
+}
+
+function closeTrashConfirmation(confirmed) {
+  if (trashConfirmModal) trashConfirmModal.style.display = 'none';
+  const resolve = trashConfirmResolver;
+  trashConfirmResolver = null;
+  if (resolve) resolve(!!confirmed);
+}
+
+function isTrashConfirmOpen() {
+  return !!(trashConfirmModal && trashConfirmModal.style.display !== 'none' && trashConfirmResolver);
+}
+
+/**
+ * Confirma e manda os modelos para a Lixeira, depois tira da biblioteca
+ * os que saíram do disco. Retorna a lista de modelos excluídos.
+ */
+async function trashModels(models, confirmOptions = {}) {
+  const list = (models || []).filter(m => m && !m.isProject);
+  if (list.length === 0) return [];
+
+  if (!isTrashSupported()) {
+    showToast('A exclusão de arquivos está disponível no app desktop do Vault3D.', 'info');
+    return [];
+  }
+
+  const withPath = list.filter(m => getModelDiskPath(m));
+  if (withPath.length === 0) {
+    showToast('Não foi possível localizar esses arquivos no disco.', 'error');
+    return [];
+  }
+
+  const confirmed = await askTrashConfirmation(withPath, confirmOptions);
+  if (!confirmed) return [];
+
+  let results = [];
+  try {
+    results = await window.electronAPI.trashFiles(withPath.map(getModelDiskPath));
+  } catch (err) {
+    showToast(`Erro ao mover para a Lixeira: ${err.message}`, 'error');
+    return [];
+  }
+
+  const okPaths = new Set((results || []).filter(r => r && r.success).map(r => r.path));
+  const removed = withPath.filter(m => okPaths.has(getModelDiskPath(m)));
+  const failed = (results || []).filter(r => r && !r.success);
+
+  if (removed.length > 0) {
+    await removeModelsFromLibrary(removed);
+    showToast(removed.length === 1
+      ? `"${removed[0].name}" foi para a Lixeira.`
+      : `${removed.length} arquivos foram para a Lixeira.`, 'success');
+  }
+  if (failed.length > 0) {
+    const first = failed[0];
+    const name = (first.path || '').split(/[\\/]/).pop();
+    showToast(failed.length === 1
+      ? `Não foi possível excluir "${name}": ${first.message || 'erro desconhecido'}`
+      : `${failed.length} arquivos não puderam ser excluídos. Verifique se estão abertos em outro programa.`, 'error');
+  }
+  return removed;
+}
+
+/**
+ * Tira da biblioteca os modelos que saíram do disco: galeria, seleção,
+ * favoritos, projetos, contadores das pastas e duplicados.
+ */
+async function removeModelsFromLibrary(removed) {
+  const removedIds = new Set(removed.map(m => m.id));
+
+  // Se o visualizador mostra um dos excluídos, guardar o vizinho para continuar navegando
+  let nextModalId = null;
+  const modalOpen = viewerModal && viewerModal.classList.contains('active');
+  if (modalOpen && state.modalItem && removedIds.has(state.modalItem.id)) {
+    const items = state.currentDisplayItems || [];
+    const idx = getViewerNavIndex();
+    const after = items.slice(idx + 1).find(it => !removedIds.has(it.id));
+    const before = items.slice(0, Math.max(0, idx)).reverse().find(it => !removedIds.has(it.id));
+    nextModalId = (after || before || {}).id || null;
+  }
+
+  removed.forEach(m => {
+    if (m.thumbnailUrl && m.thumbnailUrl.startsWith('blob:')) {
+      try { URL.revokeObjectURL(m.thumbnailUrl); } catch (_) {}
+    }
+    state.selectedModelIds.delete(m.id);
+  });
+  state.models = state.models.filter(m => !removedIds.has(m.id));
+
+  // Favoritos e projetos são guardados pelo nome: só limpar se nenhum outro arquivo usa o mesmo nome
+  const stillMatches = (key) => state.models.some(m =>
+    m.name === key || m.path === key || (m.path && m.path.endsWith('/' + key))
+  );
+  const favs = loadFavorites();
+  let favsChanged = false;
+  removed.forEach(m => {
+    [m.name, m.path].forEach(key => {
+      if (key && favs.has(key) && !stillMatches(key)) {
+        favs.delete(key);
+        favsChanged = true;
+      }
+    });
+  });
+  if (favsChanged) saveFavorites(favs);
+
+  let projectsChanged = false;
+  const dissolved = [];
+  state.customProjects = state.customProjects.filter(project => {
+    const before = project.fileKeys.length;
+    project.fileKeys = project.fileKeys.filter(stillMatches);
+    if (project.fileKeys.length !== before) projectsChanged = true;
+    if (project.fileKeys.length < 2) {
+      // Um projeto com um arquivo só deixa de fazer sentido: o arquivo volta a ficar avulso
+      if (before >= 2) dissolved.push(project.name);
+      return false;
+    }
+    if (project.coverKey && project.coverKey !== '__custom__' && !project.fileKeys.includes(project.coverKey)) {
+      project.coverKey = null;
+    }
+    return true;
+  });
+  if (projectsChanged || dissolved.length) saveCustomProjects();
+
+  // Contadores das pastas conectadas
+  state.folders.forEach(folder => {
+    folder.count = state.models.filter(m => m.folderId === folder.id).length;
+  });
+
+  if (state.selectedModelIds.size === 0 && state.isSelectionMode) {
+    setSelectionMode(false);
+  }
+
+  renderFolderChips();
+  updateStatsBadge();
+  await updateDuplicatesState();
+
+  if (modalOpen && state.modalItem && removedIds.has(state.modalItem.id)) {
+    const next = nextModalId && (state.currentDisplayItems || []).find(it => it.id === nextModalId);
+    if (next) openViewerModal(next);
+    else closeViewerModal();
+  }
+
+  if (dissolved.length === 1) {
+    showToast(`O projeto "${dissolved[0]}" ficou com um arquivo só e foi desagrupado.`, 'info');
+  } else if (dissolved.length > 1) {
+    showToast(`${dissolved.length} projetos ficaram com um arquivo só e foram desagrupados.`, 'info');
+  }
+}
+
+/**
+ * Duplicados: mantém este arquivo e manda as outras cópias idênticas para a Lixeira
+ */
+async function keepOnlyThisCopy(model) {
+  if (!model || !model.fingerprint) return;
+  let others = state.models.filter(m => m.id !== model.id && m.fingerprint === model.fingerprint);
+  if (others.length === 0) return;
+
+  // O selo de duplicado usa uma amostra do arquivo: antes de apagar, conferir o conteúdo inteiro
+  if (window.electronAPI && typeof window.electronAPI.hashFile === 'function') {
+    const keepHash = await window.electronAPI.hashFile(getModelDiskPath(model));
+    if (!keepHash) {
+      showToast('Não foi possível ler este arquivo para comparar as cópias.', 'error');
+      return;
+    }
+    const hashes = await Promise.all(others.map(m => window.electronAPI.hashFile(getModelDiskPath(m))));
+    const differing = others.filter((m, i) => hashes[i] !== keepHash);
+    others = others.filter((m, i) => hashes[i] === keepHash);
+    if (differing.length > 0) {
+      showToast(differing.length === 1
+        ? `"${differing[0].name}" não é idêntico e foi mantido.`
+        : `${differing.length} arquivos não são idênticos e foram mantidos.`, 'warning');
+    }
+    if (others.length === 0) return;
+  }
+  const folder = getModelParentFolderInfo(model);
+  await trashModels(others, {
+    title: others.length === 1 ? 'Apagar a outra cópia?' : `Apagar as outras ${others.length} cópias?`,
+    description: `"${model.name}"${folder.name ? ` em ${folder.name}` : ''} fica onde está. ${others.length === 1 ? 'A cópia abaixo vai' : 'As cópias abaixo vão'} para a Lixeira do Windows.`,
+    confirmLabel: others.length === 1 ? 'Apagar cópia' : 'Apagar cópias'
+  });
+}
+
+/**
+ * Exclui o arquivo aberto no visualizador
+ */
+function trashModalItem() {
+  const item = state.modalItem;
+  if (!item || item.isProject) return;
+  trashModels([item]);
+}
+
+/**
+ * Exclui os arquivos marcados na seleção múltipla
+ */
+function trashSelectedModels() {
+  const selected = state.models.filter(m => state.selectedModelIds.has(m.id));
+  if (selected.length === 0) return;
+  trashModels(selected);
+}
+
+function setupTrashFeature() {
+  document.body.classList.toggle('can-trash', isTrashSupported());
+
+  if (btnModalTrash) btnModalTrash.addEventListener('click', trashModalItem);
+  if (btnTrashSelection) btnTrashSelection.addEventListener('click', trashSelectedModels);
+  if (btnConfirmTrash) btnConfirmTrash.addEventListener('click', () => closeTrashConfirmation(true));
+  if (btnCancelTrash) btnCancelTrash.addEventListener('click', () => closeTrashConfirmation(false));
+  if (trashConfirmBackdrop) trashConfirmBackdrop.addEventListener('click', () => closeTrashConfirmation(false));
+
+  // Captura: com a confirmação aberta, Esc/Enter valem só para ela
+  window.addEventListener('keydown', (e) => {
+    if (isTrashConfirmOpen()) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        closeTrashConfirmation(false);
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        closeTrashConfirmation(true);
+      }
+      return;
+    }
+
+    // Tecla Delete: exclui o arquivo aberto ou os selecionados
+    if (e.key !== 'Delete' || e.altKey || e.ctrlKey || e.metaKey || !isTrashSupported()) return;
+    const t = e.target;
+    if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+    if (viewerModal && viewerModal.classList.contains('active')) {
+      e.preventDefault();
+      trashModalItem();
+    } else if (state.selectedModelIds.size > 0) {
+      e.preventDefault();
+      trashSelectedModels();
+    }
+  }, true);
+}
+
 /**
  * Configura o comportamento nativo de Arrastar e Soltar (Drag & Drop)
  * permitindo arrastar o arquivo 3D do navegador para a janela do fatiador ou Windows Explorer
@@ -3487,6 +3794,7 @@ function createModelCard(model) {
   const dotIdx = model.name.lastIndexOf('.');
   const ext = dotIdx !== -1 ? model.name.substring(dotIdx) : `.${model.type}`;
   const baseName = dotIdx !== -1 ? model.name.substring(0, dotIdx) : model.name;
+  const showKeepOnly = model.isDuplicate && state.activeSection === 'duplicates' && isTrashSupported();
 
   card.innerHTML = `
     <div class="card-thumbnail-wrapper">
@@ -3541,9 +3849,10 @@ function createModelCard(model) {
         ` : ''}
       </div>
       ${model.isDuplicate ? `
-        <div class="card-duplicate-info" title="Cópia de: ${escapeHtml(model.duplicateOrigins)}">
+        <div class="card-duplicate-info ${showKeepOnly ? 'has-keep' : ''}" title="Cópia de: ${escapeHtml(model.duplicateOrigins)}">
           <span class="card-duplicate-icon">⚠️</span>
-          <span>Cópia de: <strong>${escapeHtml(model.duplicateOrigins)}</strong></span>
+          <span class="card-duplicate-text">Cópia de: <strong>${escapeHtml(model.duplicateOrigins)}</strong></span>
+          ${showKeepOnly ? `<button class="btn-keep-only" type="button" title="Manter este arquivo e mover as outras cópias para a Lixeira">Manter só este</button>` : ''}
         </div>
       ` : ''}
       <div class="card-footer-actions">
@@ -3577,6 +3886,15 @@ function createModelCard(model) {
     btnFav.addEventListener('click', (e) => {
       e.stopPropagation();
       toggleFavorite(model);
+    });
+  }
+
+  // Duplicados: manter este arquivo e mandar as outras cópias para a Lixeira
+  const btnKeepOnly = card.querySelector('.btn-keep-only');
+  if (btnKeepOnly) {
+    btnKeepOnly.addEventListener('click', (e) => {
+      e.stopPropagation();
+      keepOnlyThisCopy(model);
     });
   }
 
@@ -3704,7 +4022,7 @@ function createModelCard(model) {
   setupTitleRowEvents();
 
   card.addEventListener('click', (e) => {
-    if (e.target.closest('.card-rename-box') || e.target.closest('.btn-card-rename') || e.target.closest('.btn-favorite') || e.target.closest('.btn-open-slicer')) {
+    if (e.target.closest('.card-rename-box') || e.target.closest('.btn-card-rename') || e.target.closest('.btn-favorite') || e.target.closest('.btn-open-slicer') || e.target.closest('.btn-keep-only')) {
       return;
     }
     if (e.target.closest('.card-select-checkbox') || state.isSelectionMode) {
@@ -3906,7 +4224,19 @@ function renderGallery() {
       return true;
     });
 
-  const filtered = sortModels(filteredUnsorted, state.sortOrder);
+  let filtered = sortModels(filteredUnsorted, state.sortOrder);
+  if (state.activeSection === 'duplicates') {
+    // Cópias idênticas lado a lado, na ordem em que o primeiro arquivo de cada grupo aparece
+    const groupOrder = new Map();
+    filtered.forEach((item, i) => {
+      const key = item.fingerprint || item.id;
+      if (!groupOrder.has(key)) groupOrder.set(key, i);
+    });
+    filtered = filtered
+      .map((item, i) => ({ item, i, g: groupOrder.get(item.fingerprint || item.id) }))
+      .sort((a, b) => a.g - b.g || a.i - b.i)
+      .map(x => x.item);
+  }
   state.currentDisplayItems = filtered;
 
   favoritesGrid.innerHTML = '';
@@ -4412,6 +4742,11 @@ function getViewerNavIndex() {
 function updateModalHeaderExtras() {
   const item = state.modalItem;
   if (!item) return;
+
+  if (btnModalTrash) {
+    // Projetos agrupam vários arquivos: a exclusão fica para os arquivos avulsos
+    btnModalTrash.style.display = item.isProject ? 'none' : '';
+  }
 
   if (btnModalFavorite) {
     const fav = !!item.isFavorite;

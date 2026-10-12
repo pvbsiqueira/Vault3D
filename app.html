@@ -460,6 +460,9 @@
           <button class="modal-icon-btn modal-fav-btn" id="btnModalFavorite" type="button" aria-pressed="false" title="Favoritar">
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
           </button>
+          <button class="modal-icon-btn modal-trash-btn trash-only" id="btnModalTrash" type="button" title="Mover para a Lixeira (Delete)">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+          </button>
           <span class="modal-head-sep" aria-hidden="true"></span>
           <button class="modal-icon-btn" id="btnModalPrev" type="button" title="Modelo anterior (←)">
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
@@ -630,6 +633,10 @@
         </svg>
         <span>Criar Projeto</span>
       </button>
+      <button class="btn-selection-action danger trash-only" id="btnTrashSelection" type="button" title="Mover os arquivos selecionados para a Lixeira (Delete)">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+        <span>Excluir</span>
+      </button>
       <button class="btn-selection-action ghost" id="btnCancelSelection" type="button" title="Limpar seleção e sair">
         &times;
       </button>
@@ -695,6 +702,23 @@
         <button class="btn-project-confirm" id="btnConfirmProjectCreation" type="button">
           <span>Criar Projeto</span>
         </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal de Confirmação: mover arquivos para a Lixeira -->
+  <div class="modal logout-confirm-modal trash-confirm-modal" id="trashConfirmModal" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="trashConfirmTitle">
+    <div class="modal-backdrop" id="trashConfirmBackdrop"></div>
+    <div class="logout-confirm-card trash-confirm-card">
+      <div class="logout-confirm-icon">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+      </div>
+      <h3 class="logout-confirm-title" id="trashConfirmTitle">Mover para a Lixeira?</h3>
+      <p class="logout-confirm-desc" id="trashConfirmDesc"></p>
+      <ul class="trash-confirm-list" id="trashConfirmList"></ul>
+      <div class="logout-confirm-actions">
+        <button type="button" class="btn-cancel-logout" id="btnCancelTrash">Cancelar</button>
+        <button type="button" class="btn-confirm-logout" id="btnConfirmTrash">Mover para a Lixeira</button>
       </div>
     </div>
   </div>
