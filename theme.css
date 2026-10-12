@@ -1459,3 +1459,7 @@ body:not(.can-trash) .trash-only { display: none !important; }
 }
 .btn-card-trash:hover, .btn-card-trash:focus-visible { color: #f87171; background: transparent; }
 body.selection-mode-active .btn-card-trash { display: none !important; }
+/* Ícones de edição do card (renomear e lixeira): mesmo visual, só a cor do ícone muda no hover */
+.btn-card-rename { opacity: 1; color: var(--text-muted); transition: color 0.15s; }
+.model-card:hover .btn-card-rename { opacity: 1; }
+.btn-card-rename:hover, .btn-card-rename:focus-visible { opacity: 1 !important; color: var(--accent); background: transparent; }
