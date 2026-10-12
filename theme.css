@@ -1386,3 +1386,80 @@ body.dashboard-body {
 .login-link:disabled { cursor: default; opacity: 0.7; }
 .login-dot { width: 3px; height: 3px; border-radius: 50%; background: var(--text-muted); }
 .login-card .auth-config-notice { margin: 0; text-align: center; font-size: 12.5px; color: var(--text-secondary); }
+
+/* Exclusão de arquivos (Lixeira do Windows) */
+body:not(.can-trash) .trash-only { display: none !important; }
+.modal-trash-btn:hover:not(:disabled) { color: #f87171; border-color: rgba(248, 113, 113, 0.35); background: rgba(248, 113, 113, 0.08); }
+.btn-selection-action.danger {
+  background: rgba(239, 68, 68, 0.12);
+  color: #fca5a5;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+.btn-selection-action.danger:hover {
+  background: rgba(239, 68, 68, 0.22);
+  color: #fff;
+  border-color: rgba(239, 68, 68, 0.5);
+}
+.trash-confirm-card { background: var(--bg-panel); border-color: rgba(239, 68, 68, 0.22); }
+.trash-confirm-card .logout-confirm-desc { margin-bottom: 12px; }
+.trash-confirm-list {
+  width: 100%;
+  margin: 0 0 16px;
+  padding: 6px 0;
+  list-style: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  text-align: left;
+}
+.trash-confirm-list:empty { display: none; }
+.trash-confirm-list li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 12px;
+  font-size: 12.5px;
+  color: var(--text-primary);
+  min-width: 0;
+}
+.trash-confirm-list .trash-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.trash-confirm-list .trash-folder { flex: 0 1 auto; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); font-size: 11.5px; }
+.trash-confirm-list .trash-more { color: var(--text-secondary); font-style: italic; }
+.trash-confirm-card .btn-cancel-logout, .trash-confirm-card .btn-confirm-logout { font-family: var(--font-ui); }
+.card-duplicate-info.has-keep { align-items: center; flex-wrap: wrap; row-gap: 6px; }
+.card-duplicate-info.has-keep .card-duplicate-text { flex: 1 1 calc(100% - 24px); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card-duplicate-info.has-keep .btn-keep-only { width: 100%; }
+.btn-keep-only {
+  flex: none;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 4px;
+  border: 1px solid rgba(251, 191, 36, 0.4);
+  background: transparent;
+  color: var(--warn);
+  font: 600 11px var(--font-ui);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.btn-keep-only:hover { background: var(--warn); color: #1a1204; }
+.btn-card-trash {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  margin-left: -2px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.15s;
+}
+.btn-card-trash:hover, .btn-card-trash:focus-visible { color: #f87171; background: transparent; }
+body.selection-mode-active .btn-card-trash { display: none !important; }
+/* Ícones de edição do card (renomear e lixeira): mesmo visual, só a cor do ícone muda no hover */
+.btn-card-rename { opacity: 1; color: var(--text-muted); transition: color 0.15s; }
+.model-card:hover .btn-card-rename { opacity: 1; }
+.btn-card-rename:hover, .btn-card-rename:focus-visible { opacity: 1 !important; color: var(--accent); background: transparent; }

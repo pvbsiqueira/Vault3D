@@ -400,6 +400,42 @@ ipcMain.handle('rename-file', async (event, { oldPath, newName }) => {
   }
 });
 
+// 7.0 Hash SHA-256 do arquivo inteiro (confirma cópias idênticas antes de excluir duplicados)
+ipcMain.handle('hash-file', async (event, filePath) => {
+  if (typeof filePath !== 'string' || !fs.existsSync(filePath)) return null;
+  return new Promise((resolve) => {
+    const hash = require('crypto').createHash('sha256');
+    fs.createReadStream(filePath)
+      .on('data', (chunk) => hash.update(chunk))
+      .on('end', () => resolve(hash.digest('hex')))
+      .on('error', () => resolve(null));
+  });
+});
+
+// 7.1 Mover arquivos 3D para a Lixeira do Windows (pode ser desfeito pela própria Lixeira)
+ipcMain.handle('trash-files', async (event, filePaths) => {
+  const list = Array.isArray(filePaths) ? filePaths : [];
+  const results = [];
+  for (const filePath of list) {
+    if (typeof filePath !== 'string' || !/\.(stl|3mf)$/i.test(filePath)) {
+      results.push({ path: filePath, success: false, message: 'Apenas arquivos STL e 3MF podem ser excluídos' });
+      continue;
+    }
+    if (!fs.existsSync(filePath)) {
+      // Já não está no disco: tratamos como excluído para limpar a biblioteca
+      results.push({ path: filePath, success: true, missing: true });
+      continue;
+    }
+    try {
+      await shell.trashItem(path.normalize(filePath));
+      results.push({ path: filePath, success: true });
+    } catch (err) {
+      results.push({ path: filePath, success: false, message: err.message });
+    }
+  }
+  return results;
+});
+
 // 8. Cópia direta para a Área de Transferência nativa do Windows
 ipcMain.handle('copy-to-clipboard', (event, text) => {
   if (typeof text === 'string') {
