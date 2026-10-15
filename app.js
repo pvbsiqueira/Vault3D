@@ -184,6 +184,10 @@ const trashConfirmList = document.getElementById('trashConfirmList');
 const btnConfirmTrash = document.getElementById('btnConfirmTrash');
 const btnCancelTrash = document.getElementById('btnCancelTrash');
 const trashConfirmBackdrop = document.getElementById('trashConfirmBackdrop');
+const btnModalMove = document.getElementById('btnModalMove');
+const btnMoveSelection = document.getElementById('btnMoveSelection');
+const moveModal = document.getElementById('moveModal');
+const moveConflictModal = document.getElementById('moveConflictModal');
 const btnModalPrev = document.getElementById('btnModalPrev');
 const btnModalNext = document.getElementById('btnModalNext');
 const modalNavCounter = document.getElementById('modalNavCounter');
@@ -283,6 +287,9 @@ function init() {
 
   // Exclusão de arquivos (Lixeira do Windows) no modo Desktop
   setupTrashFeature();
+
+  // Mover arquivos entre as pastas conectadas no modo Desktop
+  setupMoveFeature();
 
   if (btnSelectFolder) btnSelectFolder.addEventListener('click', handleChooseFolder);
   if (btnEmptySelectFolder) btnEmptySelectFolder.addEventListener('click', handleChooseFolder);
@@ -789,6 +796,8 @@ function handleFallbackFileSelect(e) {
 function setupDragAndDrop() {
   ['dragenter', 'dragover'].forEach(name => {
     window.addEventListener(name, (e) => {
+      // Card arrastado para mover: só as pastas da barra lateral aceitam
+      if (moveDrag) return;
       e.preventDefault();
       dropZone.classList.add('drag-over');
     });
@@ -803,6 +812,7 @@ function setupDragAndDrop() {
 
   window.addEventListener('drop', async (e) => {
     e.preventDefault();
+    if (moveDrag) return;
     const items = e.dataTransfer.items;
     if (!items || items.length === 0) return;
 
@@ -2115,6 +2125,7 @@ function renderFolderChips() {
     item.addEventListener('click', () => {
       selectFolder(folder.id, null);
     });
+    setupFolderDropTarget(item, folder.id, '');
 
     // Botão remover pasta
     const btnRemove = item.querySelector('.btn-remove-sidebar-folder');
@@ -2191,6 +2202,7 @@ function renderFolderChips() {
         subItem.addEventListener('click', () => {
           selectFolder(folder.id, sub.path);
         });
+        setupFolderDropTarget(subItem, folder.id, sub.path);
 
         sidebarFoldersList.appendChild(subItem);
       });
@@ -2756,6 +2768,7 @@ function setupTrashFeature() {
     }
 
     // Tecla Delete: exclui o arquivo aberto ou os selecionados
+    if (isMovePickerOpen() || isMoveConflictOpen()) return;
     if (e.key !== 'Delete' || e.altKey || e.ctrlKey || e.metaKey || !isTrashSupported()) return;
     const t = e.target;
     if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
@@ -2767,6 +2780,693 @@ function setupTrashFeature() {
       trashSelectedModels();
     }
   }, true);
+}
+
+// ==========================================
+// Mover arquivos entre as pastas conectadas
+// ==========================================
+
+/**
+ * Mover também só existe no app desktop: o main process faz a operação no disco
+ */
+function isMoveSupported() {
+  return !!(window.electronAPI && typeof window.electronAPI.moveFiles === 'function');
+}
+
+function getFolderRootPath(folder) {
+  return (folder && state.folderDiskPaths && state.folderDiskPaths[folder.name]) || null;
+}
+
+/**
+ * Subpasta do modelo dentro da pasta conectada ('' quando está na raiz)
+ */
+function getModelRelativeDir(model) {
+  const rel = getModelRelativePath(model, model.folderName);
+  const i = rel.lastIndexOf('/');
+  return i === -1 ? '' : rel.substring(0, i);
+}
+
+function joinDiskPath(root, subPath) {
+  const base = root.replace(/[\\/]+$/, '');
+  return subPath ? `${base}\\${subPath.replace(/\//g, '\\')}` : base;
+}
+
+function describeMoveTarget(folderId, subPath) {
+  const folder = state.folders.find(f => f.id === folderId);
+  if (!folder) return '';
+  return subPath ? `${folder.name}/${subPath}` : folder.name;
+}
+
+function isModelInMoveTarget(model, folderId, subPath) {
+  return model.folderId === folderId &&
+    getModelRelativeDir(model).toLowerCase() === (subPath || '').toLowerCase();
+}
+
+/**
+ * Converte os itens da galeria em arquivos: um projeto leva todas as suas peças
+ */
+function resolveMoveModels(items) {
+  const seen = new Set();
+  const out = [];
+  (items || []).forEach(item => {
+    if (!item) return;
+    const parts = item.isProject
+      ? ((item.parts && item.parts.length) ? item.parts : [item.primaryPart])
+      : [item];
+    parts.forEach(m => {
+      if (m && !m.isProject && !seen.has(m.id)) {
+        seen.add(m.id);
+        out.push(m);
+      }
+    });
+  });
+  return out;
+}
+
+/**
+ * Atualiza o modelo em memória depois que o arquivo mudou de lugar no disco
+ */
+function applyModelMove(model, folder, subPath, res) {
+  const oldName = model.name;
+  const newName = res.newName || model.name;
+
+  model.folderId = folder.id;
+  model.folderName = folder.name;
+  model.name = newName;
+  model.path = subPath ? `${subPath}/${newName}` : newName;
+  model.fullDiskPath = res.newPath;
+  model.fullFolderDirectory = res.newPath.substring(0, res.newPath.lastIndexOf('\\') + 1);
+  if (res.size) model.size = res.size;
+  if (res.lastModified) model.lastModified = res.lastModified;
+  // O proxy de leitura guarda o caminho antigo: trocar pelo novo
+  model.file = createDesktopFileProxy(res.newPath, newName, model.size, model.lastModified);
+  model.handle = null;
+  model.parentHandle = null;
+
+  if (newName !== oldName) {
+    // Nome ganhou um número para não sobrescrever: favorito e projeto acompanham o arquivo
+    if (model.isFavorite) {
+      const favs = loadFavorites();
+      favs.add(newName);
+      saveFavorites(favs);
+    }
+    let projectsChanged = false;
+    (state.customProjects || []).forEach(project => {
+      if (project.fileKeys.includes(oldName) && !project.fileKeys.includes(newName)) {
+        project.fileKeys.push(newName);
+        projectsChanged = true;
+      }
+    });
+    if (projectsChanged) saveCustomProjects();
+  }
+}
+
+/**
+ * Envia os pedidos ao disco e aplica na biblioteca os que deram certo
+ */
+async function runMoveRequests(requests, onConflict) {
+  let results = [];
+  try {
+    results = await window.electronAPI.moveFiles(
+      requests.map(r => ({ from: r.from, toDir: r.toDir, newName: r.newName })),
+      onConflict
+    );
+  } catch (err) {
+    showToast(`Erro ao mover arquivos: ${err.message}`, 'error');
+    return { moved: [], skipped: [], failed: requests.map(r => ({ model: r.model, message: err.message })) };
+  }
+
+  const moved = [];
+  const skipped = [];
+  const failed = [];
+  requests.forEach((req, i) => {
+    const res = (results || [])[i];
+    if (res && res.success) {
+      const origin = { folderId: req.model.folderId, subPath: getModelRelativeDir(req.model), name: req.model.name };
+      applyModelMove(req.model, req.folder, req.subPath, res);
+      moved.push({ model: req.model, origin });
+    } else if (res && res.skipped) {
+      skipped.push(req.model);
+    } else {
+      failed.push({ model: req.model, message: (res && res.message) || 'erro desconhecido' });
+    }
+  });
+  return { moved, skipped, failed };
+}
+
+/**
+ * Atualiza contadores, barra lateral, galeria e o visualizador depois de mover
+ */
+async function refreshAfterMove(movedModels) {
+  state.folders.forEach(folder => {
+    folder.count = state.models.filter(m => m.folderId === folder.id).length;
+  });
+  state.models.sort((a, b) => compareModelNames(a.name, b.name));
+
+  renderFolderChips();
+  updateStatsBadge();
+  renderGallery();
+
+  const movedIds = new Set(movedModels.map(m => m.id));
+  if (state.activeModel && movedIds.has(state.activeModel.id)) {
+    updateModalFilePath(state.activeModel);
+  }
+  await updateDuplicatesState();
+}
+
+function reportMoveFailures(skipped, failed) {
+  if (skipped.length > 0) {
+    showToast(skipped.length === 1
+      ? `"${skipped[0].name}" foi pulado: já existe um arquivo com esse nome no destino.`
+      : `${skipped.length} arquivos foram pulados porque já existem no destino.`, 'warning');
+  }
+  if (failed.length > 0) {
+    showToast(failed.length === 1
+      ? `Não foi possível mover "${failed[0].model.name}": ${failed[0].message}`
+      : `${failed.length} arquivos não puderam ser movidos. Verifique se estão abertos em outro programa.`, 'error');
+  }
+}
+
+/**
+ * Move os itens (arquivos ou projetos) para uma pasta conectada ou subpasta dela.
+ * Nada é sobrescrito: com nome repetido, a pessoa escolhe entre manter os dois ou pular.
+ */
+async function moveModels(items, folderId, subPath = '') {
+  if (!isMoveSupported()) {
+    showToast('Mover arquivos está disponível no app desktop do Vault3D.', 'info');
+    return [];
+  }
+  const folder = state.folders.find(f => f.id === folderId);
+  const root = getFolderRootPath(folder);
+  if (!folder || !root) {
+    showToast('Não foi possível localizar essa pasta no disco.', 'error');
+    return [];
+  }
+
+  const all = resolveMoveModels(items);
+  const list = all.filter(m => getModelDiskPath(m) && !isModelInMoveTarget(m, folderId, subPath));
+  if (list.length === 0) {
+    showToast(all.length > 0 && all.every(m => isModelInMoveTarget(m, folderId, subPath))
+      ? 'Os arquivos já estão nessa pasta.'
+      : 'Não foi possível localizar esses arquivos no disco.', 'info');
+    return [];
+  }
+
+  const targetLabel = describeMoveTarget(folderId, subPath);
+
+  // Nomes que já existem no destino (ou que se repetem entre os próprios arquivos movidos)
+  const movingIds = new Set(list.map(m => m.id));
+  const taken = new Set(state.models
+    .filter(m => !movingIds.has(m.id) && isModelInMoveTarget(m, folderId, subPath))
+    .map(m => m.name.toLowerCase()));
+  const conflicts = [];
+  list.forEach(m => {
+    const key = m.name.toLowerCase();
+    if (taken.has(key)) conflicts.push(m);
+    else taken.add(key);
+  });
+
+  let onConflict = 'skip';
+  if (conflicts.length > 0) {
+    const choice = await askMoveConflict(conflicts, targetLabel);
+    if (!choice) return [];
+    onConflict = choice;
+  }
+
+  const toDir = joinDiskPath(root, subPath);
+  const { moved, skipped, failed } = await runMoveRequests(
+    list.map(m => ({ model: m, from: getModelDiskPath(m), toDir, folder, subPath })),
+    onConflict
+  );
+
+  if (moved.length > 0) {
+    await refreshAfterMove(moved.map(x => x.model));
+    const message = moved.length === 1
+      ? `"${moved[0].model.name}" foi movido para ${targetLabel}.`
+      : `${moved.length} arquivos movidos para ${targetLabel}.`;
+    showActionToast(message, 'Desfazer', () => undoMove(moved));
+  }
+  reportMoveFailures(skipped, failed);
+  return moved.map(x => x.model);
+}
+
+/**
+ * Desfazer: devolve cada arquivo para a pasta e o nome que tinha antes
+ */
+async function undoMove(moved) {
+  const requests = [];
+  let lost = 0;
+  moved.forEach(({ model, origin }) => {
+    const folder = state.folders.find(f => f.id === origin.folderId);
+    const root = getFolderRootPath(folder);
+    if (!folder || !root || !state.models.includes(model)) {
+      lost++;
+      return;
+    }
+    requests.push({
+      model,
+      from: getModelDiskPath(model),
+      toDir: joinDiskPath(root, origin.subPath),
+      newName: origin.name,
+      folder,
+      subPath: origin.subPath
+    });
+  });
+
+  if (requests.length > 0) {
+    const { moved: back, skipped, failed } = await runMoveRequests(requests, 'skip');
+    if (back.length > 0) {
+      await refreshAfterMove(back.map(x => x.model));
+      showToast(back.length === 1
+        ? `"${back[0].model.name}" voltou para onde estava.`
+        : `${back.length} arquivos voltaram para onde estavam.`, 'success');
+    }
+    reportMoveFailures(skipped, failed);
+  }
+  if (lost > 0) {
+    showToast(lost === 1
+      ? 'Um arquivo não pôde voltar porque a pasta de origem saiu da biblioteca.'
+      : `${lost} arquivos não puderam voltar porque a pasta de origem saiu da biblioteca.`, 'warning');
+  }
+}
+
+/**
+ * Aviso com um botão de ação (ex.: Desfazer), visível por mais tempo que o aviso comum
+ */
+function showActionToast(message, actionLabel, onAction, type = 'success') {
+  let toastContainer = document.getElementById('toastContainer');
+  if (!toastContainer) {
+    toastContainer = document.createElement('div');
+    toastContainer.id = 'toastContainer';
+    toastContainer.className = 'toast-container';
+    document.body.appendChild(toastContainer);
+  }
+
+  const toast = document.createElement('div');
+  toast.className = `toast-item toast-${type} has-action`;
+  toast.innerHTML = `
+    <span class="toast-icon">${type === 'success' ? '✅' : 'ℹ️'}</span>
+    <span class="toast-text">${escapeHtml(message)}</span>
+    <button type="button" class="toast-action">${escapeHtml(actionLabel)}</button>
+  `;
+  toastContainer.appendChild(toast);
+  requestAnimationFrame(() => toast.classList.add('visible'));
+
+  const dismiss = () => {
+    toast.classList.remove('visible');
+    setTimeout(() => { if (toast.parentNode) toast.parentNode.removeChild(toast); }, 300);
+  };
+  const timer = setTimeout(dismiss, 8000);
+  toast.querySelector('.toast-action').addEventListener('click', () => {
+    clearTimeout(timer);
+    dismiss();
+    onAction();
+  }, { once: true });
+}
+
+// ---------- Nome repetido no destino ----------
+
+let moveConflictResolver = null;
+
+function askMoveConflict(conflicts, targetLabel) {
+  if (!moveConflictModal) return Promise.resolve('skip');
+  const count = conflicts.length;
+  const titleEl = document.getElementById('moveConflictTitle');
+  const descEl = document.getElementById('moveConflictDesc');
+  const listEl = document.getElementById('moveConflictList');
+  if (titleEl) titleEl.textContent = count === 1 ? 'Esse nome já existe no destino' : `${count} nomes já existem no destino`;
+  if (descEl) {
+    descEl.textContent = `${count === 1 ? 'Este nome já está' : 'Estes nomes já estão'} em ${targetLabel}. ` +
+      'Manter os dois põe um número no nome do arquivo que chega. Nada é sobrescrito.';
+  }
+  const MAX_NAMES = 4;
+  const shown = count > MAX_NAMES + 1 ? conflicts.slice(0, MAX_NAMES) : conflicts;
+  if (listEl) {
+    listEl.innerHTML = shown.map(m => `<li><span class="trash-name">${escapeHtml(m.name)}</span></li>`).join('') +
+      (count > shown.length ? `<li><span class="trash-more">e mais ${count - shown.length} arquivos</span></li>` : '');
+  }
+  moveConflictModal.style.display = 'flex';
+  const btnKeep = document.getElementById('btnMoveConflictKeep');
+  setTimeout(() => btnKeep && btnKeep.focus(), 30);
+  return new Promise(resolve => { moveConflictResolver = resolve; });
+}
+
+function closeMoveConflict(choice) {
+  if (moveConflictModal) moveConflictModal.style.display = 'none';
+  const resolve = moveConflictResolver;
+  moveConflictResolver = null;
+  if (resolve) resolve(choice);
+}
+
+function isMoveConflictOpen() {
+  return !!(moveConflictModal && moveConflictModal.style.display !== 'none' && moveConflictResolver);
+}
+
+// ---------- Seletor "Mover para…" ----------
+
+const MOVE_PAGE_SIZE = 8;
+let movePicker = null; // { items, models, page, selectedKey, currentKey, query, creating }
+
+function moveTargetKey(folderId, subPath) {
+  return `${folderId}::${subPath || ''}`;
+}
+
+function getMoveTargets() {
+  const targets = [];
+  state.folders.forEach(folder => {
+    if (!getFolderRootPath(folder)) return;
+    targets.push({ folderId: folder.id, subPath: '', name: folder.name, label: folder.name, level: 0 });
+    extractFolderTree(folder, state.models).forEach(sub => {
+      targets.push({ folderId: folder.id, subPath: sub.path, name: sub.name, label: `${folder.name}/${sub.path}`, level: sub.level });
+    });
+  });
+  return targets;
+}
+
+function getFilteredMoveTargets() {
+  const all = getMoveTargets();
+  const q = (movePicker && movePicker.query || '').trim().toLowerCase();
+  if (!q) return all;
+  // Na busca, a lista fica plana com o caminho completo
+  return all.filter(t => t.label.toLowerCase().includes(q)).map(t => ({ ...t, level: 0, name: t.label }));
+}
+
+function openMovePicker(items) {
+  if (!isMoveSupported() || !moveModal) return;
+  const models = resolveMoveModels(items).filter(m => getModelDiskPath(m));
+  if (models.length === 0) {
+    showToast('Não foi possível localizar esses arquivos no disco.', 'error');
+    return;
+  }
+  // Se todos estão na mesma pasta, ela aparece marcada como "pasta atual"
+  const dirs = new Set(models.map(m => moveTargetKey(m.folderId, getModelRelativeDir(m))));
+  const currentKey = dirs.size === 1 ? Array.from(dirs)[0] : null;
+
+  movePicker = { items, models, page: 0, selectedKey: null, currentKey, query: '', creating: false };
+
+  const project = items.length === 1 && items[0] && items[0].isProject ? items[0] : null;
+  const titleEl = document.getElementById('moveModalTitle');
+  const subEl = document.getElementById('moveModalSub');
+  if (titleEl) {
+    titleEl.textContent = project
+      ? `Mover o projeto para…`
+      : (models.length === 1 ? 'Mover arquivo para…' : `Mover ${models.length} arquivos para…`);
+  }
+  if (subEl) {
+    subEl.textContent = project
+      ? `${project.name} (${models.length} arquivo${models.length === 1 ? '' : 's'})`
+      : (models.length === 1 ? models[0].name : `${models[0].name} e mais ${models.length - 1}`);
+  }
+
+  const search = document.getElementById('moveSearchInput');
+  if (search) search.value = '';
+  const allTargets = getMoveTargets();
+  if (search) search.style.display = allTargets.length > MOVE_PAGE_SIZE ? '' : 'none';
+
+  // Começar na página da pasta atual
+  if (currentKey) {
+    const idx = allTargets.findIndex(t => moveTargetKey(t.folderId, t.subPath) === currentKey);
+    if (idx > -1) movePicker.page = Math.floor(idx / MOVE_PAGE_SIZE);
+  }
+
+  setMoveCreating(false);
+  renderMovePicker();
+  moveModal.style.display = 'flex';
+  setTimeout(() => {
+    if (search && search.style.display !== 'none') search.focus();
+  }, 30);
+}
+
+function closeMovePicker() {
+  if (moveModal) moveModal.style.display = 'none';
+  movePicker = null;
+}
+
+function isMovePickerOpen() {
+  return !!(moveModal && moveModal.style.display !== 'none' && movePicker);
+}
+
+function renderMovePicker() {
+  if (!movePicker) return;
+  const listEl = document.getElementById('moveTreeList');
+  const pager = document.getElementById('moveTreePager');
+  const info = document.getElementById('moveTreePageInfo');
+  const btnPrev = document.getElementById('btnMovePagePrev');
+  const btnNext = document.getElementById('btnMovePageNext');
+  const btnConfirm = document.getElementById('btnConfirmMove');
+
+  const targets = getFilteredMoveTargets();
+  const pages = Math.max(1, Math.ceil(targets.length / MOVE_PAGE_SIZE));
+  movePicker.page = Math.min(Math.max(0, movePicker.page), pages - 1);
+  const pageItems = targets.slice(movePicker.page * MOVE_PAGE_SIZE, (movePicker.page + 1) * MOVE_PAGE_SIZE);
+
+  if (listEl) {
+    listEl.innerHTML = '';
+    if (pageItems.length === 0) {
+      listEl.innerHTML = '<li class="move-tree-empty">Nenhuma pasta encontrada</li>';
+    }
+    pageItems.forEach(t => {
+      const key = moveTargetKey(t.folderId, t.subPath);
+      const isCurrent = key === movePicker.currentKey;
+      const li = document.createElement('li');
+      li.className = `move-tree-item${isCurrent ? ' is-current' : ''}${key === movePicker.selectedKey ? ' is-selected' : ''}`;
+      li.style.setProperty('--move-level', t.level);
+      li.setAttribute('role', 'option');
+      li.setAttribute('aria-selected', key === movePicker.selectedKey ? 'true' : 'false');
+      li.title = t.label;
+      li.innerHTML = `
+        <span class="folder-item-icon">📁</span>
+        <span class="move-tree-name">${escapeHtml(t.name)}</span>
+        ${isCurrent ? '<span class="move-tree-tag">pasta atual</span>' : ''}
+      `;
+      li.addEventListener('click', () => {
+        if (isCurrent && !movePicker.creating) return;
+        movePicker.selectedKey = key;
+        renderMovePicker();
+      });
+      li.addEventListener('dblclick', () => {
+        if (isCurrent || movePicker.creating) return;
+        movePicker.selectedKey = key;
+        confirmMovePicker();
+      });
+      listEl.appendChild(li);
+    });
+  }
+
+  if (pager) pager.hidden = pages <= 1;
+  if (info) info.textContent = `${movePicker.page + 1} / ${pages}`;
+  if (btnPrev) btnPrev.disabled = movePicker.page === 0;
+  if (btnNext) btnNext.disabled = movePicker.page >= pages - 1;
+
+  updateMoveNewFolderPrefix();
+  if (btnConfirm) {
+    const nameOk = !movePicker.creating || !!getNewSubfolderName();
+    btnConfirm.disabled = !movePicker.selectedKey || !nameOk ||
+      (!movePicker.creating && movePicker.selectedKey === movePicker.currentKey);
+    btnConfirm.textContent = movePicker.creating ? 'Criar e mover' : 'Mover aqui';
+  }
+}
+
+function getSelectedMoveTarget() {
+  if (!movePicker || !movePicker.selectedKey) return null;
+  return getMoveTargets().find(t => moveTargetKey(t.folderId, t.subPath) === movePicker.selectedKey) || null;
+}
+
+/**
+ * Nome válido para uma nova subpasta no Windows (ou '' se inválido)
+ */
+function getNewSubfolderName() {
+  const input = document.getElementById('moveNewFolderInput');
+  const name = (input && input.value || '').trim().replace(/[. ]+$/, '');
+  if (!name || /[\\/:*?"<>|]/.test(name) || /^\.+$/.test(name)) return '';
+  if (/^(con|prn|aux|nul|com\d|lpt\d)$/i.test(name)) return '';
+  return name;
+}
+
+function updateMoveNewFolderPrefix() {
+  const prefix = document.getElementById('moveNewFolderPrefix');
+  if (!prefix || !movePicker) return;
+  const target = getSelectedMoveTarget();
+  prefix.textContent = target ? `${target.label}/` : 'Escolha a pasta acima';
+  prefix.title = target ? target.label : '';
+}
+
+function setMoveCreating(on) {
+  if (!movePicker) return;
+  movePicker.creating = on;
+  const row = document.getElementById('moveNewFolderRow');
+  const input = document.getElementById('moveNewFolderInput');
+  const btnNew = document.getElementById('btnMoveNewFolder');
+  if (row) row.style.display = on ? 'flex' : 'none';
+  if (btnNew) btnNew.textContent = on ? 'Cancelar subpasta' : '+ Nova subpasta';
+  if (on) {
+    // Sem pasta escolhida, sugere a pasta atual como base
+    if (!movePicker.selectedKey) {
+      movePicker.selectedKey = movePicker.currentKey || (getMoveTargets()[0] && moveTargetKey(getMoveTargets()[0].folderId, getMoveTargets()[0].subPath)) || null;
+    }
+    if (input) {
+      input.value = '';
+      setTimeout(() => input.focus(), 30);
+    }
+  } else if (movePicker.selectedKey === movePicker.currentKey) {
+    movePicker.selectedKey = null;
+  }
+  renderMovePicker();
+}
+
+async function confirmMovePicker() {
+  if (!movePicker) return;
+  const target = getSelectedMoveTarget();
+  if (!target) return;
+  let subPath = target.subPath;
+  if (movePicker.creating) {
+    const name = getNewSubfolderName();
+    if (!name) {
+      showToast('Escolha um nome de subpasta sem os caracteres \\ / : * ? " < > |', 'warning');
+      return;
+    }
+    subPath = subPath ? `${subPath}/${name}` : name;
+  } else if (moveTargetKey(target.folderId, subPath) === movePicker.currentKey) {
+    return;
+  }
+  const { items } = movePicker;
+  closeMovePicker();
+  const moved = await moveModels(items, target.folderId, subPath);
+  if (moved.length > 0 && state.isSelectionMode && moved.some(m => state.selectedModelIds.has(m.id))) {
+    setSelectionMode(false);
+  }
+}
+
+// ---------- Arrastar card até uma pasta da barra lateral ----------
+
+let moveDrag = null; // { items } enquanto um card está sendo arrastado
+
+function startMoveDrag(model) {
+  if (!isMoveSupported() || !model) return;
+  const items = (state.isSelectionMode && state.selectedModelIds.has(model.id))
+    ? state.models.filter(m => state.selectedModelIds.has(m.id))
+    : [model];
+  const models = resolveMoveModels(items);
+  moveDrag = { items };
+  document.body.classList.add('is-moving-files');
+  // Esmaecer a pasta de origem quando todos saem do mesmo lugar
+  const dirs = new Set(models.map(m => moveTargetKey(m.folderId, getModelRelativeDir(m))));
+  if (dirs.size === 1 && sidebarFoldersList) {
+    const [key] = dirs;
+    sidebarFoldersList.querySelectorAll('.sidebar-folder-item').forEach(el => {
+      el.classList.toggle('is-move-source', moveTargetKey(el.dataset.folderId, el.dataset.subfolderPath) === key);
+    });
+  }
+}
+
+function endMoveDrag() {
+  moveDrag = null;
+  document.body.classList.remove('is-moving-files');
+  document.querySelectorAll('.sidebar-folder-item.is-drop-target, .sidebar-folder-item.is-move-source').forEach(el => {
+    el.classList.remove('is-drop-target', 'is-move-source');
+  });
+}
+
+function setupFolderDropTarget(element, folderId, subPath) {
+  element.addEventListener('dragover', (e) => {
+    if (!moveDrag) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = 'move';
+    element.classList.add('is-drop-target');
+  });
+  element.addEventListener('dragleave', (e) => {
+    if (e.relatedTarget && element.contains(e.relatedTarget)) return;
+    element.classList.remove('is-drop-target');
+  });
+  element.addEventListener('drop', (e) => {
+    if (!moveDrag) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const { items } = moveDrag;
+    endMoveDrag();
+    moveModels(items, folderId, subPath || '').then(moved => {
+      if (moved.length > 0 && state.isSelectionMode && moved.some(m => state.selectedModelIds.has(m.id))) {
+        setSelectionMode(false);
+      }
+    });
+  });
+}
+
+function moveModalItem() {
+  if (state.modalItem) openMovePicker([state.modalItem]);
+}
+
+function moveSelectedModels() {
+  const selected = state.models.filter(m => state.selectedModelIds.has(m.id));
+  if (selected.length > 0) openMovePicker(selected);
+}
+
+function setupMoveFeature() {
+  document.body.classList.toggle('can-move', isMoveSupported());
+
+  if (btnModalMove) btnModalMove.addEventListener('click', moveModalItem);
+  if (btnMoveSelection) btnMoveSelection.addEventListener('click', moveSelectedModels);
+
+  const on = (id, fn) => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('click', fn);
+  };
+  on('moveModalBackdrop', closeMovePicker);
+  on('btnCancelMove', closeMovePicker);
+  on('btnConfirmMove', confirmMovePicker);
+  on('btnMoveNewFolder', () => setMoveCreating(!(movePicker && movePicker.creating)));
+  on('btnMovePagePrev', () => { if (movePicker) { movePicker.page--; renderMovePicker(); } });
+  on('btnMovePageNext', () => { if (movePicker) { movePicker.page++; renderMovePicker(); } });
+  on('moveConflictBackdrop', () => closeMoveConflict(null));
+  on('btnMoveConflictCancel', () => closeMoveConflict(null));
+  on('btnMoveConflictSkip', () => closeMoveConflict('skip'));
+  on('btnMoveConflictKeep', () => closeMoveConflict('rename'));
+
+  const search = document.getElementById('moveSearchInput');
+  if (search) {
+    search.addEventListener('input', () => {
+      if (!movePicker) return;
+      movePicker.query = search.value;
+      movePicker.page = 0;
+      renderMovePicker();
+    });
+  }
+  const newInput = document.getElementById('moveNewFolderInput');
+  if (newInput) newInput.addEventListener('input', renderMovePicker);
+
+  // Captura: com o seletor ou a pergunta de conflito abertos, Esc/Enter valem só para eles
+  window.addEventListener('keydown', (e) => {
+    if (isMoveConflictOpen()) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        closeMoveConflict(null);
+      }
+      return;
+    }
+    if (!isMovePickerOpen()) return;
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      if (movePicker.creating) setMoveCreating(false);
+      else closeMovePicker();
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      if (!movePicker.selectedKey && movePicker.query) {
+        // Busca com um único resultado: Enter escolhe essa pasta
+        const found = getFilteredMoveTargets().filter(t => moveTargetKey(t.folderId, t.subPath) !== movePicker.currentKey);
+        if (found.length === 1) movePicker.selectedKey = moveTargetKey(found[0].folderId, found[0].subPath);
+      }
+      confirmMovePicker();
+    } else {
+      // Teclas de atalho da galeria/visualizador não devem disparar por trás do seletor
+      e.stopImmediatePropagation();
+    }
+  }, true);
+
+  window.addEventListener('dragend', endMoveDrag);
 }
 
 /**
@@ -2811,6 +3511,9 @@ function setupModelDraggable(element, getModelFn) {
 
     element.classList.add('is-dragging');
     e.dataTransfer.effectAllowed = 'copyMove';
+
+    // Soltar numa pasta da barra lateral move o arquivo (ou projeto) para ela
+    startMoveDrag(model);
 
     if (file) {
       if (!target._blobUrl) {
