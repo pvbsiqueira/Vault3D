@@ -72,7 +72,31 @@ function showError(message) {
   if (!alertBanner) return;
   alertBanner.textContent = message;
   alertBanner.style.display = 'block';
-  if (successBanner) successBanner.style.display = 'none';
+}
+
+/**
+ * Alterna entre o passo do e-mail e o passo do código na tela de login
+ * @param {'email'|'code'} step
+ * @param {string} [email]
+ */
+function setAuthStep(step, email) {
+  const title = document.getElementById('authTitle');
+  const subtitle = document.getElementById('authSubtitle');
+  const isCode = step === 'code';
+
+  if (loginForm) loginForm.style.display = isCode ? 'none' : 'flex';
+  if (successBanner) successBanner.style.display = isCode ? 'flex' : 'none';
+  if (title) title.textContent = isCode ? 'Confira seu e-mail' : 'Entrar no Vault3D';
+  if (subtitle) {
+    subtitle.textContent = '';
+    if (isCode) {
+      const strong = document.createElement('strong');
+      strong.textContent = email || '';
+      subtitle.append('Enviamos um código de acesso para ', strong, '.');
+    } else {
+      subtitle.textContent = 'Receba um código de acesso no seu e-mail.';
+    }
+  }
 }
 
 /**
@@ -108,7 +132,7 @@ function setLoading(isLoading) {
     if (btnSpinner) btnSpinner.style.display = 'inline-block';
   } else {
     btnSubmit.disabled = false;
-    if (btnText) btnText.textContent = 'Receber meu código';
+    if (btnText) btnText.textContent = 'Receber código';
     if (btnSpinner) btnSpinner.style.display = 'none';
   }
 }
@@ -229,27 +253,62 @@ async function handleLoginSubmit(e) {
 
     if (error) {
       console.error('Erro retornado pelo signInWithMagicLink:', error);
-      showError(error.message || 'Erro ao enviar o código de acesso. Verifique suas credenciais.');
-      return;
+      showError(translateSendError(error));
+      return false;
     }
 
-    // Sucesso: Exibir estado de confirmação para verificar a caixa de entrada
-    if (loginForm) loginForm.style.display = 'none';
-    if (successBanner) {
-      successBanner.style.display = 'block';
-      if (successSentEmail) successSentEmail.textContent = email;
-      if (authOtpInput) {
-        authOtpInput.value = '';
-        setTimeout(() => authOtpInput.focus(), 200);
-      }
+    // Sucesso: passa para o passo do código
+    setAuthStep('code', email);
+    startResendCooldown();
+    if (authOtpInput) {
+      authOtpInput.value = '';
+      setTimeout(() => authOtpInput.focus(), 200);
     }
+    return true;
 
   } catch (err) {
     console.error('Falha ao autenticar:', err);
     showError(err.message || 'Ocorreu um erro ao processar o login. Tente novamente.');
+    return false;
   } finally {
     setLoading(false);
   }
+}
+
+/**
+ * Traduz o erro de envio do código (o Supabase limita um envio por minuto)
+ * @param {any} error
+ * @returns {string}
+ */
+function translateSendError(error) {
+  const msg = error?.message || '';
+  const wait = msg.match(/after (\d+) seconds?/i);
+  if (wait) return `Aguarde ${wait[1]} segundos para pedir um novo código.`;
+  if (/rate limit/i.test(msg)) return 'Muitos pedidos de código em pouco tempo. Tente de novo em alguns minutos.';
+  return msg || 'Erro ao enviar o código de acesso. Tente novamente.';
+}
+
+/**
+ * Bloqueia o "Reenviar código" por 60 s, o intervalo mínimo do Supabase entre envios
+ */
+let resendTimer = null;
+function startResendCooldown(seconds = 60) {
+  if (!btnResendLink) return;
+  clearInterval(resendTimer);
+  let left = seconds;
+  const tick = () => {
+    if (left <= 0) {
+      clearInterval(resendTimer);
+      btnResendLink.disabled = false;
+      btnResendLink.textContent = 'Reenviar código';
+      return;
+    }
+    btnResendLink.disabled = true;
+    btnResendLink.textContent = `Reenviar em ${left}s`;
+    left -= 1;
+  };
+  tick();
+  resendTimer = setInterval(tick, 1000);
 }
 
 /**
@@ -261,7 +320,7 @@ async function handleVerifyOtp() {
 
   if (!token) {
     if (authOtpError) {
-      authOtpError.textContent = 'Digite o código de 6 dígitos recebido no seu e-mail.';
+      authOtpError.textContent = 'Digite o código que chegou no seu e-mail.';
       authOtpError.style.display = 'block';
     }
     authOtpInput.focus();
@@ -308,7 +367,7 @@ async function handleVerifyOtp() {
     }
   } finally {
     if (btnVerifyOtp) btnVerifyOtp.disabled = false;
-    if (btnText) btnText.textContent = 'Confirmar';
+    if (btnText) btnText.textContent = 'Entrar';
     if (btnSpinner) btnSpinner.style.display = 'none';
   }
 }
@@ -432,7 +491,6 @@ export async function handleExternalAuthUrl(rawUrlOrToken) {
     throw new Error('Não foi possível identificar credenciais válidas no link informado.');
   } catch (err) {
     console.error('Falha ao processar link de autenticação:', err);
-    if (successBanner) successBanner.style.display = 'block';
     if (authLinkError) {
       authLinkError.textContent = err.message || 'Falha ao validar o link de acesso.';
       authLinkError.style.display = 'block';
@@ -566,9 +624,8 @@ export async function initAuth(onAuthenticated) {
 
   if (btnUseOtherEmail) {
     btnUseOtherEmail.addEventListener('click', () => {
-      if (successBanner) successBanner.style.display = 'none';
-      if (loginForm) loginForm.style.display = 'flex';
-      if (authOtpError) authOtpError.style.display = 'none';
+      setAuthStep('email');
+      clearMessages();
       if (emailInput) {
         emailInput.select();
         emailInput.focus();
@@ -577,8 +634,17 @@ export async function initAuth(onAuthenticated) {
   }
 
   if (btnResendLink) {
-    btnResendLink.addEventListener('click', () => {
-      handleLoginSubmit();
+    btnResendLink.addEventListener('click', async () => {
+      btnResendLink.disabled = true;
+      btnResendLink.textContent = 'Enviando...';
+      const sent = await handleLoginSubmit();
+      if (sent) {
+        const sub = document.getElementById('authSubtitle');
+        if (sub) sub.prepend('Novo código enviado. ');
+      } else {
+        btnResendLink.disabled = false;
+        btnResendLink.textContent = 'Reenviar código';
+      }
     });
   }
 
@@ -595,6 +661,8 @@ export async function initAuth(onAuthenticated) {
       }
     });
     authOtpInput.addEventListener('input', () => {
+      const digits = authOtpInput.value.replace(/\D/g, '');
+      if (digits !== authOtpInput.value) authOtpInput.value = digits;
       if (authOtpError && authOtpError.style.display !== 'none') {
         authOtpError.style.display = 'none';
       }

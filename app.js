@@ -93,6 +93,10 @@ const allFoldersBadge = document.getElementById('allFoldersBadge');
 const fileCountBadge = document.getElementById('fileCountBadge');
 const sidebarStlCountBadge = document.getElementById('sidebarStlCountBadge');
 const sidebar3mfCountBadge = document.getElementById('sidebar3mfCountBadge');
+const statsScopeLabel = document.getElementById('statsScopeLabel');
+const statsDuplicatesCount = document.getElementById('statsDuplicatesCount');
+const statsDuplicatesCell = document.getElementById('statsDuplicatesCell');
+const btnStatsReviewDuplicates = document.getElementById('btnStatsReviewDuplicates');
 
 // Elementos DOM do Topbar & Filtros
 const currentViewTitle = document.getElementById('currentViewTitle');
@@ -161,12 +165,28 @@ const platesList = document.getElementById('platesList');
 const modalPathFolder = document.getElementById('modalPathFolder');
 const modalPathName = document.getElementById('modalPathName');
 const modalSidebarInfo = document.getElementById('modalSidebarInfo');
-const modalInfoFormat = document.getElementById('modalInfoFormat');
 const modalInfoSize = document.getElementById('modalInfoSize');
 const modalInfoDimensions = document.getElementById('modalInfoDimensions');
 const modalInfoDimensionsWrap = document.getElementById('modalInfoDimensionsWrap');
 const modalInfoTriangles = document.getElementById('modalInfoTriangles');
 const modalInfoTrianglesWrap = document.getElementById('modalInfoTrianglesWrap');
+const viewerModeSeg = document.getElementById('viewerModeSeg');
+const viewerSegPhotoLabel = document.getElementById('viewerSegPhotoLabel');
+const viewerPlateLabel = document.getElementById('viewerPlateLabel');
+const platesHeading = document.getElementById('platesHeading');
+const modalSlicedChip = document.getElementById('modalSlicedChip');
+const btnModalFavorite = document.getElementById('btnModalFavorite');
+const btnModalTrash = document.getElementById('btnModalTrash');
+const btnTrashSelection = document.getElementById('btnTrashSelection');
+const trashConfirmModal = document.getElementById('trashConfirmModal');
+const trashConfirmDesc = document.getElementById('trashConfirmDesc');
+const trashConfirmList = document.getElementById('trashConfirmList');
+const btnConfirmTrash = document.getElementById('btnConfirmTrash');
+const btnCancelTrash = document.getElementById('btnCancelTrash');
+const trashConfirmBackdrop = document.getElementById('trashConfirmBackdrop');
+const btnModalPrev = document.getElementById('btnModalPrev');
+const btnModalNext = document.getElementById('btnModalNext');
+const modalNavCounter = document.getElementById('modalNavCounter');
 const btnCopyModalPath = document.getElementById('btnCopyModalPath');
 const btnOpenModalSlicer = document.getElementById('btnOpenModalSlicer');
 
@@ -211,9 +231,10 @@ function setupDesktopUpdater() {
 
   if (btnRestart) {
     btnRestart.addEventListener('click', () => {
-      if (window.electronAPI.restartAndInstallUpdate) {
-        window.electronAPI.restartAndInstallUpdate();
-      }
+      if (!window.electronAPI.restartAndInstallUpdate) return;
+      showUpdateInstallingOverlay();
+      // Dá tempo do aviso aparecer antes do app fechar para instalar em segundo plano
+      setTimeout(() => window.electronAPI.restartAndInstallUpdate(), 1200);
     });
   }
 
@@ -241,10 +262,27 @@ function setupDesktopUpdater() {
   });
 }
 
+function showUpdateInstallingOverlay() {
+  if (document.getElementById('updateInstallingOverlay')) return;
+  const overlay = document.createElement('div');
+  overlay.id = 'updateInstallingOverlay';
+  overlay.className = 'update-installing';
+  overlay.innerHTML = `
+    <div class="update-installing-card">
+      <span class="update-installing-title">Atualizando o Vault3D</span>
+      <div class="update-installing-bar"><span></span></div>
+      <span class="update-installing-sub">O app vai fechar e reabrir sozinho em alguns segundos.</span>
+    </div>`;
+  document.body.appendChild(overlay);
+}
+
 // Inicialização de Eventos
 function init() {
   // Monitorar atualizações automáticas no modo Desktop
   setupDesktopUpdater();
+
+  // Exclusão de arquivos (Lixeira do Windows) no modo Desktop
+  setupTrashFeature();
 
   if (btnSelectFolder) btnSelectFolder.addEventListener('click', handleChooseFolder);
   if (btnEmptySelectFolder) btnEmptySelectFolder.addEventListener('click', handleChooseFolder);
@@ -405,6 +443,11 @@ function init() {
   // Modal Controls
   modalCloseBtn.addEventListener('click', closeViewerModal);
   if (btnModalOpenSlicer) {
+    // Rótulo do botão principal conforme o ambiente (desktop abre no fatiador; web copia o caminho)
+    const footerCfg = getSlicerButtonConfig();
+    btnModalOpenSlicer.title = footerCfg.title;
+    btnModalOpenSlicer.innerHTML = `${footerCfg.icon}<span>${footerCfg.text}</span>`;
+
     setupModelDraggable(btnModalOpenSlicer, () => {
       return (state.activePlate && state.activePlate.model && !state.activePlate.isCustomCover ? state.activePlate.model : null)
         || (state.activeProject ? (state.activeProject.primaryPart || (state.activeProject.parts && state.activeProject.parts[0])) : null)
@@ -430,10 +473,49 @@ function init() {
     if (e.target === viewerModal) closeViewerModal();
   });
   window.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && viewerModal.classList.contains('active')) {
+    if (!viewerModal.classList.contains('active')) return;
+    if (e.key === 'Escape') {
       closeViewerModal();
+      return;
+    }
+    // Setas trocam de modelo, exceto quando o foco está num campo de texto
+    if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !e.altKey && !e.ctrlKey && !e.metaKey) {
+      const t = e.target;
+      const typing = t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
+      if (typing) return;
+      e.preventDefault();
+      navigateViewerModal(e.key === 'ArrowLeft' ? -1 : 1);
     }
   });
+  if (modalPathFolder) {
+    new MutationObserver(syncModalPathShort).observe(modalPathFolder, { childList: true, characterData: true, subtree: true });
+  }
+  const btnPlatesPrev = document.getElementById('btnPlatesPrev');
+  const btnPlatesNext = document.getElementById('btnPlatesNext');
+  if (btnPlatesPrev) btnPlatesPrev.addEventListener('click', () => scrollPlates(-1));
+  if (btnPlatesNext) btnPlatesNext.addEventListener('click', () => scrollPlates(1));
+  if (platesList) {
+    platesList.addEventListener('scroll', updatePlatesNav, { passive: true });
+    // Roda do mouse sobre a faixa também passa as mesas
+    platesList.addEventListener('wheel', (e) => {
+      if (platesList.scrollWidth <= platesList.clientWidth) return;
+      if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+        e.preventDefault();
+        platesList.scrollBy({ left: e.deltaY });
+      }
+    }, { passive: false });
+    if (window.ResizeObserver) new ResizeObserver(updatePlatesNav).observe(platesList);
+  }
+  if (btnModalPrev) btnModalPrev.addEventListener('click', () => navigateViewerModal(-1));
+  if (btnModalNext) btnModalNext.addEventListener('click', () => navigateViewerModal(1));
+  if (btnModalFavorite) {
+    btnModalFavorite.addEventListener('click', () => {
+      const item = state.modalItem;
+      if (!item) return;
+      toggleFavorite(item);
+      updateModalHeaderExtras();
+    });
+  }
 
   btnResetView.addEventListener('click', resetModalCamera);
   btnToggleRotate.addEventListener('click', () => {
@@ -501,11 +583,6 @@ function init() {
     });
   }
 
-  if (modalFileName) {
-    modalFileName.addEventListener('click', () => {
-      copyModalFullPath();
-    });
-  }
 
   // Inicializar Autenticação com Supabase / Magic Link
   initAuth((user) => {
@@ -801,8 +878,10 @@ async function scanWebkitEntry(entry, results, path = '') {
  * Carrega os modelos de exemplo incluídos para teste imediato
  */
 async function loadSampleModels(persistToDB = true) {
-  btnLoadSample.disabled = true;
-  btnLoadSample.textContent = 'Carregando exemplos...';
+  if (btnLoadSample) {
+    btnLoadSample.disabled = true;
+    btnLoadSample.textContent = 'Carregando exemplos...';
+  }
 
   try {
     const sampleBaseTime = Date.now() - 3600000;
@@ -836,8 +915,10 @@ async function loadSampleModels(persistToDB = true) {
   } catch (err) {
     alert('Erro ao carregar arquivos de exemplo: ' + err.message);
   } finally {
-    btnLoadSample.disabled = false;
-    btnLoadSample.innerHTML = '✨ Testar com Modelos de Exemplo';
+    if (btnLoadSample) {
+      btnLoadSample.disabled = false;
+      btnLoadSample.innerHTML = '✨ Testar com Modelos de Exemplo';
+    }
   }
 }
 
@@ -1135,6 +1216,8 @@ function updateDuplicatesFilterButton(duplicatesCount) {
   if (duplicatesCount === 0 && state.activeSection === 'duplicates') {
     setNavSection('all');
   }
+  // Mantém o bloco de duplicados da faixa de resumo em dia após a varredura
+  updateStatsBadge();
 }
 
 // ==========================================
@@ -1167,7 +1250,9 @@ function openFoldersDB() {
  */
 function getModelCacheKey(model) {
   const lastMod = model.file?.lastModified || 0;
-  return `${model.folderName || ''}:${model.path || model.name}:${model.size}:${lastMod}`;
+  // 3MF ganhou leitura de tempo/filamento, autor, impressora e anexos: prefixo força uma nova leitura uma única vez
+  const version = model.type === '3mf' ? 's4:' : '';
+  return `${version}${model.folderName || ''}:${model.path || model.name}:${model.size}:${lastMod}`;
 }
 
 /**
@@ -1207,6 +1292,7 @@ async function saveCachedThumbnail(key, data) {
       metadata: data.metadata || null,
       slicerData: data.slicerData || null,
       plates: data.plates || [],
+      extras: data.extras || null,
       cachedAt: Date.now()
     });
     return new Promise((resolve) => {
@@ -1912,6 +1998,7 @@ function selectFolder(folderId, subfolderPath = null) {
   state.activeSubfolderPath = subfolderPath;
   state.currentPage = 1;
   updateFolderSelectionUI();
+  updateStatsBadge();
   renderGallery();
 }
 
@@ -1923,6 +2010,7 @@ function resetFolderFilter() {
   state.activeSubfolderPath = null;
   state.currentPage = 1;
   updateFolderSelectionUI();
+  updateStatsBadge();
   renderGallery();
 }
 
@@ -2118,8 +2206,6 @@ function updateStatsBadge() {
   const totalItems = displayItems.length;
   const projectCount = displayItems.filter(m => m.isProject).length;
   const totalFiles = state.models.length;
-  const stlCount = state.models.filter(m => m.type === 'stl').length;
-  const tmfCount = state.models.filter(m => m.type === '3mf').length;
   const favCount = displayItems.filter(m => m.isFavorite).length;
   const dupCount = state.models.filter(m => m.isDuplicate).length;
   const foldersCount = state.folders.length;
@@ -2133,20 +2219,54 @@ function updateStatsBadge() {
     navDuplicates.style.display = dupCount > 0 ? 'flex' : 'none';
   }
 
-  if (fileCountBadge) {
-    if (projectCount > 0) {
-      fileCountBadge.textContent = `${totalItems} itens (${projectCount} projeto${projectCount === 1 ? '' : 's'}, ${totalFiles} arquivos)`;
+  // Faixa de resumo: conta apenas a pasta/subpasta selecionada (ou tudo, se nenhuma)
+  const hasFolderScope = Boolean(state.activeFolderId);
+  const scopedModels = hasFolderScope
+    ? state.models.filter(m => isModelInFolderFilter(m, state.activeFolderId, state.activeSubfolderPath))
+    : state.models;
+  const scopedItems = hasFolderScope
+    ? displayItems.filter(item => item.isProject
+        ? item.parts && item.parts.some(p => isModelInFolderFilter(p, state.activeFolderId, state.activeSubfolderPath))
+        : isModelInFolderFilter(item, state.activeFolderId, state.activeSubfolderPath))
+    : displayItems;
+  const scopedProjectCount = scopedItems.filter(m => m.isProject).length;
+  const scopedFiles = scopedModels.length;
+
+  if (statsScopeLabel) {
+    if (hasFolderScope) {
+      const activeFolder = state.folders.find(f => f.id === state.activeFolderId);
+      const scopeName = state.activeSubfolderPath
+        ? state.activeSubfolderPath.split('/').pop()
+        : (activeFolder ? activeFolder.name : 'Pasta');
+      statsScopeLabel.textContent = `Pasta: ${scopeName}`;
+      statsScopeLabel.title = state.activeSubfolderPath
+        ? `${activeFolder ? activeFolder.name + '/' : ''}${state.activeSubfolderPath}`
+        : scopeName;
     } else {
-      fileCountBadge.textContent = `${totalFiles} modelo${totalFiles === 1 ? '' : 's'}`;
+      statsScopeLabel.textContent = 'Coleção';
+      statsScopeLabel.title = '';
+    }
+  }
+
+  if (fileCountBadge) {
+    if (scopedProjectCount > 0) {
+      fileCountBadge.textContent = `${scopedItems.length} itens (${scopedProjectCount} projeto${scopedProjectCount === 1 ? '' : 's'}, ${scopedFiles} arquivos)`;
+    } else {
+      fileCountBadge.textContent = `${scopedFiles} modelo${scopedFiles === 1 ? '' : 's'}`;
     }
   }
 
   if (sidebarStlCountBadge) {
-    sidebarStlCountBadge.textContent = `${stlCount} STL`;
+    sidebarStlCountBadge.textContent = `${scopedModels.filter(m => m.type === 'stl').length}.STL`;
   }
   if (sidebar3mfCountBadge) {
-    sidebar3mfCountBadge.textContent = `${tmfCount} 3MF`;
+    sidebar3mfCountBadge.textContent = `${scopedModels.filter(m => m.type === '3mf').length}.3MF`;
   }
+
+  const scopedDupCount = scopedModels.filter(m => m.isDuplicate).length;
+  if (statsDuplicatesCount) statsDuplicatesCount.textContent = scopedDupCount;
+  if (statsDuplicatesCell) statsDuplicatesCell.classList.toggle('has-duplicates', scopedDupCount > 0);
+  if (btnStatsReviewDuplicates) btnStatsReviewDuplicates.hidden = scopedDupCount === 0;
   if (sidebarFoldersCountBadge) {
     sidebarFoldersCountBadge.textContent = foldersCount;
   }
@@ -2342,7 +2462,7 @@ async function renameModelFile(model, newBaseName) {
       modalFileName.textContent = newFullName;
     }
     if (modalFileName && model.fullDiskPath) {
-      modalFileName.title = `${model.fullDiskPath} (Clique para copiar)`;
+      modalFileName.title = `${model.fullDiskPath}`;
     }
   }
 
@@ -2351,6 +2471,302 @@ async function renameModelFile(model, newBaseName) {
 
   showToast(`Arquivo renomeado para "${newFullName}" com sucesso!`, 'success');
   return true;
+}
+
+// ==========================================
+// Exclusão de arquivos (Lixeira do Windows)
+// ==========================================
+
+/**
+ * A exclusão só existe no app desktop: os arquivos vão para a Lixeira do Windows
+ * e podem ser restaurados por lá se a pessoa mudar de ideia.
+ */
+function isTrashSupported() {
+  return !!(window.electronAPI && typeof window.electronAPI.trashFiles === 'function');
+}
+
+/**
+ * Caminho real do arquivo no disco (o da varredura tem prioridade sobre o estimado)
+ */
+function getModelDiskPath(model) {
+  return (model && model.file && model.file.fullDiskPath) || (model && model.fullDiskPath) || null;
+}
+
+let trashConfirmResolver = null;
+
+/**
+ * Mostra a confirmação de envio para a Lixeira com os nomes dos arquivos.
+ * Resolve true quando a pessoa confirma.
+ */
+function askTrashConfirmation(models, { title, description, confirmLabel } = {}) {
+  if (!trashConfirmModal) return Promise.resolve(window.confirm(description || 'Mover para a Lixeira?'));
+
+  const count = models.length;
+  const titleEl = document.getElementById('trashConfirmTitle');
+  if (titleEl) titleEl.textContent = title || (count === 1 ? 'Mover arquivo para a Lixeira?' : `Mover ${count} arquivos para a Lixeira?`);
+  if (trashConfirmDesc) {
+    trashConfirmDesc.textContent = description || (count === 1
+      ? 'O arquivo sai da pasta e vai para a Lixeira do Windows. Dá para restaurar por lá se precisar.'
+      : 'Os arquivos saem da pasta e vão para a Lixeira do Windows. Dá para restaurar por lá se precisar.');
+  }
+
+  // Lista curta, sem rolagem: até 4 nomes e um resumo do restante
+  const MAX_NAMES = 4;
+  const shown = count > MAX_NAMES + 1 ? models.slice(0, MAX_NAMES) : models;
+  if (trashConfirmList) {
+    trashConfirmList.innerHTML = shown.map(m => {
+      const folder = getModelParentFolderInfo(m);
+      return `<li><span class="trash-name" title="${escapeHtml(getModelDiskPath(m) || m.name)}">${escapeHtml(m.name)}</span><span class="trash-folder">${escapeHtml(folder.name || '')}</span></li>`;
+    }).join('') + (count > shown.length ? `<li><span class="trash-more">e mais ${count - shown.length} arquivos</span></li>` : '');
+  }
+  if (btnConfirmTrash) {
+    btnConfirmTrash.textContent = confirmLabel || 'Mover para a Lixeira';
+    btnConfirmTrash.disabled = false;
+  }
+  if (btnCancelTrash) btnCancelTrash.disabled = false;
+
+  trashConfirmModal.style.display = 'flex';
+  setTimeout(() => btnConfirmTrash && btnConfirmTrash.focus(), 30);
+
+  return new Promise(resolve => {
+    trashConfirmResolver = resolve;
+  });
+}
+
+function closeTrashConfirmation(confirmed) {
+  if (trashConfirmModal) trashConfirmModal.style.display = 'none';
+  const resolve = trashConfirmResolver;
+  trashConfirmResolver = null;
+  if (resolve) resolve(!!confirmed);
+}
+
+function isTrashConfirmOpen() {
+  return !!(trashConfirmModal && trashConfirmModal.style.display !== 'none' && trashConfirmResolver);
+}
+
+/**
+ * Confirma e manda os modelos para a Lixeira, depois tira da biblioteca
+ * os que saíram do disco. Retorna a lista de modelos excluídos.
+ */
+async function trashModels(models, confirmOptions = {}) {
+  const list = (models || []).filter(m => m && !m.isProject);
+  if (list.length === 0) return [];
+
+  if (!isTrashSupported()) {
+    showToast('A exclusão de arquivos está disponível no app desktop do Vault3D.', 'info');
+    return [];
+  }
+
+  const withPath = list.filter(m => getModelDiskPath(m));
+  if (withPath.length === 0) {
+    showToast('Não foi possível localizar esses arquivos no disco.', 'error');
+    return [];
+  }
+
+  const confirmed = await askTrashConfirmation(withPath, confirmOptions);
+  if (!confirmed) return [];
+
+  let results = [];
+  try {
+    results = await window.electronAPI.trashFiles(withPath.map(getModelDiskPath));
+  } catch (err) {
+    showToast(`Erro ao mover para a Lixeira: ${err.message}`, 'error');
+    return [];
+  }
+
+  const okPaths = new Set((results || []).filter(r => r && r.success).map(r => r.path));
+  const removed = withPath.filter(m => okPaths.has(getModelDiskPath(m)));
+  const failed = (results || []).filter(r => r && !r.success);
+
+  if (removed.length > 0) {
+    await removeModelsFromLibrary(removed);
+    showToast(removed.length === 1
+      ? `"${removed[0].name}" foi para a Lixeira.`
+      : `${removed.length} arquivos foram para a Lixeira.`, 'success');
+  }
+  if (failed.length > 0) {
+    const first = failed[0];
+    const name = (first.path || '').split(/[\\/]/).pop();
+    showToast(failed.length === 1
+      ? `Não foi possível excluir "${name}": ${first.message || 'erro desconhecido'}`
+      : `${failed.length} arquivos não puderam ser excluídos. Verifique se estão abertos em outro programa.`, 'error');
+  }
+  return removed;
+}
+
+/**
+ * Tira da biblioteca os modelos que saíram do disco: galeria, seleção,
+ * favoritos, projetos, contadores das pastas e duplicados.
+ */
+async function removeModelsFromLibrary(removed) {
+  const removedIds = new Set(removed.map(m => m.id));
+
+  // Se o visualizador mostra um dos excluídos, guardar o vizinho para continuar navegando
+  let nextModalId = null;
+  const modalOpen = viewerModal && viewerModal.classList.contains('active');
+  if (modalOpen && state.modalItem && removedIds.has(state.modalItem.id)) {
+    const items = state.currentDisplayItems || [];
+    const idx = getViewerNavIndex();
+    const after = items.slice(idx + 1).find(it => !removedIds.has(it.id));
+    const before = items.slice(0, Math.max(0, idx)).reverse().find(it => !removedIds.has(it.id));
+    nextModalId = (after || before || {}).id || null;
+  }
+
+  removed.forEach(m => {
+    if (m.thumbnailUrl && m.thumbnailUrl.startsWith('blob:')) {
+      try { URL.revokeObjectURL(m.thumbnailUrl); } catch (_) {}
+    }
+    state.selectedModelIds.delete(m.id);
+  });
+  state.models = state.models.filter(m => !removedIds.has(m.id));
+
+  // Favoritos e projetos são guardados pelo nome: só limpar se nenhum outro arquivo usa o mesmo nome
+  const stillMatches = (key) => state.models.some(m =>
+    m.name === key || m.path === key || (m.path && m.path.endsWith('/' + key))
+  );
+  const favs = loadFavorites();
+  let favsChanged = false;
+  removed.forEach(m => {
+    [m.name, m.path].forEach(key => {
+      if (key && favs.has(key) && !stillMatches(key)) {
+        favs.delete(key);
+        favsChanged = true;
+      }
+    });
+  });
+  if (favsChanged) saveFavorites(favs);
+
+  let projectsChanged = false;
+  const dissolved = [];
+  state.customProjects = state.customProjects.filter(project => {
+    const before = project.fileKeys.length;
+    project.fileKeys = project.fileKeys.filter(stillMatches);
+    if (project.fileKeys.length !== before) projectsChanged = true;
+    if (project.fileKeys.length < 2) {
+      // Um projeto com um arquivo só deixa de fazer sentido: o arquivo volta a ficar avulso
+      if (before >= 2) dissolved.push(project.name);
+      return false;
+    }
+    if (project.coverKey && project.coverKey !== '__custom__' && !project.fileKeys.includes(project.coverKey)) {
+      project.coverKey = null;
+    }
+    return true;
+  });
+  if (projectsChanged || dissolved.length) saveCustomProjects();
+
+  // Contadores das pastas conectadas
+  state.folders.forEach(folder => {
+    folder.count = state.models.filter(m => m.folderId === folder.id).length;
+  });
+
+  if (state.selectedModelIds.size === 0 && state.isSelectionMode) {
+    setSelectionMode(false);
+  }
+
+  renderFolderChips();
+  updateStatsBadge();
+  await updateDuplicatesState();
+
+  if (modalOpen && state.modalItem && removedIds.has(state.modalItem.id)) {
+    const next = nextModalId && (state.currentDisplayItems || []).find(it => it.id === nextModalId);
+    if (next) openViewerModal(next);
+    else closeViewerModal();
+  }
+
+  if (dissolved.length === 1) {
+    showToast(`O projeto "${dissolved[0]}" ficou com um arquivo só e foi desagrupado.`, 'info');
+  } else if (dissolved.length > 1) {
+    showToast(`${dissolved.length} projetos ficaram com um arquivo só e foram desagrupados.`, 'info');
+  }
+}
+
+/**
+ * Duplicados: mantém este arquivo e manda as outras cópias idênticas para a Lixeira
+ */
+async function keepOnlyThisCopy(model) {
+  if (!model || !model.fingerprint) return;
+  let others = state.models.filter(m => m.id !== model.id && m.fingerprint === model.fingerprint);
+  if (others.length === 0) return;
+
+  // O selo de duplicado usa uma amostra do arquivo: antes de apagar, conferir o conteúdo inteiro
+  if (window.electronAPI && typeof window.electronAPI.hashFile === 'function') {
+    const keepHash = await window.electronAPI.hashFile(getModelDiskPath(model));
+    if (!keepHash) {
+      showToast('Não foi possível ler este arquivo para comparar as cópias.', 'error');
+      return;
+    }
+    const hashes = await Promise.all(others.map(m => window.electronAPI.hashFile(getModelDiskPath(m))));
+    const differing = others.filter((m, i) => hashes[i] !== keepHash);
+    others = others.filter((m, i) => hashes[i] === keepHash);
+    if (differing.length > 0) {
+      showToast(differing.length === 1
+        ? `"${differing[0].name}" não é idêntico e foi mantido.`
+        : `${differing.length} arquivos não são idênticos e foram mantidos.`, 'warning');
+    }
+    if (others.length === 0) return;
+  }
+  const folder = getModelParentFolderInfo(model);
+  await trashModels(others, {
+    title: others.length === 1 ? 'Apagar a outra cópia?' : `Apagar as outras ${others.length} cópias?`,
+    description: `"${model.name}"${folder.name ? ` em ${folder.name}` : ''} fica onde está. ${others.length === 1 ? 'A cópia abaixo vai' : 'As cópias abaixo vão'} para a Lixeira do Windows.`,
+    confirmLabel: others.length === 1 ? 'Apagar cópia' : 'Apagar cópias'
+  });
+}
+
+/**
+ * Exclui o arquivo aberto no visualizador
+ */
+function trashModalItem() {
+  const item = state.modalItem;
+  if (!item || item.isProject) return;
+  trashModels([item]);
+}
+
+/**
+ * Exclui os arquivos marcados na seleção múltipla
+ */
+function trashSelectedModels() {
+  const selected = state.models.filter(m => state.selectedModelIds.has(m.id));
+  if (selected.length === 0) return;
+  trashModels(selected);
+}
+
+function setupTrashFeature() {
+  document.body.classList.toggle('can-trash', isTrashSupported());
+
+  if (btnModalTrash) btnModalTrash.addEventListener('click', trashModalItem);
+  if (btnTrashSelection) btnTrashSelection.addEventListener('click', trashSelectedModels);
+  if (btnConfirmTrash) btnConfirmTrash.addEventListener('click', () => closeTrashConfirmation(true));
+  if (btnCancelTrash) btnCancelTrash.addEventListener('click', () => closeTrashConfirmation(false));
+  if (trashConfirmBackdrop) trashConfirmBackdrop.addEventListener('click', () => closeTrashConfirmation(false));
+
+  // Captura: com a confirmação aberta, Esc/Enter valem só para ela
+  window.addEventListener('keydown', (e) => {
+    if (isTrashConfirmOpen()) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        closeTrashConfirmation(false);
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        closeTrashConfirmation(true);
+      }
+      return;
+    }
+
+    // Tecla Delete: exclui o arquivo aberto ou os selecionados
+    if (e.key !== 'Delete' || e.altKey || e.ctrlKey || e.metaKey || !isTrashSupported()) return;
+    const t = e.target;
+    if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+    if (viewerModal && viewerModal.classList.contains('active')) {
+      e.preventDefault();
+      trashModalItem();
+    } else if (state.selectedModelIds.size > 0) {
+      e.preventDefault();
+      trashSelectedModels();
+    }
+  }, true);
 }
 
 /**
@@ -3378,6 +3794,7 @@ function createModelCard(model) {
   const dotIdx = model.name.lastIndexOf('.');
   const ext = dotIdx !== -1 ? model.name.substring(dotIdx) : `.${model.type}`;
   const baseName = dotIdx !== -1 ? model.name.substring(0, dotIdx) : model.name;
+  const showKeepOnly = model.isDuplicate && state.activeSection === 'duplicates' && isTrashSupported();
 
   card.innerHTML = `
     <div class="card-thumbnail-wrapper">
@@ -3418,6 +3835,11 @@ function createModelCard(model) {
             <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
           </svg>
         </button>
+        <button class="btn-card-trash trash-only" title="Mover para a Lixeira" aria-label="Mover para a Lixeira" type="button">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 6h18"></path><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
+          </svg>
+        </button>
       </div>
       ${isSliced ? `
         <div class="card-slicer-info">
@@ -3432,9 +3854,10 @@ function createModelCard(model) {
         ` : ''}
       </div>
       ${model.isDuplicate ? `
-        <div class="card-duplicate-info" title="Cópia de: ${escapeHtml(model.duplicateOrigins)}">
+        <div class="card-duplicate-info ${showKeepOnly ? 'has-keep' : ''}" title="Cópia de: ${escapeHtml(model.duplicateOrigins)}">
           <span class="card-duplicate-icon">⚠️</span>
-          <span>Cópia de: <strong>${escapeHtml(model.duplicateOrigins)}</strong></span>
+          <span class="card-duplicate-text">Cópia de: <strong>${escapeHtml(model.duplicateOrigins)}</strong></span>
+          ${showKeepOnly ? `<button class="btn-keep-only" type="button" title="Manter este arquivo e mover as outras cópias para a Lixeira">Manter só este</button>` : ''}
         </div>
       ` : ''}
       <div class="card-footer-actions">
@@ -3471,6 +3894,15 @@ function createModelCard(model) {
     });
   }
 
+  // Duplicados: manter este arquivo e mandar as outras cópias para a Lixeira
+  const btnKeepOnly = card.querySelector('.btn-keep-only');
+  if (btnKeepOnly) {
+    btnKeepOnly.addEventListener('click', (e) => {
+      e.stopPropagation();
+      keepOnlyThisCopy(model);
+    });
+  }
+
   // Eventos de Renomear e Título
   const titleRow = card.querySelector('.card-title-row');
 
@@ -3482,6 +3914,14 @@ function createModelCard(model) {
       btnRename.addEventListener('click', (e) => {
         e.stopPropagation();
         enterRenameMode();
+      });
+    }
+
+    const btnTrash = titleRow.querySelector('.btn-card-trash');
+    if (btnTrash) {
+      btnTrash.addEventListener('click', (e) => {
+        e.stopPropagation();
+        trashModels([model]);
       });
     }
 
@@ -3566,6 +4006,11 @@ function createModelCard(model) {
             <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
           </svg>
         </button>
+        <button class="btn-card-trash trash-only" title="Mover para a Lixeira" aria-label="Mover para a Lixeira" type="button">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 6h18"></path><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
+          </svg>
+        </button>
       `;
       setupTitleRowEvents();
     };
@@ -3595,7 +4040,7 @@ function createModelCard(model) {
   setupTitleRowEvents();
 
   card.addEventListener('click', (e) => {
-    if (e.target.closest('.card-rename-box') || e.target.closest('.btn-card-rename') || e.target.closest('.btn-favorite') || e.target.closest('.btn-open-slicer')) {
+    if (e.target.closest('.card-rename-box') || e.target.closest('.btn-card-rename') || e.target.closest('.btn-favorite') || e.target.closest('.btn-open-slicer') || e.target.closest('.btn-keep-only') || e.target.closest('.btn-card-trash')) {
       return;
     }
     if (e.target.closest('.card-select-checkbox') || state.isSelectionMode) {
@@ -3797,7 +4242,19 @@ function renderGallery() {
       return true;
     });
 
-  const filtered = sortModels(filteredUnsorted, state.sortOrder);
+  let filtered = sortModels(filteredUnsorted, state.sortOrder);
+  if (state.activeSection === 'duplicates') {
+    // Cópias idênticas lado a lado, na ordem em que o primeiro arquivo de cada grupo aparece
+    const groupOrder = new Map();
+    filtered.forEach((item, i) => {
+      const key = item.fingerprint || item.id;
+      if (!groupOrder.has(key)) groupOrder.set(key, i);
+    });
+    filtered = filtered
+      .map((item, i) => ({ item, i, g: groupOrder.get(item.fingerprint || item.id) }))
+      .sort((a, b) => a.g - b.g || a.i - b.i)
+      .map(x => x.item);
+  }
   state.currentDisplayItems = filtered;
 
   favoritesGrid.innerHTML = '';
@@ -3994,6 +4451,7 @@ async function loadModelOnDemand(model) {
       model.metadata = cached.metadata || null;
       model.slicerData = cached.slicerData || null;
       model.plates = cached.plates || [];
+      model.extras = cached.extras || null;
       updateCardThumbnail(model);
       return model;
     }
@@ -4073,6 +4531,7 @@ async function extractModelThumbnailAndMeta(model, forceExtractPlates = false) {
         model.metadata = cached.metadata || null;
         model.slicerData = cached.slicerData || null;
         model.plates = cached.plates || [];
+        model.extras = cached.extras || null;
         return;
       }
     } catch (_) {}
@@ -4097,6 +4556,7 @@ async function extractModelThumbnailAndMeta(model, forceExtractPlates = false) {
     model.metadata = res.metadata;
     model.slicerData = res.slicerData;
     model.plates = res.plates || [];
+    model.extras = res.extras || null;
   }
 
   // Salvar no cache persistente do IndexedDB
@@ -4105,7 +4565,8 @@ async function extractModelThumbnailAndMeta(model, forceExtractPlates = false) {
       thumbnailUrl: model.thumbnailUrl,
       metadata: model.metadata,
       slicerData: model.slicerData,
-      plates: model.plates
+      plates: model.plates,
+      extras: model.extras || null
     });
   }
 }
@@ -4215,38 +4676,450 @@ function generatePlaceholderThumb(name, type) {
 }
 
 /**
+ * Seletor Foto/3D do visualizador: aparece quando existe foto da mesa ou miniatura
+ */
+function updateViewerModeSeg() {
+  if (!viewerModeSeg) return;
+  const hasPlates = (state.activeProject && state.activeProject.plates && state.activeProject.plates.length > 0) ||
+                    (state.activeModel && state.activeModel.plates && state.activeModel.plates.length > 0);
+  const hasPhoto = hasPlates || !!(state.activeModel && state.activeModel.thumbnailUrl);
+  viewerModeSeg.hidden = !hasPhoto;
+  if (viewerSegPhotoLabel) {
+    viewerSegPhotoLabel.textContent = state.activeProject ? 'Foto' : (hasPlates ? 'Foto da mesa' : 'Miniatura');
+  }
+  const is3d = state.currentViewerMode === '3d';
+  if (btnBackToPlate) btnBackToPlate.setAttribute('aria-pressed', String(!is3d));
+  if (btnOpen3DView) btnOpen3DView.setAttribute('aria-pressed', String(is3d));
+}
+
+/**
+ * Faixa das mesas: as setas passam uma "página" de mesas, sem barra de rolagem
+ */
+function updatePlatesNav() {
+  const prev = document.getElementById('btnPlatesPrev');
+  const next = document.getElementById('btnPlatesNext');
+  if (!platesList || !prev || !next) return;
+  const overflow = platesList.scrollWidth - platesList.clientWidth > 2;
+  prev.hidden = !overflow;
+  next.hidden = !overflow;
+  prev.disabled = platesList.scrollLeft <= 2;
+  next.disabled = platesList.scrollLeft >= platesList.scrollWidth - platesList.clientWidth - 2;
+}
+
+function scrollPlates(direction) {
+  if (!platesList) return;
+  const card = platesList.querySelector('.plate-square-card');
+  const step = card ? card.getBoundingClientRect().width + 6 : 110;
+  const visible = Math.max(1, Math.floor(platesList.clientWidth / step));
+  platesList.scrollBy({ left: direction * step * visible, behavior: 'smooth' });
+}
+
+function revealActivePlate() {
+  if (!platesList) return;
+  const active = platesList.querySelector('.plate-square-card.active');
+  if (!active) return;
+  const left = active.offsetLeft - platesList.offsetLeft;
+  const right = left + active.offsetWidth;
+  if (left < platesList.scrollLeft) platesList.scrollTo({ left, behavior: 'smooth' });
+  else if (right > platesList.scrollLeft + platesList.clientWidth) platesList.scrollTo({ left: right - platesList.clientWidth, behavior: 'smooth' });
+}
+
+/**
+ * Rótulo no canto do visualizador com a mesa ativa (nome e tempo de impressão)
+ */
+function updateViewerPlateLabel(plate) {
+  if (!viewerPlateLabel) return;
+  if (!plate) {
+    viewerPlateLabel.hidden = true;
+    viewerPlateLabel.textContent = '';
+    return;
+  }
+  const name = plate.isCustomCover ? 'Capa do projeto' : (plate.isProjectPart ? (plate.name || '') : `Mesa ${plate.id}`);
+  const bits = [name];
+  if (plate.objectCount) bits.push(`${plate.objectCount} ${plate.objectCount === 1 ? 'peça' : 'peças'}`);
+  if (plate.printTimeFormatted) bits.push(plate.printTimeFormatted);
+  viewerPlateLabel.innerHTML = `<span>${escapeHtml(bits.join(' · '))}</span>${colorDotsHtml(plate.colors, 6)}`;
+  viewerPlateLabel.hidden = !name;
+}
+
+/**
+ * Posição do item aberto na lista atual da galeria (respeita busca, filtros e ordenação)
+ */
+function getViewerNavIndex() {
+  const items = state.currentDisplayItems || [];
+  const current = state.modalItem;
+  if (!current) return -1;
+  let idx = items.indexOf(current);
+  if (idx === -1 && current.id != null) idx = items.findIndex(it => it && it.id === current.id);
+  return idx;
+}
+
+/**
+ * Cabeçalho do visualizador: favorito, selo Fatiado e navegação anterior/próximo
+ */
+function updateModalHeaderExtras() {
+  const item = state.modalItem;
+  if (!item) return;
+
+  if (btnModalTrash) {
+    // Projetos agrupam vários arquivos: a exclusão fica para os arquivos avulsos
+    btnModalTrash.style.display = item.isProject ? 'none' : '';
+  }
+
+  if (btnModalFavorite) {
+    const fav = !!item.isFavorite;
+    btnModalFavorite.setAttribute('aria-pressed', String(fav));
+    btnModalFavorite.title = fav ? 'Remover dos favoritos' : 'Favoritar';
+  }
+
+  if (modalSlicedChip) {
+    const ref = item.isProject ? (item.primaryPart || (item.parts && item.parts[0])) : item;
+    modalSlicedChip.hidden = !(ref && ref.slicerData && ref.slicerData.isSliced);
+  }
+
+  const items = state.currentDisplayItems || [];
+  const idx = getViewerNavIndex();
+  if (modalNavCounter) {
+    modalNavCounter.textContent = idx >= 0 ? `${idx + 1} / ${items.length}` : '';
+  }
+  if (btnModalPrev) btnModalPrev.disabled = idx <= 0;
+  if (btnModalNext) btnModalNext.disabled = idx === -1 || idx >= items.length - 1;
+}
+
+/**
+ * Abre o modelo anterior (-1) ou o próximo (+1) da galeria sem fechar o visualizador
+ */
+function navigateViewerModal(delta) {
+  const items = state.currentDisplayItems || [];
+  const idx = getViewerNavIndex();
+  if (idx === -1) return;
+  const next = items[idx + delta];
+  if (!next) return;
+  openViewerModal(next);
+}
+
+/**
+ * Bloco "Detalhes" do painel lateral. Linhas sem dado ficam ocultas.
+ */
+function fillModalDetails(model) {
+  if (!modalSidebarInfo || !model) return;
+
+  const setRow = (key, value) => {
+    const wrap = document.getElementById(`modalInfo${key}Wrap`);
+    const val = document.getElementById(`modalInfo${key}`);
+    if (!wrap || !val) return;
+    const has = value !== null && value !== undefined && value !== '';
+    wrap.style.display = has ? '' : 'none';
+    if (has) {
+      val.textContent = value;
+      val.title = value;
+    }
+  };
+
+  const isProject = !!model.isProject;
+  const ref = isProject ? (model.primaryPart || (model.parts && model.parts[0])) : model;
+  const meta = !isProject && ref ? ref.metadata : null;
+  const dims = meta && meta.dimensions;
+  setRow('Dimensions', dims && (dims.x || dims.y || dims.z)
+    ? `${Math.round(dims.x)} × ${Math.round(dims.y)} × ${Math.round(dims.z)} mm` : '');
+  setRow('Triangles', meta && meta.triangleCount ? meta.triangleCount.toLocaleString('pt-BR') : '');
+
+  // Tempo e filamento só aparecem aqui quando não há a seção Filamentos
+  const slicer = ref && ref.slicerData;
+  const hasFilamentSection = !!(ref && ref.extras && ref.extras.filaments && ref.extras.filaments.length);
+  setRow('PrintTime', !hasFilamentSection && slicer && slicer.printTimeFormatted ? slicer.printTimeFormatted : '');
+  setRow('Filament', !hasFilamentSection && slicer && slicer.filamentGrams
+    ? `${slicer.filamentGrams} g${slicer.filamentType ? ' ' + slicer.filamentType : ''}` : '');
+
+  // Tamanho e data ficam na linha do caminho, no cabeçalho
+  const metaSize = document.getElementById('modalMetaSize');
+  const metaDate = document.getElementById('modalMetaDate');
+  if (metaSize) metaSize.textContent = model.size ? formatBytes(model.size) : '';
+  const mod = model.lastModified || (model.file && model.file.lastModified) || 0;
+  if (metaDate) metaDate.textContent = mod ? `modificado ${new Date(mod).toLocaleDateString('pt-BR')}` : '';
+
+  const anyRow = Array.from(modalSidebarInfo.querySelectorAll('.modal-spec')).some(el => el.style.display !== 'none');
+  modalSidebarInfo.style.display = anyRow ? 'block' : 'none';
+  fillModalExtras(model);
+}
+
+/**
+ * Pasta resumida (as duas últimas pastas) na linha abaixo do nome; o caminho completo fica no título
+ */
+function syncModalPathShort() {
+  const full = (modalPathFolder && modalPathFolder.textContent) || '';
+  const shortEl = document.getElementById('modalPathShort');
+  const line = document.getElementById('modalPathLine');
+  if (!shortEl) return;
+  const parts = full.split(/[\\/]+/).filter(Boolean);
+  shortEl.textContent = parts.slice(-2).join(' › ');
+  if (line) line.title = full + ((modalPathName && modalPathName.textContent) || '');
+}
+
+const SOURCE_SITES = {
+  makerworld: { name: 'MakerWorld', short: 'MW', bg: '#00ae42', fg: '#ffffff' },
+  printables: { name: 'Printables', short: 'P', bg: '#fa6831', fg: '#ffffff' },
+  thingiverse: { name: 'Thingiverse', short: 'T', bg: '#248bfb', fg: '#ffffff' },
+  cults3d: { name: 'Cults3D', short: 'C', bg: '#822ef5', fg: '#ffffff' },
+  myminifactory: { name: 'MyMiniFactory', short: 'M', bg: '#ff5a5f', fg: '#ffffff' },
+  thangs: { name: 'Thangs', short: 'Th', bg: '#2b2d42', fg: '#ffffff' },
+  web: { name: 'Página do modelo', short: 'www', bg: '#1f2a37', fg: '#eef3f8' }
+};
+
+function colorDotsHtml(colors, max = 6) {
+  const list = (colors || []).filter(Boolean).slice(0, max);
+  if (!list.length) return '';
+  return `<span class="color-stack">${list.map(c => `<i style="background:${escapeHtml(c)}"></i>`).join('')}</span>`;
+}
+
+function getModelExtras(model) {
+  if (!model) return null;
+  const ref = model.isProject ? (model.primaryPart || (model.parts && model.parts[0])) : model;
+  return (ref && ref.extras) || null;
+}
+
+/**
+ * Painel lateral: Autor e origem, Impressão, Filamentos e Anexos (dados de dentro do 3MF)
+ */
+function fillModalExtras(model) {
+  const extras = getModelExtras(model);
+  const ref = model && model.isProject ? (model.primaryPart || (model.parts && model.parts[0])) : model;
+  const show = (id, visible) => { const el = document.getElementById(id); if (el) el.hidden = !visible; };
+
+  // Autor e origem
+  const hasAuthor = !!(extras && (extras.designer || extras.description || extras.license || extras.source));
+  show('modalAuthorSection', hasAuthor);
+  if (hasAuthor) {
+    const name = extras.designer || 'Autor não informado';
+    const initials = name.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase() || '?';
+    document.getElementById('modalAuthorAvatar').textContent = initials;
+    document.getElementById('modalAuthorName').textContent = name;
+    let sub = '';
+    if (extras.created) {
+      const d = new Date(extras.created);
+      sub = isNaN(d) ? extras.created : `criado em ${d.toLocaleDateString('pt-BR')}`;
+    }
+    if (extras.title && extras.title !== name) sub = sub ? `${extras.title} · ${sub}` : extras.title;
+    document.getElementById('modalAuthorSub').textContent = sub;
+
+    // A descrição fica de fora para o painel caber sem rolagem; só a licença aparece
+    document.getElementById('modalAuthorDesc').hidden = true;
+
+    const pills = document.getElementById('modalAuthorPills');
+    const pillHtml = [];
+    if (extras.license) {
+      const nc = /\bNC\b|non.?commercial|não.?comercial/i.test(extras.license);
+      pillHtml.push(`<span class="modal-pill${nc ? ' warn' : ''}" title="${nc ? 'Uso não comercial' : 'Licença'}">${escapeHtml(extras.license)}</span>`);
+    }
+    if (extras.copyright && extras.copyright !== extras.designer) {
+      pillHtml.push(`<span class="modal-pill" title="Direitos autorais">© ${escapeHtml(extras.copyright)}</span>`);
+    }
+    pills.innerHTML = pillHtml.join('');
+    pills.hidden = pillHtml.length === 0;
+
+    const src = extras.source;
+    const site = src ? (SOURCE_SITES[src.site] || SOURCE_SITES.web) : null;
+    show('modalSourceRow', !!site);
+    if (site) {
+      const logo = document.getElementById('modalSourceLogo');
+      logo.textContent = site.short;
+      logo.style.background = site.bg;
+      logo.style.color = site.fg;
+      document.getElementById('modalSourceName').textContent = site.name;
+      const link = document.getElementById('modalSourceLink');
+      link.hidden = !src.url;
+      if (src.url) {
+        link.href = src.url;
+        link.title = src.search ? `Buscar "${extras.title || ''}" no ${site.name}` : src.url;
+        link.firstChild.textContent = src.search ? 'Buscar no site ' : 'Abrir página ';
+      }
+    }
+  }
+
+  // Impressão
+  const grid = document.getElementById('modalPrintGrid');
+  const specs = extras ? [
+    ['Impressora', extras.printer, extras.printerFull],
+    ['Bico', extras.nozzle],
+    ['Camada', extras.layerHeight],
+    ['Preenchimento', extras.infill],
+    ['Suporte', extras.support],
+    ['Peças', extras.pieces ? String(extras.pieces) : null]
+  ].filter(s => s[1]) : [];
+  show('modalPrintSection', specs.length > 0);
+  if (grid) {
+    grid.innerHTML = specs.map(([label, value, full]) =>
+      `<div class="modal-spec"><dt>${label}</dt><dd title="${escapeHtml(full || value)}">${escapeHtml(value)}</dd></div>`).join('');
+    if (extras && extras.profile) grid.title = `Perfil: ${extras.profile}`;
+  }
+
+  // Filamentos
+  const filaments = (extras && extras.filaments) || [];
+  show('modalFilamentSection', filaments.length > 0);
+  const list = document.getElementById('modalFilamentList');
+  if (list && filaments.length) {
+    const totalGrams = filaments.reduce((sum, f) => sum + (f.grams || 0), 0);
+    list.classList.toggle('is-compact', filaments.length > 4);
+    list.innerHTML = filaments.map(f => {
+      const title = f.name || f.type || 'Filamento';
+      const sub = f.name && f.type && !f.name.toUpperCase().includes(f.type.toUpperCase()) ? f.type : '';
+      return `<div class="modal-fil">
+        <span class="modal-fil-swatch" style="background:${escapeHtml(f.color || '#5b6878')}" title="${escapeHtml(f.color || '')}"></span>
+        <div class="modal-fil-name"><b>${escapeHtml(title)}</b>${sub ? `<small>${escapeHtml(sub)}</small>` : ''}</div>
+        <span class="modal-fil-grams">${f.grams ? `${f.grams.toLocaleString('pt-BR')} g` : ''}</span>
+      </div>`;
+    }).join('') + (totalGrams > 0 && filaments.length > 1
+      ? `<div class="modal-fil-bar">${filaments.map(f => `<i style="width:${(100 * (f.grams || 0) / totalGrams).toFixed(1)}%;background:${escapeHtml(f.color || '#5b6878')}"></i>`).join('')}</div>`
+      : '');
+    const slicer = ref && ref.slicerData;
+    const parts = [];
+    if (slicer && slicer.printTimeFormatted) parts.push(slicer.printTimeFormatted);
+    if (totalGrams > 0) parts.push(`${Math.round(totalGrams).toLocaleString('pt-BR')} g`);
+    else if (slicer && slicer.filamentGrams) parts.push(`${slicer.filamentGrams} g`);
+    document.getElementById('modalFilamentTotal').textContent = parts.join(' · ');
+  }
+
+  // Selo Multicor no cabeçalho
+  const multi = document.getElementById('modalMultiChip');
+  if (multi) {
+    const colors = Array.from(new Set(filaments.map(f => f.color).filter(Boolean)));
+    multi.hidden = colors.length < 2;
+    if (colors.length >= 2) multi.innerHTML = `${colorDotsHtml(colors)}Multicor · ${colors.length}`;
+  }
+
+  renderModalAttachments(model, extras);
+}
+
+/**
+ * Anexos do autor: fotos viram miniaturas (abrem no visualizador), PDFs e outros abrem à parte
+ */
+function renderModalAttachments(model, extras) {
+  const section = document.getElementById('modalAttachSection');
+  const gridEl = document.getElementById('modalAttachGrid');
+  const items = (extras && extras.attachments) || [];
+  if (!section || !gridEl) return;
+  section.hidden = items.length === 0;
+  gridEl.innerHTML = '';
+  if (!items.length) return;
+  document.getElementById('modalAttachCount').textContent = items.length;
+
+  const source = model && model.isProject ? (model.primaryPart || (model.parts && model.parts[0])) : model;
+  const maxTiles = 10;
+  items.slice(0, maxTiles).forEach((item, i) => {
+    const tile = document.createElement('button');
+    tile.type = 'button';
+    tile.className = `modal-attach modal-attach-${item.kind}`;
+    tile.title = `${item.name}${item.size ? ' · ' + formatBytes(item.size) : ''}`;
+    if (i === maxTiles - 1 && items.length > maxTiles) {
+      tile.innerHTML = `<span class="modal-attach-more">+${items.length - maxTiles + 1}</span>`;
+      tile.title = `${items.length - maxTiles + 1} anexos a mais: ${items.slice(maxTiles - 1).map(x => x.name).join(', ')}`;
+      tile.disabled = true;
+    } else if (item.kind === 'image') {
+      tile.innerHTML = '<span class="modal-attach-loading"></span>';
+    } else {
+      tile.innerHTML = `<span class="modal-attach-ext">${escapeHtml((item.ext || 'arq').toUpperCase().slice(0, 4))}</span><small>${item.size ? formatBytes(item.size) : ''}</small>`;
+    }
+    tile.dataset.index = String(i);
+    tile.addEventListener('click', () => openModalAttachment(source, item));
+    gridEl.appendChild(tile);
+  });
+
+  // Carrega as fotos sob demanda (só enquanto este modelo estiver aberto)
+  const images = items.slice(0, maxTiles).filter(x => x.kind === 'image');
+  if (images.length) {
+    loadAttachmentUrls(source, images).then(urls => {
+      if (state.modalItem !== model) return;
+      gridEl.querySelectorAll('.modal-attach-image').forEach(tile => {
+        const item = items[parseInt(tile.dataset.index, 10)];
+        const url = item && urls[item.path];
+        if (url) tile.innerHTML = `<img src="${url}" alt="${escapeHtml(item.name)}" loading="lazy">`;
+        else tile.innerHTML = `<span class="modal-attach-ext">IMG</span>`;
+      });
+    });
+  }
+}
+
+/** Lê os anexos pedidos de dentro do 3MF e devolve URLs (blob) reaproveitadas pelo modelo */
+async function loadAttachmentUrls(model, items) {
+  if (!model) return {};
+  model._attachmentUrls = model._attachmentUrls || {};
+  const missing = items.filter(it => !model._attachmentUrls[it.path]);
+  if (missing.length) {
+    try {
+      if (!model.file && model.handle && typeof model.handle.getFile === 'function') {
+        model.file = await model.handle.getFile();
+      }
+      if (!model.file) return model._attachmentUrls;
+      const zip = await JSZip.loadAsync(await model.file.arrayBuffer());
+      for (const it of missing) {
+        const entry = zip.file(it.path);
+        if (!entry) continue;
+        const blob = await entry.async('blob');
+        const mime = it.kind === 'pdf' ? 'application/pdf'
+          : it.kind === 'image' ? `image/${it.ext === 'jpg' ? 'jpeg' : it.ext}` : 'application/octet-stream';
+        model._attachmentUrls[it.path] = URL.createObjectURL(new Blob([blob], { type: mime }));
+      }
+    } catch (err) {
+      console.warn('Erro ao ler anexos do 3MF:', err);
+    }
+  }
+  return model._attachmentUrls;
+}
+
+async function openModalAttachment(model, item) {
+  const urls = await loadAttachmentUrls(model, [item]);
+  const url = urls[item.path];
+  if (!url) {
+    showToast(`Não foi possível abrir "${item.name}".`, 'warning');
+    return;
+  }
+  if (item.kind === 'image') {
+    // Mostra a foto do autor no visualizador, no lugar da foto da mesa
+    setViewerMode('plate');
+    modalPlateImg.src = url;
+    if (viewerPlateLabel) {
+      viewerPlateLabel.textContent = item.name;
+      viewerPlateLabel.hidden = false;
+    }
+    document.querySelectorAll('.plate-square-card.active').forEach(c => c.classList.remove('active'));
+    return;
+  }
+  if (item.kind === 'pdf') {
+    window.open(url, '_blank');
+    return;
+  }
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = item.name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+/**
  * Alterna entre a visualização 2D da Mesa de Impressão e o Visualizador 3D
  */
 function setViewerMode(mode) {
   state.currentViewerMode = mode;
+  if (modalCanvas && modalCanvas.parentElement) modalCanvas.parentElement.classList.toggle('is-3d', mode === '3d');
 
   const hasPlates = (state.activeProject && state.activeProject.plates && state.activeProject.plates.length > 0) ||
                     (state.activeModel && state.activeModel.plates && state.activeModel.plates.length > 0);
 
   if (mode === 'plate') {
+    // Modelo sem mesas: a "foto" é a miniatura do próprio arquivo
+    if (!hasPlates && state.activeModel && state.activeModel.thumbnailUrl) {
+      modalPlateImg.src = state.activeModel.thumbnailUrl;
+    }
     modalPlateImg.style.display = 'block';
     modalCanvas.style.display = 'none';
     viewerControlsBar.style.display = 'none';
-
-    if (hasPlates) {
-      if (btnOpen3DView) btnOpen3DView.style.display = 'inline-flex';
-      if (btnBackToPlate) btnBackToPlate.style.display = 'none';
-    } else {
-      if (btnOpen3DView) btnOpen3DView.style.display = 'none';
-      if (btnBackToPlate) btnBackToPlate.style.display = 'none';
-    }
+    updateViewerModeSeg();
   } else {
     modalPlateImg.style.display = 'none';
     modalCanvas.style.display = 'block';
     viewerControlsBar.style.display = 'flex';
-
-    if (hasPlates) {
-      if (btnOpen3DView) btnOpen3DView.style.display = 'none';
-      if (btnBackToPlate) btnBackToPlate.style.display = 'inline-flex';
-    } else {
-      if (btnOpen3DView) btnOpen3DView.style.display = 'none';
-      if (btnBackToPlate) btnBackToPlate.style.display = 'none';
-    }
+    updateViewerModeSeg();
 
     initModalThree();
     onModalResize();
@@ -4272,7 +5145,12 @@ function renderPlatesList(plates) {
 
   if (modalSidebar) modalSidebar.style.display = 'flex';
   if (platesSection) platesSection.style.display = 'flex';
-  if (platesCount) platesCount.textContent = plates.length;
+  if (platesCount) {
+    const realPlates = plates.filter(p => !p.isCustomCover);
+    const label = state.activeProject ? (realPlates.length === 1 ? 'arquivo' : 'arquivos') : (realPlates.length === 1 ? 'mesa' : 'mesas');
+    const totalSeconds = realPlates.reduce((sum, p) => sum + (p.printTimeSeconds || 0), 0);
+    platesCount.textContent = `${realPlates.length} ${label}${totalSeconds ? ' · ' + formatDurationShort(totalSeconds) : ''}`;
+  }
 
   plates.forEach(plate => {
     const card = document.createElement('div');
@@ -4290,7 +5168,7 @@ function renderPlatesList(plates) {
         ? `<img class="plate-square-img" src="${currentImg}" alt="${escapeHtml(plate.name)}">`
         : `<div class="plate-square-placeholder"><span style="font-size: 1.4rem;">🖨️</span></div>`
       }
-      <span class="plate-square-label" title="${escapeHtml(plate.fullName || plate.name)}">${escapeHtml(plate.name)}</span>
+      <span class="plate-square-label" title="${escapeHtml(plate.fullName || plate.name)}"><span class="plate-square-text">${escapeHtml(plate.printTimeFormatted || plate.name)}</span>${colorDotsHtml(plate.colors, 4)}</span>
     `;
 
     card.addEventListener('click', () => {
@@ -4298,6 +5176,7 @@ function renderPlatesList(plates) {
     });
 
     platesList.appendChild(card);
+    requestAnimationFrame(updatePlatesNav);
 
     // Se for parte de projeto e ainda não possuir miniatura, carregar sob demanda
     if (plate.isProjectPart && !currentImg && plate.model) {
@@ -4372,11 +5251,13 @@ async function extractPlateImageOnDemand(model, plateId) {
 async function selectPlate(plate) {
   state.activePlateId = plate.id;
   state.activePlate = plate;
+  updateViewerPlateLabel(plate);
 
   // Atualizar estilo ativo nos cards quadrados
   document.querySelectorAll('.plate-square-card').forEach(c => {
     c.classList.toggle('active', parseInt(c.dataset.plateId, 10) === plate.id);
   });
+  revealActivePlate();
 
   // Se for a capa personalizada do projeto
   if (plate.isCustomCover) {
@@ -4497,7 +5378,7 @@ async function updateModalFilePath(model) {
   if (model.fullDiskPath && model.fullFolderDirectory) {
     if (modalPathFolder) modalPathFolder.textContent = model.fullFolderDirectory;
     if (modalPathName) modalPathName.textContent = model.name;
-    if (modalFileName) modalFileName.title = `${model.fullDiskPath} (Clique para copiar)`;
+    if (modalFileName) modalFileName.title = `${model.fullDiskPath}`;
     return;
   }
 
@@ -4520,7 +5401,7 @@ async function updateModalFilePath(model) {
 
     if (modalPathFolder) modalPathFolder.textContent = folderDir;
     if (modalPathName) modalPathName.textContent = fName;
-    if (modalFileName) modalFileName.title = `${combined} (Clique para copiar)`;
+    if (modalFileName) modalFileName.title = `${combined}`;
     return;
   }
 
@@ -4544,7 +5425,7 @@ async function updateModalFilePath(model) {
 
   if (modalPathFolder) modalPathFolder.textContent = estimatedDir;
   if (modalPathName) modalPathName.textContent = model.name;
-  if (modalFileName) modalFileName.title = `${estimatedDir}${model.name} (Clique para copiar)`;
+  if (modalFileName) modalFileName.title = `${estimatedDir}${model.name}`;
 
   // 4. Consulta para obter o caminho 100% real do Windows (Nativo no Electron ou via servidor companion na Web)
   try {
@@ -4579,7 +5460,7 @@ async function updateModalFilePath(model) {
       if (state.activeModel && state.activeModel.id === model.id) {
         if (modalPathFolder) modalPathFolder.textContent = data.folderPath;
         if (modalPathName) modalPathName.textContent = data.fileName || model.name;
-        if (modalFileName) modalFileName.title = `${data.fullPath} (Clique para copiar)`;
+        if (modalFileName) modalFileName.title = `${data.fullPath}`;
       }
     }
   } catch (err) {
@@ -4597,10 +5478,13 @@ async function openViewerModal(model) {
   }
 
   // 1. Vincular modelo ativo no estado
+  state.modalItem = model;
   state.activeModel = model;
   state.activePlate = null;
   state.activePlateId = 1;
   state.isMeshLoaded = false;
+  updateViewerPlateLabel(null);
+  if (modalPlateImg) modalPlateImg.removeAttribute('src');
 
   if (state.modalMesh) {
     if (state.modalScene) state.modalScene.remove(state.modalMesh);
@@ -4617,7 +5501,7 @@ async function openViewerModal(model) {
     if (model.isDuplicate) {
       modalDuplicateBadge.style.display = 'inline-flex';
       modalDuplicateBadge.title = `Arquivo idêntico encontrado em: ${model.duplicateOrigins}`;
-      modalDuplicateBadge.textContent = `⚠️ Cópia Duplicada (${model.duplicatesCount})`;
+      modalDuplicateBadge.textContent = `Duplicado · ${model.duplicatesCount}`;
     } else {
       modalDuplicateBadge.style.display = 'none';
     }
@@ -4637,7 +5521,7 @@ async function openViewerModal(model) {
       if (dupParts.length > 0) {
         modalDuplicateBadge.style.display = 'inline-flex';
         modalDuplicateBadge.title = `Arquivos duplicados detectados neste projeto`;
-        modalDuplicateBadge.textContent = `⚠️ Cópias Duplicadas (${dupParts.length})`;
+        modalDuplicateBadge.textContent = `Duplicados · ${dupParts.length}`;
       } else {
         modalDuplicateBadge.style.display = 'none';
       }
@@ -4645,11 +5529,14 @@ async function openViewerModal(model) {
 
     if (modalSidebar) modalSidebar.style.display = 'flex';
     if (platesSection) platesSection.style.display = 'flex';
-    if (modalSidebarInfo) modalSidebarInfo.style.display = 'none';
+    if (platesHeading) platesHeading.textContent = 'Arquivos do projeto';
+    fillModalDetails(model);
+    updateModalHeaderExtras();
 
     renderPlatesList(model.plates);
     if (model.plates && model.plates.length > 0) {
       state.activePlateId = model.plates[0].id;
+      state.currentViewerMode = 'plate';
       selectPlate(model.plates[0]);
     }
     setViewerMode('plate');
@@ -4669,51 +5556,27 @@ async function openViewerModal(model) {
   }
 
   if (modalSidebar) modalSidebar.style.display = 'flex';
+  if (platesHeading) platesHeading.textContent = 'Mesas de impressão';
+  fillModalDetails(model);
+  updateModalHeaderExtras();
 
   // 4. Exibição imediata: se já possui mesas ou se é modelo convencional
   const hasPlates = model.plates && model.plates.length > 0;
 
   if (hasPlates) {
     if (platesSection) platesSection.style.display = 'flex';
-    if (modalSidebarInfo) modalSidebarInfo.style.display = 'none';
     state.activePlateId = model.plates[0].id;
+    state.currentViewerMode = 'plate';
     renderPlatesList(model.plates);
     selectPlate(model.plates[0]);
     setViewerMode('plate');
   } else {
     // Modelo comum (sem mesas ou STL)
     if (platesSection) platesSection.style.display = 'none';
-    if (modalSidebarInfo) {
-      modalSidebarInfo.style.display = 'block';
-      if (modalInfoFormat) modalInfoFormat.textContent = `.${(model.type || 'stl').toUpperCase()}`;
-      if (modalInfoSize) modalInfoSize.textContent = formatBytes(model.size);
-      if (modalInfoDimensions) {
-        if (model.metadata?.dimensions) {
-          modalInfoDimensions.textContent = `${Math.round(model.metadata.dimensions.x)} × ${Math.round(model.metadata.dimensions.y)} × ${Math.round(model.metadata.dimensions.z)} mm`;
-          if (modalInfoDimensionsWrap) modalInfoDimensionsWrap.style.display = 'flex';
-        } else {
-          if (modalInfoDimensionsWrap) modalInfoDimensionsWrap.style.display = 'none';
-        }
-      }
-      if (modalInfoTriangles) {
-        if (model.metadata?.triangleCount) {
-          modalInfoTriangles.textContent = model.metadata.triangleCount.toLocaleString('pt-BR');
-          if (modalInfoTrianglesWrap) modalInfoTrianglesWrap.style.display = 'flex';
-        } else {
-          if (modalInfoTrianglesWrap) modalInfoTrianglesWrap.style.display = 'none';
-        }
-      }
-    }
 
     // Se já tiver miniatura oficial de capa, exibe de imediato enquanto prepara 3D
     if (model.thumbnailUrl) {
-      modalPlateImg.src = model.thumbnailUrl;
-      modalPlateImg.style.display = 'block';
-      if (modalCanvas) modalCanvas.style.display = 'none';
-      if (viewerControlsBar) viewerControlsBar.style.display = 'none';
-      if (btnOpen3DView) btnOpen3DView.style.display = 'inline-flex';
-      if (btnBackToPlate) btnBackToPlate.style.display = 'none';
-      state.currentViewerMode = 'plate';
+      setViewerMode('plate');
     } else {
       setViewerMode('3d');
     }
@@ -4732,31 +5595,32 @@ async function openViewerModal(model) {
     model.plates.some(p => !p.imageUrl && !p.isCustomCover)
   );
 
-  if (!model.thumbnailUrl || needsPlateExtraction) {
+  // 3MF lido antes desta versão ainda não tem autor/impressora/anexos: lê de novo em segundo plano
+  const needsExtras = model.type === '3mf' && model.extras === undefined;
+
+  if (!model.thumbnailUrl || needsPlateExtraction || needsExtras) {
     (async () => {
       try {
-        await extractModelThumbnailAndMeta(model, needsPlateExtraction);
+        await extractModelThumbnailAndMeta(model, needsPlateExtraction || needsExtras);
         updateCardThumbnail(model);
 
         // Se este mesmo modelo ainda estiver ativo no modal, atualiza os dados na tela
         if (state.activeModel && state.activeModel.id === model.id) {
           if (model.plates && model.plates.length > 0) {
             if (platesSection) platesSection.style.display = 'flex';
-            if (modalSidebarInfo) modalSidebarInfo.style.display = 'none';
             renderPlatesList(model.plates);
             if (!state.activePlate) {
               selectPlate(model.plates[0]);
-            }
-          } else {
-            if (modalInfoDimensions && model.metadata?.dimensions) {
-              modalInfoDimensions.textContent = `${Math.round(model.metadata.dimensions.x)} × ${Math.round(model.metadata.dimensions.y)} × ${Math.round(model.metadata.dimensions.z)} mm`;
-              if (modalInfoDimensionsWrap) modalInfoDimensionsWrap.style.display = 'flex';
-            }
-            if (modalInfoTriangles && model.metadata?.triangleCount) {
-              modalInfoTriangles.textContent = model.metadata.triangleCount.toLocaleString('pt-BR');
-              if (modalInfoTrianglesWrap) modalInfoTrianglesWrap.style.display = 'flex';
+            } else {
+              // A releitura cria novos objetos de mesa: mantém a mesma mesa selecionada
+              const same = model.plates.find(p => p.id === state.activePlateId);
+              if (same) state.activePlate = same;
             }
           }
+          fillModalDetails(model);
+          updateModalHeaderExtras();
+          updateViewerModeSeg();
+          if (state.activePlate) updateViewerPlateLabel(state.activePlate);
         }
       } catch (e) {
         console.warn('Erro ao extrair metadados e mesas do modelo em background:', e);
@@ -4796,7 +5660,7 @@ function initModalThree() {
   keyLight.position.set(100, 150, 100);
   state.modalScene.add(keyLight);
 
-  const fillLight = new THREE.DirectionalLight(0x60a5fa, 0.8);
+  const fillLight = new THREE.DirectionalLight(0x67e8f9, 0.8);
   fillLight.position.set(-100, 50, -100);
   state.modalScene.add(fillLight);
 
@@ -4835,6 +5699,7 @@ function onModalResize() {
 }
 
 async function loadModelIntoModal(model, plateId = null) {
+  const loadToken = (state.modalLoadToken = (state.modalLoadToken || 0) + 1);
   const isProjectPart = !!(state.activeProject || (model && model.parentProject));
   const currentPlate = isProjectPart ? (plateId || 1) : (plateId || state.activePlateId || 1);
 
@@ -4914,6 +5779,9 @@ async function loadModelIntoModal(model, plateId = null) {
       }
     }
 
+    // Usuário já trocou de modelo/mesa enquanto esta malha carregava
+    if (loadToken !== state.modalLoadToken) return;
+
     if (!geometry) {
       console.warn('Geometria não pôde ser gerada para este modelo');
       return;
@@ -4927,7 +5795,7 @@ async function loadModelIntoModal(model, plateId = null) {
     const yOffset = (geometry.boundingBox.max.y - geometry.boundingBox.min.y) / 2;
 
     const material = new THREE.MeshStandardMaterial({
-      color: 0x3b82f6,
+      color: 0x1fb6cc,
       roughness: 0.35,
       metalness: 0.15,
       wireframe: state.isWireframe
@@ -4954,7 +5822,7 @@ async function loadModelIntoModal(model, plateId = null) {
   } catch (err) {
     console.error('Erro ao carregar modelo no visualizador:', err);
   } finally {
-    viewerLoadingOverlay.style.display = 'none';
+    if (loadToken === state.modalLoadToken) viewerLoadingOverlay.style.display = 'none';
   }
 }
 
@@ -4998,13 +5866,22 @@ function closeViewerModal() {
     modalPlateImg.style.display = 'none';
   }
   if (modalCanvas) modalCanvas.style.display = 'none';
-  if (btnOpen3DView) btnOpen3DView.style.display = 'none';
-  if (btnBackToPlate) btnBackToPlate.style.display = 'none';
+  if (viewerModeSeg) viewerModeSeg.hidden = true;
+  updateViewerPlateLabel(null);
+  state.modalItem = null;
+  state.modalLoadToken = (state.modalLoadToken || 0) + 1;
   if (viewerControlsBar) viewerControlsBar.style.display = 'none';
   if (viewerLoadingOverlay) viewerLoadingOverlay.style.display = 'none';
 }
 
 // Utilitários
+function formatDurationShort(totalSeconds) {
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.round((totalSeconds % 3600) / 60);
+  if (h > 0) return m > 0 ? `${h}h ${m}min` : `${h}h`;
+  return `${Math.max(1, m)} min`;
+}
+
 function formatBytes(bytes) {
   if (bytes === 0) return '0 B';
   const k = 1024;

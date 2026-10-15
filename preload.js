@@ -31,6 +31,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Renomear arquivo diretamente no disco (Windows)
   renameFile: (oldPath, newName) => ipcRenderer.invoke('rename-file', { oldPath, newName }),
 
+  // Mover arquivos para a Lixeira do Windows
+  trashFiles: (filePaths) => ipcRenderer.invoke('trash-files', filePaths),
+  hashFile: (filePath) => ipcRenderer.invoke('hash-file', filePath),
+
   // Cópia nativa direta para a Área de Transferência do Windows
   copyToClipboard: (text) => ipcRenderer.invoke('copy-to-clipboard', text),
 
