@@ -3124,8 +3124,7 @@ function isMoveConflictOpen() {
 
 // ---------- Seletor "Mover para…" ----------
 
-const MOVE_PAGE_SIZE = 8;
-let movePicker = null; // { items, models, page, selectedKey, currentKey, query, creating }
+let movePicker = null; // { items, models, expanded, selectedKey, currentKey, query, creating }
 
 function moveTargetKey(folderId, subPath) {
   return `${folderId}::${subPath || ''}`;
@@ -3135,9 +3134,13 @@ function getMoveTargets() {
   const targets = [];
   state.folders.forEach(folder => {
     if (!getFolderRootPath(folder)) return;
-    targets.push({ folderId: folder.id, subPath: '', name: folder.name, label: folder.name, level: 0 });
-    extractFolderTree(folder, state.models).forEach(sub => {
-      targets.push({ folderId: folder.id, subPath: sub.path, name: sub.name, label: `${folder.name}/${sub.path}`, level: sub.level });
+    const subs = extractFolderTree(folder, state.models);
+    targets.push({ folderId: folder.id, subPath: '', name: folder.name, label: folder.name, level: 0, parentPath: null, hasChildren: subs.some(s => s.level === 1) });
+    subs.forEach(sub => {
+      targets.push({
+        folderId: folder.id, subPath: sub.path, name: sub.name, label: `${folder.name}/${sub.path}`, level: sub.level,
+        parentPath: sub.parentPath || '', hasChildren: subs.some(s => s.parentPath === sub.path)
+      });
     });
   });
   return targets;
@@ -3146,9 +3149,20 @@ function getMoveTargets() {
 function getFilteredMoveTargets() {
   const all = getMoveTargets();
   const q = (movePicker && movePicker.query || '').trim().toLowerCase();
-  if (!q) return all;
-  // Na busca, a lista fica plana com o caminho completo
-  return all.filter(t => t.label.toLowerCase().includes(q)).map(t => ({ ...t, level: 0, name: t.label }));
+  if (q) {
+    // Na busca, a lista fica plana com o caminho completo
+    return all.filter(t => t.label.toLowerCase().includes(q)).map(t => ({ ...t, level: 0, name: t.label, hasChildren: false }));
+  }
+  // Árvore: começa recolhida e só mostra as subpastas de quem a pessoa expandiu
+  return all.filter(t => {
+    if (t.parentPath === null) return true;
+    const segs = t.subPath.split('/');
+    for (let i = 0; i < segs.length; i++) {
+      const ancestor = segs.slice(0, i).join('/');
+      if (!movePicker.expanded.has(moveTargetKey(t.folderId, ancestor))) return false;
+    }
+    return true;
+  });
 }
 
 function openMovePicker(items) {
@@ -3162,7 +3176,7 @@ function openMovePicker(items) {
   const dirs = new Set(models.map(m => moveTargetKey(m.folderId, getModelRelativeDir(m))));
   const currentKey = dirs.size === 1 ? Array.from(dirs)[0] : null;
 
-  movePicker = { items, models, page: 0, selectedKey: null, currentKey, query: '', creating: false };
+  movePicker = { items, models, expanded: new Set(), selectedKey: null, currentKey, query: '', creating: false };
 
   const project = items.length === 1 && items[0] && items[0].isProject ? items[0] : null;
   const titleEl = document.getElementById('moveModalTitle');
@@ -3180,14 +3194,7 @@ function openMovePicker(items) {
 
   const search = document.getElementById('moveSearchInput');
   if (search) search.value = '';
-  const allTargets = getMoveTargets();
-  if (search) search.style.display = allTargets.length > MOVE_PAGE_SIZE ? '' : 'none';
-
-  // Começar na página da pasta atual
-  if (currentKey) {
-    const idx = allTargets.findIndex(t => moveTargetKey(t.folderId, t.subPath) === currentKey);
-    if (idx > -1) movePicker.page = Math.floor(idx / MOVE_PAGE_SIZE);
-  }
+  if (search) search.style.display = getMoveTargets().length > 8 ? '' : 'none';
 
   setMoveCreating(false);
   renderMovePicker();
@@ -3209,16 +3216,11 @@ function isMovePickerOpen() {
 function renderMovePicker() {
   if (!movePicker) return;
   const listEl = document.getElementById('moveTreeList');
-  const pager = document.getElementById('moveTreePager');
-  const info = document.getElementById('moveTreePageInfo');
-  const btnPrev = document.getElementById('btnMovePagePrev');
-  const btnNext = document.getElementById('btnMovePageNext');
   const btnConfirm = document.getElementById('btnConfirmMove');
 
   const targets = getFilteredMoveTargets();
-  const pages = Math.max(1, Math.ceil(targets.length / MOVE_PAGE_SIZE));
-  movePicker.page = Math.min(Math.max(0, movePicker.page), pages - 1);
-  const pageItems = targets.slice(movePicker.page * MOVE_PAGE_SIZE, (movePicker.page + 1) * MOVE_PAGE_SIZE);
+  const pageItems = targets;
+  const scrollTop = listEl ? listEl.scrollTop : 0;
 
   if (listEl) {
     listEl.innerHTML = '';
@@ -3234,11 +3236,27 @@ function renderMovePicker() {
       li.setAttribute('role', 'option');
       li.setAttribute('aria-selected', key === movePicker.selectedKey ? 'true' : 'false');
       li.title = t.label;
+      const isOpen = movePicker.expanded.has(key);
       li.innerHTML = `
+        ${t.hasChildren
+          ? `<button type="button" class="move-tree-toggle${isOpen ? ' is-open' : ''}" title="${isOpen ? 'Recolher' : 'Expandir'}" aria-label="${isOpen ? 'Recolher subpastas' : 'Expandir subpastas'}">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"></polyline></svg>
+            </button>`
+          : '<span class="move-tree-toggle-spacer"></span>'}
         <span class="folder-item-icon">📁</span>
         <span class="move-tree-name">${escapeHtml(t.name)}</span>
         ${isCurrent ? '<span class="move-tree-tag">pasta atual</span>' : ''}
       `;
+      const toggle = li.querySelector('.move-tree-toggle');
+      if (toggle) {
+        toggle.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (isOpen) movePicker.expanded.delete(key);
+          else movePicker.expanded.add(key);
+          renderMovePicker();
+        });
+        toggle.addEventListener('dblclick', (e) => e.stopPropagation());
+      }
       li.addEventListener('click', () => {
         if (isCurrent && !movePicker.creating) return;
         movePicker.selectedKey = key;
@@ -3253,10 +3271,7 @@ function renderMovePicker() {
     });
   }
 
-  if (pager) pager.hidden = pages <= 1;
-  if (info) info.textContent = `${movePicker.page + 1} / ${pages}`;
-  if (btnPrev) btnPrev.disabled = movePicker.page === 0;
-  if (btnNext) btnNext.disabled = movePicker.page >= pages - 1;
+  if (listEl) listEl.scrollTop = scrollTop;
 
   updateMoveNewFolderPrefix();
   if (btnConfirm) {
@@ -3416,8 +3431,6 @@ function setupMoveFeature() {
   on('btnCancelMove', closeMovePicker);
   on('btnConfirmMove', confirmMovePicker);
   on('btnMoveNewFolder', () => setMoveCreating(!(movePicker && movePicker.creating)));
-  on('btnMovePagePrev', () => { if (movePicker) { movePicker.page--; renderMovePicker(); } });
-  on('btnMovePageNext', () => { if (movePicker) { movePicker.page++; renderMovePicker(); } });
   on('moveConflictBackdrop', () => closeMoveConflict(null));
   on('btnMoveConflictCancel', () => closeMoveConflict(null));
   on('btnMoveConflictSkip', () => closeMoveConflict('skip'));
@@ -3428,7 +3441,8 @@ function setupMoveFeature() {
     search.addEventListener('input', () => {
       if (!movePicker) return;
       movePicker.query = search.value;
-      movePicker.page = 0;
+      const listEl = document.getElementById('moveTreeList');
+      if (listEl) listEl.scrollTop = 0;
       renderMovePicker();
     });
   }

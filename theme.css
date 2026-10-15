@@ -1505,8 +1505,23 @@ body:not(.can-move) .move-only { display: none !important; }
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   background: var(--bg-card);
-  overflow: hidden;
+  max-height: min(320px, calc(100vh - 300px));
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
 }
+.move-tree-toggle,
+.move-tree-toggle-spacer { flex: none; width: 18px; height: 18px; }
+.move-tree-toggle {
+  display: grid; place-items: center;
+  padding: 0; border: 0; border-radius: 4px;
+  background: transparent; color: var(--text-muted);
+  cursor: pointer;
+  transition: transform .15s, color .15s;
+}
+.move-tree-toggle:hover { color: var(--accent); background: var(--accent-soft); }
+.move-tree-toggle.is-open { transform: rotate(90deg); }
+.move-tree-item.is-current .move-tree-toggle { cursor: pointer; }
 .move-tree-item {
   display: flex;
   align-items: center;
@@ -1526,20 +1541,6 @@ body:not(.can-move) .move-only { display: none !important; }
 .move-tree-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .move-tree-tag { flex: none; font-size: 11px; color: var(--text-muted); }
 .move-tree-empty { padding: 10px; font-size: 12.5px; color: var(--text-muted); text-align: center; }
-.move-pager { display: flex; align-items: center; justify-content: center; gap: 10px; }
-.move-pager[hidden] { display: none; }
-.move-pager-btn {
-  width: 28px; height: 26px;
-  display: grid; place-items: center;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--text-secondary);
-  cursor: pointer;
-}
-.move-pager-btn:hover:not(:disabled) { color: var(--accent); border-color: var(--accent-line); }
-.move-pager-btn:disabled { opacity: 0.35; cursor: default; }
-.move-pager-info { font: 500 11.5px var(--font-mono); color: var(--text-muted); }
 .move-new-folder { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .move-new-folder-prefix { flex: 0 0 auto; max-width: 55%; font-size: 12px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .move-new-folder-input { flex: 1 1 auto; min-width: 120px; }
