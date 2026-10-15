@@ -3851,6 +3851,9 @@ function toggleModelSelection(modelId) {
 
   if (!state.isSelectionMode && state.selectedModelIds.size > 0) {
     setSelectionMode(true);
+  } else if (state.isSelectionMode && state.selectedModelIds.size === 0) {
+    // Desmarcou tudo: sai do modo de seleção e os cards voltam a abrir com um clique
+    setSelectionMode(false);
   } else {
     updateSelectionBarUI();
     const card = document.querySelector(`.model-card[data-id="${modelId}"]`);
