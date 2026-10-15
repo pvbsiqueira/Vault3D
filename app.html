@@ -460,6 +460,9 @@
           <button class="modal-icon-btn modal-fav-btn" id="btnModalFavorite" type="button" aria-pressed="false" title="Favoritar">
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
           </button>
+          <button class="modal-icon-btn move-only" id="btnModalMove" type="button" title="Mover para outra pasta">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><path d="M12 11v6"/><path d="m15 14-3 3-3-3"/></svg>
+          </button>
           <button class="modal-icon-btn modal-trash-btn trash-only" id="btnModalTrash" type="button" title="Mover para a Lixeira (Delete)">
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>
           </button>
@@ -633,6 +636,10 @@
         </svg>
         <span>Criar Projeto</span>
       </button>
+      <button class="btn-selection-action secondary move-only" id="btnMoveSelection" type="button" title="Mover os arquivos selecionados para outra pasta">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><path d="M12 11v6"/><path d="m15 14-3 3-3-3"/></svg>
+        <span>Mover</span>
+      </button>
       <button class="btn-selection-action danger trash-only" id="btnTrashSelection" type="button" title="Mover os arquivos selecionados para a Lixeira (Delete)">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
         <span>Excluir</span>
@@ -719,6 +726,45 @@
       <div class="logout-confirm-actions">
         <button type="button" class="btn-cancel-logout" id="btnCancelTrash">Cancelar</button>
         <button type="button" class="btn-confirm-logout" id="btnConfirmTrash">Mover para a Lixeira</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: mover arquivos para outra pasta conectada -->
+  <div class="modal move-modal" id="moveModal" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="moveModalTitle">
+    <div class="modal-backdrop" id="moveModalBackdrop"></div>
+    <div class="move-card">
+      <div class="move-card-head">
+        <h3 class="move-card-title" id="moveModalTitle">Mover para…</h3>
+        <p class="move-card-sub" id="moveModalSub"></p>
+      </div>
+      <input class="move-search" id="moveSearchInput" type="text" placeholder="Buscar pasta" autocomplete="off" spellcheck="false">
+      <ul class="move-tree" id="moveTreeList" role="listbox" aria-label="Pastas conectadas"></ul>
+      <div class="move-new-folder" id="moveNewFolderRow" style="display: none;">
+        <span class="move-new-folder-prefix" id="moveNewFolderPrefix"></span>
+        <input class="move-new-folder-input" id="moveNewFolderInput" type="text" placeholder="Nome da subpasta" maxlength="80" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="move-card-footer">
+        <button type="button" class="btn-move-new" id="btnMoveNewFolder">+ Nova subpasta</button>
+        <div class="move-card-footer-right">
+          <button type="button" class="btn-cancel-logout" id="btnCancelMove">Cancelar</button>
+          <button type="button" class="btn-move-confirm" id="btnConfirmMove" disabled>Mover aqui</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: nome repetido na pasta de destino -->
+  <div class="modal logout-confirm-modal move-conflict-modal" id="moveConflictModal" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="moveConflictTitle">
+    <div class="modal-backdrop" id="moveConflictBackdrop"></div>
+    <div class="logout-confirm-card move-conflict-card">
+      <h3 class="logout-confirm-title" id="moveConflictTitle">Esse nome já existe no destino</h3>
+      <p class="logout-confirm-desc" id="moveConflictDesc"></p>
+      <ul class="trash-confirm-list" id="moveConflictList"></ul>
+      <div class="logout-confirm-actions">
+        <button type="button" class="btn-cancel-logout" id="btnMoveConflictCancel">Cancelar</button>
+        <button type="button" class="btn-cancel-logout" id="btnMoveConflictSkip">Pular</button>
+        <button type="button" class="btn-move-confirm" id="btnMoveConflictKeep">Manter os dois</button>
       </div>
     </div>
   </div>

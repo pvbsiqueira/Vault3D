@@ -35,6 +35,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   trashFiles: (filePaths) => ipcRenderer.invoke('trash-files', filePaths),
   hashFile: (filePath) => ipcRenderer.invoke('hash-file', filePath),
 
+  // Mover arquivos 3D entre as pastas conectadas
+  moveFiles: (items, onConflict) => ipcRenderer.invoke('move-files', { items, onConflict }),
+
   // Cópia nativa direta para a Área de Transferência do Windows
   copyToClipboard: (text) => ipcRenderer.invoke('copy-to-clipboard', text),
 

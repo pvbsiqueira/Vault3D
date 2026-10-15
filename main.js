@@ -436,6 +436,94 @@ ipcMain.handle('trash-files', async (event, filePaths) => {
   return results;
 });
 
+// 7.2 Mover arquivos 3D entre as pastas conectadas (nunca sobrescreve um arquivo existente)
+function nextFreeName(dir, fileName) {
+  const ext = path.extname(fileName);
+  const base = path.basename(fileName, ext);
+  for (let n = 2; n < 1000; n++) {
+    const candidate = `${base} (${n})${ext}`;
+    if (!fs.existsSync(path.join(dir, candidate))) return candidate;
+  }
+  return null;
+}
+
+async function moveFileAcrossDrives(from, to) {
+  // Outra unidade: copia, confere o tamanho e só então apaga o original
+  await fs.promises.copyFile(from, to, fs.constants.COPYFILE_EXCL);
+  try {
+    const [src, dst] = await Promise.all([fs.promises.stat(from), fs.promises.stat(to)]);
+    if (src.size !== dst.size) throw new Error('A cópia ficou incompleta');
+  } catch (err) {
+    await fs.promises.unlink(to).catch(() => {});
+    throw err;
+  }
+  await fs.promises.unlink(from);
+}
+
+ipcMain.handle('move-files', async (event, { items, onConflict } = {}) => {
+  const list = Array.isArray(items) ? items : [];
+  const results = [];
+  for (const item of list) {
+    const from = item && typeof item.from === 'string' ? path.normalize(item.from) : '';
+    const toDir = item && typeof item.toDir === 'string' ? path.normalize(item.toDir) : '';
+    const wanted = item && typeof item.newName === 'string' && item.newName ? item.newName : path.basename(from);
+    const result = { from: item && item.from, success: false };
+    results.push(result);
+
+    if (!/\.(stl|3mf)$/i.test(from) || !/\.(stl|3mf)$/i.test(wanted) || /[\\/]/.test(wanted)) {
+      result.message = 'Apenas arquivos STL e 3MF podem ser movidos';
+      continue;
+    }
+    if (!toDir || !path.isAbsolute(toDir)) {
+      result.message = 'Pasta de destino inválida';
+      continue;
+    }
+    if (!fs.existsSync(from)) {
+      result.message = 'Arquivo não encontrado no disco';
+      continue;
+    }
+    try {
+      await fs.promises.mkdir(toDir, { recursive: true });
+      let newName = wanted;
+      let to = path.join(toDir, newName);
+      if (to.toLowerCase() === from.toLowerCase()) {
+        result.message = 'O arquivo já está nessa pasta';
+        continue;
+      }
+      if (fs.existsSync(to)) {
+        if (onConflict !== 'rename') {
+          result.skipped = true;
+          result.message = 'Já existe um arquivo com esse nome no destino';
+          continue;
+        }
+        newName = nextFreeName(toDir, wanted);
+        if (!newName) {
+          result.message = 'Não foi possível encontrar um nome livre no destino';
+          continue;
+        }
+        to = path.join(toDir, newName);
+      }
+      try {
+        await fs.promises.rename(from, to);
+      } catch (err) {
+        if (err.code !== 'EXDEV') throw err;
+        await moveFileAcrossDrives(from, to);
+      }
+      const stats = await fs.promises.stat(to);
+      Object.assign(result, {
+        success: true,
+        newPath: to,
+        newName,
+        size: stats.size,
+        lastModified: Math.round(stats.mtimeMs)
+      });
+    } catch (err) {
+      result.message = err.message;
+    }
+  }
+  return results;
+});
+
 // 8. Cópia direta para a Área de Transferência nativa do Windows
 ipcMain.handle('copy-to-clipboard', (event, text) => {
   if (typeof text === 'string') {
