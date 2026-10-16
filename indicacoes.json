@@ -1,0 +1,17 @@
+{
+  "atualizado": "2026-10-16",
+  "lojas": {
+    "amazon": { "nome": "Amazon", "busca": "https://www.amazon.com.br/s?k={termo}&tag=vault3d-20" }
+  },
+  "produtos": [],
+  "categorias": [
+    { "id": "pla", "titulo": "Filamento PLA", "texto": "O básico do dia a dia, fácil de imprimir.", "icone": "spool", "termo": "filamento pla 1kg 1.75mm" },
+    { "id": "petg", "titulo": "Filamento PETG", "texto": "Mais resistente, bom para peças funcionais.", "icone": "spool", "termo": "filamento petg 1kg 1.75mm" },
+    { "id": "bicos", "titulo": "Bicos e hotend", "texto": "Troque o bico gasto ou teste outros diâmetros.", "icone": "nozzle", "termo": "bico impressora 3d hotend" },
+    { "id": "placas", "titulo": "Placas de impressão", "texto": "PEI texturizada e lisa para boa adesão.", "icone": "plate", "termo": "placa pei impressora 3d" },
+    { "id": "secadora", "titulo": "Secadora de filamento", "texto": "Filamento seco imprime sem fiapos e bolhas.", "icone": "dryer", "termo": "secadora de filamento impressora 3d" },
+    { "id": "armazenar", "titulo": "Guardar filamento", "texto": "Caixas herméticas e sílica contra umidade.", "icone": "box", "termo": "caixa hermetica filamento silica" },
+    { "id": "acabamento", "titulo": "Acabamento", "texto": "Alicate, espátula, lixas e estilete.", "icone": "tools", "termo": "kit ferramentas acabamento impressao 3d" },
+    { "id": "adesao", "titulo": "Adesão à mesa", "texto": "Cola e spray para a primeira camada grudar.", "icone": "glue", "termo": "cola impressao 3d adesao mesa" }
+  ]
+}

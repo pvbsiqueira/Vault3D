@@ -1597,3 +1597,7 @@ body.is-moving-files .sidebar-folder-item.is-move-source { opacity: 0.5; }
   cursor: pointer;
 }
 .toast-action:hover { background: var(--accent-soft); }
+
+/* Link externo na barra lateral (Indicações) */
+.sidebar-nav-link .nav-external { margin-left: auto; display: inline-flex; color: var(--text-muted, var(--text-secondary)); }
+.sidebar-nav-link:hover .nav-external { color: var(--accent); }
