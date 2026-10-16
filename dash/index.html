@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="theme-color" content="#05080c">
+  <title>Vault3D · Uso do app</title>
+  <link rel="icon" type="image/png" href="/build/icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap">
+  <style>
+    :root {
+      --bg: #05080c;
+      --surface: #0e151e;
+      --surface-2: #141d28;
+      --line: rgba(255, 255, 255, 0.08);
+      --grid: rgba(255, 255, 255, 0.06);
+      --text: #f2f6fa;
+      --muted: #8d9aaa;
+      --accent: #22d3ee;
+      --accent-soft: rgba(34, 211, 238, 0.12);
+      --danger: #f87171;
+      --font: 'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+      color-scheme: dark;
+    }
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; }
+    body { background: var(--bg); color: var(--text); font-family: var(--font); font-size: 15px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+    button, input { font: inherit; }
+    [hidden] { display: none !important; }
+
+    .wrap { max-width: 1180px; margin: 0 auto; padding: 20px 16px 32px; }
+    header { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; flex-wrap: wrap; }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 18px; }
+    .brand img { width: 28px; height: 28px; }
+    .brand b { color: var(--accent); }
+    .brand small { color: var(--muted); font-weight: 500; font-size: 14px; }
+    header .spacer { flex: 1; }
+    .chip { display: inline-flex; gap: 4px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 3px; }
+    .chip button { background: none; border: 0; color: var(--muted); padding: 5px 12px; border-radius: 7px; cursor: pointer; }
+    .chip button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
+    .btn-ghost { background: none; border: 1px solid var(--line); color: var(--muted); border-radius: 10px; padding: 6px 12px; cursor: pointer; }
+    .btn-ghost:hover { color: var(--text); }
+
+    /* Login */
+    .login { max-width: 380px; margin: 12vh auto 0; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 28px; }
+    .login h1 { font-size: 20px; margin: 0 0 4px; }
+    .login p { color: var(--muted); margin: 0 0 18px; font-size: 14px; }
+    .login label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+    .login input { width: 100%; background: var(--bg); border: 1px solid var(--line); color: var(--text); border-radius: 10px; padding: 10px 12px; margin-bottom: 14px; }
+    .login input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+    .btn { width: 100%; background: var(--accent); color: #031016; border: 0; border-radius: 10px; padding: 11px; font-weight: 700; cursor: pointer; }
+    .btn:disabled { opacity: .6; cursor: wait; }
+    .msg { font-size: 13px; margin-top: 12px; color: var(--muted); }
+    .msg.error { color: var(--danger); }
+
+    /* Painel */
+    .tiles { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
+    .tile { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; min-width: 0; }
+    .tile .label { color: var(--muted); font-size: 13px; }
+    .tile .value { font-size: 28px; font-weight: 800; line-height: 1.2; margin-top: 4px; font-variant-numeric: tabular-nums; }
+    .tile .sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
+
+    .grid { display: grid; grid-template-columns: 2fr 1fr; gap: 12px; }
+    .card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 16px; min-width: 0; }
+    .card h2 { font-size: 14px; font-weight: 600; margin: 0 0 2px; }
+    .card .hint { color: var(--muted); font-size: 12px; margin: 0 0 10px; }
+    .chart { position: relative; }
+    .chart svg { width: 100%; height: 180px; display: block; overflow: visible; }
+    .axis-label { fill: var(--muted); font-size: 11px; font-family: var(--font); }
+    .bar { fill: var(--accent); pointer-events: none; }
+    .bar-hit { fill: transparent; }
+    .bar.active { fill: #67e8f9; }
+
+    .hbars { display: grid; gap: 10px; margin-top: 6px; }
+    .hrow { display: grid; grid-template-columns: 96px 1fr 44px; align-items: center; gap: 10px; font-size: 13px; }
+    .hrow .name { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .hrow .track { display: block; height: 10px; background: var(--surface-2); border-radius: 4px; overflow: hidden; }
+    .hrow .fill { display: block; height: 100%; background: var(--accent); border-radius: 0 4px 4px 0; min-width: 2px; }
+    .hrow .num { text-align: right; font-variant-numeric: tabular-nums; }
+
+    .tooltip { position: absolute; pointer-events: none; background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; font-size: 12px; white-space: nowrap; transform: translate(-50%, -100%); margin-top: -8px; z-index: 5; }
+    .tooltip b { font-size: 14px; }
+    .foot { color: var(--muted); font-size: 12px; margin-top: 14px; }
+    .denied { text-align: center; margin-top: 14vh; color: var(--muted); }
+    .denied h1 { color: var(--text); font-size: 20px; }
+
+    @media (max-width: 960px) {
+      .tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .grid { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 520px) {
+      .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .tile .value { font-size: 24px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="brand"><img src="/build/icon.png" alt=""><span>Vault<b>3D</b></span><small>· uso do app</small></div>
+      <div class="spacer"></div>
+      <div class="chip" id="rangeChip" hidden>
+        <button type="button" data-days="7" aria-pressed="false">7 dias</button>
+        <button type="button" data-days="30" aria-pressed="true">30 dias</button>
+        <button type="button" data-days="90" aria-pressed="false">90 dias</button>
+      </div>
+      <button type="button" class="btn-ghost" id="btnLogout" hidden>Sair</button>
+    </header>
+
+    <!-- Login -->
+    <section class="login" id="loginView" hidden>
+      <h1>Entrar no painel</h1>
+      <p>Acesso restrito à administração do Vault3D.</p>
+      <form id="emailForm">
+        <label for="email">E-mail</label>
+        <input id="email" type="email" autocomplete="email" required>
+        <button class="btn" id="btnSend" type="submit">Enviar código</button>
+      </form>
+      <form id="codeForm" hidden>
+        <label for="code">Código recebido por e-mail</label>
+        <input id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="8" required>
+        <button class="btn" id="btnVerify" type="submit">Entrar</button>
+      </form>
+      <div class="msg" id="loginMsg" role="status"></div>
+    </section>
+
+    <!-- Sem permissão -->
+    <section class="denied" id="deniedView" hidden>
+      <h1>Sem acesso</h1>
+      <p>Esta conta não tem permissão para ver o painel.</p>
+    </section>
+
+    <!-- Painel -->
+    <main id="dashView" hidden>
+      <div class="tiles">
+        <div class="tile"><div class="label">Ativos hoje</div><div class="value" id="tToday">–</div><div class="sub">abriram o app hoje</div></div>
+        <div class="tile"><div class="label">Ativos em 7 dias</div><div class="value" id="t7">–</div><div class="sub" id="t7sub">&nbsp;</div></div>
+        <div class="tile"><div class="label">Ativos em 30 dias</div><div class="value" id="t30">–</div><div class="sub" id="t30sub">&nbsp;</div></div>
+        <div class="tile"><div class="label">Tempo médio aberto</div><div class="value" id="tAvg">–</div><div class="sub" id="tAvgSub">&nbsp;</div></div>
+        <div class="tile"><div class="label">Voltaram no dia seguinte</div><div class="value" id="tD1">–</div><div class="sub" id="tD1sub">&nbsp;</div></div>
+        <div class="tile"><div class="label">Voltaram em 7 dias</div><div class="value" id="tD7">–</div><div class="sub" id="tD7sub">&nbsp;</div></div>
+      </div>
+
+      <div class="grid">
+        <div class="card">
+          <h2>Pessoas que abriram o app por dia</h2>
+          <p class="hint">Cada pessoa conta uma vez por dia, mesmo abrindo várias vezes.</p>
+          <div class="chart" id="chartActive"></div>
+        </div>
+        <div class="card">
+          <h2>Quantos dias usaram na última semana</h2>
+          <p class="hint">Entre quem abriu o app nos últimos 7 dias.</p>
+          <div class="hbars" id="freqBars"></div>
+        </div>
+        <div class="card">
+          <h2>Tempo médio com o app aberto, por dia</h2>
+          <p class="hint">Em minutos, só sessões já encerradas.</p>
+          <div class="chart" id="chartMinutes"></div>
+        </div>
+        <div class="card">
+          <h2>Versão em uso</h2>
+          <p class="hint">Última versão de cada pessoa ativa no período.</p>
+          <div class="hbars" id="versionBars"></div>
+        </div>
+      </div>
+      <div class="foot" id="foot"></div>
+    </main>
+  </div>
+
+  <script type="module">
+    import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.48.1';
+    import { getSupabaseConfig } from '/supabase-config.js';
+
+    const $ = id => document.getElementById(id);
+    const nf = new Intl.NumberFormat('pt-BR');
+    const views = ['loginView', 'deniedView', 'dashView'];
+    let supabase = null;
+    let days = 30;
+    let pendingEmail = '';
+
+    function show(view) {
+      views.forEach(v => { $(v).hidden = v !== view; });
+      $('rangeChip').hidden = view !== 'dashView';
+      $('btnLogout').hidden = view === 'loginView';
+    }
+
+    function setMsg(text, isError = false) {
+      $('loginMsg').textContent = text;
+      $('loginMsg').classList.toggle('error', isError);
+    }
+
+    function pct(part, base) {
+      return base ? Math.round((part / base) * 100) + '%' : '–';
+    }
+
+    function fmtMinutes(min) {
+      if (min == null) return '–';
+      if (min < 60) return `${nf.format(Math.round(min))} min`;
+      const h = Math.floor(min / 60);
+      const m = Math.round(min % 60);
+      return `${h}h${m ? String(m).padStart(2, '0') : ''}`;
+    }
+
+    function fmtDay(iso, withWeekday = false) {
+      const [y, mo, d] = iso.split('-').map(Number);
+      const date = new Date(y, mo - 1, d);
+      return date.toLocaleDateString('pt-BR', withWeekday ? { weekday: 'short', day: '2-digit', month: '2-digit' } : { day: '2-digit', month: '2-digit' });
+    }
+
+    function niceMax(v) {
+      if (v <= 4) return 4;
+      const p = Math.pow(10, Math.floor(Math.log10(v)));
+      const n = v / p;
+      const step = n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10;
+      return step * p;
+    }
+
+    // Gráfico de barras de uma série, com tooltip ao passar o mouse.
+    function barChart(container, rows, valueKey, tooltipFn) {
+      const W = 640, H = 180, padL = 34, padB = 22, padT = 6;
+      const max = niceMax(Math.max(0, ...rows.map(r => r[valueKey] || 0)));
+      const innerW = W - padL, innerH = H - padB - padT;
+      const slot = innerW / rows.length;
+      const barW = Math.max(2, Math.min(28, slot - 2));
+      const y = v => padT + innerH - (v / max) * innerH;
+      const ticks = [0, max / 2, max];
+      const labelEvery = Math.ceil(rows.length / 8);
+
+      let svg = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="${container.previousElementSibling.previousElementSibling.textContent}">`;
+      ticks.forEach(t => {
+        svg += `<line x1="${padL}" x2="${W}" y1="${y(t)}" y2="${y(t)}" stroke="var(--grid)" />`;
+        svg += `<text class="axis-label" x="${padL - 6}" y="${y(t) + 4}" text-anchor="end">${nf.format(t)}</text>`;
+      });
+      rows.forEach((r, i) => {
+        const v = r[valueKey] || 0;
+        const x = padL + i * slot + (slot - barW) / 2;
+        const top = y(v);
+        const h = Math.max(0, padT + innerH - top);
+        const rad = Math.min(4, barW / 2, h);
+        // Barra com cantos arredondados só no topo, presa à linha de base.
+        const path = h > 0
+          ? `M${x},${padT + innerH} V${top + rad} Q${x},${top} ${x + rad},${top} H${x + barW - rad} Q${x + barW},${top} ${x + barW},${top + rad} V${padT + innerH} Z`
+          : '';
+        svg += `<rect class="bar-hit" data-i="${i}" x="${padL + i * slot}" y="${padT}" width="${slot}" height="${innerH}" />`;
+        svg += `<path class="bar" data-bar="${i}" d="${path}" />`;
+        const last = rows.length - 1;
+        if (i === last || (i % labelEvery === 0 && last - i >= labelEvery / 2 + 1)) {
+          svg += `<text class="axis-label" x="${padL + i * slot + slot / 2}" y="${H - 6}" text-anchor="middle">${fmtDay(r.day)}</text>`;
+        }
+      });
+      svg += '</svg>';
+      container.innerHTML = svg + '<div class="tooltip" hidden></div>';
+
+      const tip = container.querySelector('.tooltip');
+      const svgEl = container.querySelector('svg');
+      container.querySelectorAll('.bar-hit').forEach(hit => {
+        hit.addEventListener('mouseenter', () => {
+          const i = Number(hit.dataset.i);
+          container.querySelectorAll('.bar.active').forEach(b => b.classList.remove('active'));
+          container.querySelector(`[data-bar="${i}"]`).classList.add('active');
+          tip.innerHTML = tooltipFn(rows[i]);
+          tip.hidden = false;
+          const box = svgEl.getBoundingClientRect();
+          const scaleX = box.width / W, scaleY = box.height / H;
+          const cx = (padL + i * slot + slot / 2) * scaleX;
+          const top = y(rows[i][valueKey] || 0) * scaleY;
+          const half = tip.offsetWidth / 2;
+          tip.style.left = Math.min(Math.max(cx, half), box.width - half) + 'px';
+          tip.style.top = top + 'px';
+        });
+        hit.addEventListener('mouseleave', () => {
+          tip.hidden = true;
+          container.querySelectorAll('.bar.active').forEach(b => b.classList.remove('active'));
+        });
+      });
+    }
+
+    function hBars(container, items) {
+      const max = Math.max(1, ...items.map(i => i.value));
+      container.innerHTML = items.length
+        ? items.map(i => `
+            <div class="hrow" title="${i.name}: ${nf.format(i.value)}">
+              <span class="name">${i.name}</span>
+              <span class="track"><span class="fill" style="width:${(i.value / max) * 100}%"></span></span>
+              <span class="num">${nf.format(i.value)}</span>
+            </div>`).join('')
+        : '<p class="hint">Ainda sem dados.</p>';
+    }
+
+    function render(s) {
+      const r = s.retention || {};
+      $('tToday').textContent = nf.format(s.active_today);
+      $('t7').textContent = nf.format(s.active_7d);
+      $('t30').textContent = nf.format(s.active_30d);
+      $('t7sub').textContent = `${pct(s.active_7d, s.tracked_users)} de quem já usou`;
+      $('t30sub').textContent = `${pct(s.active_30d, s.tracked_users)} de quem já usou`;
+      $('tAvg').textContent = fmtMinutes(s.avg_minutes);
+      $('tAvgSub').textContent = s.median_minutes != null ? `metade fica até ${fmtMinutes(s.median_minutes)}` : ' ';
+      $('tD1').textContent = pct(r.ret_d1, r.base_d1);
+      $('tD1sub').textContent = r.base_d1 ? `${nf.format(r.ret_d1)} de ${nf.format(r.base_d1)} pessoas` : 'ainda sem base';
+      $('tD7').textContent = pct(r.ret_d7, r.base_d7);
+      $('tD7sub').textContent = r.base_d7 ? `${nf.format(r.ret_d7)} de ${nf.format(r.base_d7)} pessoas` : 'precisa de 7 dias de dados';
+
+      barChart($('chartActive'), s.daily, 'active_users', d =>
+        `${fmtDay(d.day, true)}<br><b>${nf.format(d.active_users)}</b> pessoas · ${nf.format(d.sessions)} aberturas` +
+        (d.new_users ? `<br>${nf.format(d.new_users)} contas novas` : ''));
+      barChart($('chartMinutes'), s.daily.map(d => ({ ...d, avg_minutes: Number(d.avg_minutes) || 0 })), 'avg_minutes', d =>
+        `${fmtDay(d.day, true)}<br><b>${fmtMinutes(d.avg_minutes || null)}</b> em média`);
+
+      const f = s.week_frequency || {};
+      hBars($('freqBars'), [
+        { name: '1 dia', value: f['1'] || 0 },
+        { name: '2 a 3 dias', value: f['2-3'] || 0 },
+        { name: '4 a 6 dias', value: f['4-6'] || 0 },
+        { name: 'Todos os dias', value: f['7'] || 0 }
+      ]);
+      hBars($('versionBars'), (s.versions || []).slice(0, 6).map(v => ({ name: v.version, value: v.users })));
+
+      const since = s.tracking_since ? `Registro desde ${fmtDay(s.tracking_since)}.` : 'Nenhuma sessão registrada ainda.';
+      $('foot').textContent = `${nf.format(s.total_users)} contas criadas no total. ${since} Dias no fuso de Brasília. Atualizado ${new Date(s.generated_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}.`;
+    }
+
+    async function loadStats() {
+      const { data, error } = await supabase.rpc('dash_stats', { p_days: days });
+      if (error) {
+        if (error.code === '42501' || /forbidden/i.test(error.message)) { show('deniedView'); return; }
+        show('dashView');
+        $('foot').textContent = 'Erro ao carregar: ' + error.message;
+        return;
+      }
+      show('dashView');
+      render(data);
+    }
+
+    async function onSession(session) {
+      if (!session) { show('loginView'); return; }
+      await loadStats();
+    }
+
+    async function boot() {
+      const config = await getSupabaseConfig();
+      supabase = createClient(config.supabaseUrl, config.supabaseAnonKey, {
+        auth: { persistSession: true, autoRefreshToken: true, storageKey: 'vault3d-dash-auth' }
+      });
+      const { data } = await supabase.auth.getSession();
+      await onSession(data.session);
+
+      $('emailForm').addEventListener('submit', async e => {
+        e.preventDefault();
+        pendingEmail = $('email').value.trim().toLowerCase();
+        $('btnSend').disabled = true;
+        setMsg('Enviando…');
+        const { error } = await supabase.auth.signInWithOtp({ email: pendingEmail, options: { shouldCreateUser: false } });
+        $('btnSend').disabled = false;
+        if (error) { setMsg('Não foi possível enviar o código. Confira o e-mail.', true); return; }
+        $('emailForm').hidden = true;
+        $('codeForm').hidden = false;
+        setMsg(`Código enviado para ${pendingEmail}.`);
+        $('code').focus();
+      });
+
+      $('codeForm').addEventListener('submit', async e => {
+        e.preventDefault();
+        $('btnVerify').disabled = true;
+        const { data: res, error } = await supabase.auth.verifyOtp({ email: pendingEmail, token: $('code').value.trim(), type: 'email' });
+        $('btnVerify').disabled = false;
+        if (error) { setMsg('Código inválido ou expirado.', true); return; }
+        setMsg('');
+        await onSession(res.session);
+      });
+
+      $('btnLogout').addEventListener('click', async () => {
+        await supabase.auth.signOut();
+        $('emailForm').hidden = false;
+        $('codeForm').hidden = true;
+        $('code').value = '';
+        show('loginView');
+      });
+
+      $('rangeChip').addEventListener('click', e => {
+        const btn = e.target.closest('button[data-days]');
+        if (!btn) return;
+        days = Number(btn.dataset.days);
+        $('rangeChip').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b === btn)));
+        loadStats();
+      });
+    }
+
+    boot().catch(err => {
+      show('loginView');
+      setMsg('Falha ao iniciar: ' + (err?.message || err), true);
+    });
+  </script>
+</body>
+</html>
