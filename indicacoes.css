@@ -63,7 +63,9 @@ h2 { font-size: 1.05rem; font-weight: 700; }
 .arrow { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 50%; border: 1px solid var(--line-strong); background: var(--surface); color: var(--text); cursor: pointer; }
 .arrow:hover { border-color: var(--accent); color: var(--accent); }
 .arrow svg { width: 16px; height: 16px; }
-.trilho { display: grid; grid-auto-flow: column; grid-auto-columns: calc((100% - 2 * 14px) / 3); gap: 14px; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; }
+.trilho { display: grid; grid-auto-flow: column; grid-auto-columns: calc((100% - 2 * 14px) / 3); gap: 14px; overflow-x: auto;
+  /* folga para o card subir no hover sem ser cortado pela área de rolagem */
+  padding: 4px 2px; margin: -4px -2px; scroll-snap-type: x mandatory; scrollbar-width: none; }
 .trilho::-webkit-scrollbar { display: none; }
 .trilho li { scroll-snap-align: start; }
 .produto { display: flex; align-items: flex-start; gap: 12px; padding: 14px; height: 100%; border-radius: 16px; background: linear-gradient(180deg, var(--surface-2), var(--surface)); border: 1px solid rgba(34, 211, 238, .22); transition: border-color .2s, transform .2s; }
