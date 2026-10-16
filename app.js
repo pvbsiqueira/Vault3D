@@ -4,6 +4,7 @@ import { generateSTLThumbnail, extract3MFThumbnail, parse3MFGeometry } from './t
 import JSZip from 'https://esm.sh/jszip@3.10.1';
 import { parseSTL } from './stl-parser.js';
 import { initAuth, getAuthenticatedUser } from './auth.js';
+import { startUsageTracking } from './usage-tracker.js';
 
 // Estado global da aplicação
 const state = {
@@ -595,6 +596,9 @@ function init() {
   initAuth((user) => {
     // Restaurar biblioteca salva apenas quando usuário estiver autenticado
     checkAndRestoreSavedFolders();
+
+    // Estatísticas de uso: só abertura/fechamento do app, nenhum dado de arquivo
+    startUsageTracking(user);
   });
 
   // Resetar estado e visualização da biblioteca ao desconectar
