@@ -13,7 +13,8 @@ const ICONES = {
   dryer: '<rect x="4" y="4" width="16" height="16" rx="3"/><circle cx="12" cy="12" r="4"/><path d="M8 7h.01"/>',
   box: '<path d="M3 7l9-4 9 4v10l-9 4-9-4z"/><path d="M3 7l9 4 9-4M12 11v10"/>',
   tools: '<path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z"/>',
-  glue: '<path d="M9 3h6v4H9z"/><path d="M7 7h10v14H7z"/><path d="M10 12h4"/>'
+  glue: '<path d="M9 3h6v4H9z"/><path d="M7 7h10v14H7z"/><path d="M10 12h4"/>',
+  drop: '<path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"/>'
 };
 
 const NOMES_LOJA = { amazon: 'Amazon', mercadolivre: 'Mercado Livre', shopee: 'Shopee' };
@@ -66,14 +67,23 @@ function renderProdutos(dados) {
     const item = el('li');
     const a = el('a', { href: linkSeguro(p.url), target: '_blank', rel: 'sponsored noopener', class: 'produto' });
     const img = linkSeguro(p.imagem);
+    const loja = NOMES_LOJA[p.loja] || p.loja || 'loja';
     a.innerHTML = `
-      ${img ? `<img src="${escapar(img)}" alt="" loading="lazy">` : '<span class="sem-img"></span>'}
-      <strong>${escapar(p.titulo)}</strong>
-      <span class="meta">${escapar(NOMES_LOJA[p.loja] || p.loja || '')}${p.preco ? ` · ${escapar(p.preco)}` : ''}</span>`;
+      ${img ? `<img src="${escapar(img)}" alt="" loading="lazy">` : `<span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${ICONES[p.icone] || ICONES.box}</svg></span>`}
+      <span class="corpo">
+        <strong>${escapar(p.titulo)}</strong>
+        ${p.texto ? `<span class="txt">${escapar(p.texto)}</span>` : ''}
+        <span class="ver">Ver na ${escapar(loja)}${p.preco ? ` · ${escapar(p.preco)}` : ''}</span>
+      </span>`;
     item.append(a);
     trilho.append(item);
   }
   secao.hidden = false;
+  // Setas só quando há mais produtos do que cabem na faixa
+  const arrows = secao.querySelector('.arrows');
+  const syncArrows = () => { arrows.hidden = trilho.scrollWidth <= trilho.clientWidth + 2; };
+  syncArrows();
+  window.addEventListener('resize', syncArrows);
   secao.querySelectorAll('.arrow').forEach((btn) => {
     btn.addEventListener('click', () => {
       trilho.scrollBy({ left: Number(btn.dataset.dir) * trilho.clientWidth * 0.9, behavior: 'smooth' });
