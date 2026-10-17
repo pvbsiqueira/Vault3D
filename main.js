@@ -533,6 +533,291 @@ ipcMain.handle('copy-to-clipboard', (event, text) => {
   return false;
 });
 
+// 9. Busca dos modelos Em Alta (Top 5 em 48h, 7 dias e 15 dias) no MakerWorld e MakerOnline
+let trendingCache = null;
+let trendingFetchPromise = null;
+const TRENDING_CACHE_TTL = 15 * 60 * 1000; // 15 minutos
+
+async function fetchMakerOnlineAllRanges() {
+  const emptyRanges = { '48h': [], '7d': [], '15d': [] };
+  try {
+    const fetchPage = (page) =>
+      fetch('https://www.makeronline.com/api/search/model', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({
+          page,
+          page_size: 50,
+          keyword: '',
+          category_id: 0,
+          print_type: 0,
+          order: 'submit_at_desc'
+        })
+      })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j) => (j && j.data && Array.isArray(j.data.data) ? j.data.data : []))
+        .catch(() => []);
+
+    // Duas ondas paralelas de 35 páginas (3.500 modelos recentes cobrindo ~15 dias)
+    const wave1 = await Promise.all(Array.from({ length: 35 }, (_, i) => fetchPage(i + 1)));
+    const wave2 = await Promise.all(Array.from({ length: 35 }, (_, i) => fetchPage(i + 36)));
+    const pages = [...wave1, ...wave2];
+
+    const seen = new Set();
+    const allRecent = [];
+    for (const list of pages) {
+      for (const item of list) {
+        if (!item || !item.mold_id || item.is_adult_nsfw) continue;
+        if (seen.has(item.mold_id)) continue;
+        seen.add(item.mold_id);
+        allRecent.push(item);
+      }
+    }
+
+    const now = Date.now();
+    const parseMoTime = (str) => {
+      if (!str || typeof str !== 'string') return 0;
+      const iso = str.includes('T') ? str : str.replace(' ', 'T') + '+08:00';
+      const t = Date.parse(iso);
+      return Number.isNaN(t) ? 0 : t;
+    };
+
+    const buildTopForHours = (hours) => {
+      const cutoff = now - hours * 3600 * 1000;
+      let pool = allRecent.filter((m) => {
+        const t = parseMoTime(m.publish_time);
+        return t > 0 ? t >= cutoff : true;
+      });
+      if (pool.length < 25) {
+        pool = allRecent;
+      }
+      const sorted = pool.slice().sort((a, b) =>
+        (Number(b.download_num) || 0) - (Number(a.download_num) || 0) ||
+        (Number(b.like_num) || 0) - (Number(a.like_num) || 0)
+      );
+      return sorted.slice(0, 25).map((m, idx) => {
+        const pubMs = parseMoTime(m.publish_time);
+        const slug = String(m.title || 'model')
+          .trim()
+          .replace(/[^a-zA-Z0-9]+/g, '-')
+          .replace(/^-+|-+$/g, '') || 'model';
+        return {
+          rank: idx + 1,
+          id: String(m.mold_id),
+          site: 'makeronline',
+          title: m.title || `Modelo #${m.mold_id}`,
+          cover: m.mold_image || '',
+          downloads: Number(m.download_num) || 0,
+          likes: Number(m.like_num) || 0,
+          prints: 0,
+          author: m.user_display_name || m.user_name || 'MakerOnline',
+          authorAvatar: m.user_avatar || '',
+          publishedAt: pubMs ? new Date(pubMs).toISOString() : '',
+          url: m.target_url || `https://www.makeronline.com/en/model/${slug}/${m.mold_id}.html`
+        };
+      });
+    };
+
+    return {
+      '48h': buildTopForHours(48),
+      '7d': buildTopForHours(7 * 24),
+      '15d': buildTopForHours(15 * 24)
+    };
+  } catch (err) {
+    console.warn('Erro ao buscar Em Alta do MakerOnline:', err);
+    return emptyRanges;
+  }
+}
+
+async function fetchMakerWorldAllRanges() {
+  const emptyRanges = { '48h': [], '7d': [], '15d': [] };
+  let win = null;
+  try {
+    win = new BrowserWindow({
+      show: false,
+      width: 1100,
+      height: 750,
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true
+      }
+    });
+
+    win.webContents.setAudioMuted(true);
+
+    const domReadyPromise = new Promise((resolve) => {
+      win.webContents.once('dom-ready', resolve);
+    });
+
+    const loadPromise = win.loadURL('https://makerworld.com/pt/3d-models', {
+      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+    }).catch(() => {});
+
+    await Promise.race([
+      domReadyPromise,
+      loadPromise,
+      new Promise((resolve) => setTimeout(resolve, 7500))
+    ]);
+
+    // Pequena pausa para garantir que __NEXT_DATA__ esteja disponível no DOM
+    await new Promise((r) => setTimeout(r, 700));
+
+    const rawList = await Promise.race([
+      win.webContents.executeJavaScript(`
+        (async () => {
+          const collected = [];
+          try {
+            const ndDesigns = window.__NEXT_DATA__?.props?.pageProps?.designs;
+            if (Array.isArray(ndDesigns)) collected.push(...ndDesigns);
+          } catch (_) {}
+          const fetchPage = async (url) => {
+            try {
+              const ctrl = new AbortController();
+              const timer = setTimeout(() => ctrl.abort(), 2800);
+              const r = await fetch(url, { signal: ctrl.signal });
+              clearTimeout(timer);
+              if (!r.ok) return [];
+              const j = await r.json();
+              return Array.isArray(j?.hits) ? j.hits : [];
+            } catch (_) {
+              return [];
+            }
+          };
+          const [hot0, hot1, new0, new1] = await Promise.all([
+            fetchPage('/api/v1/search-service/select/design2?orderBy=hotScore&limit=100&offset=0'),
+            fetchPage('/api/v1/search-service/select/design2?orderBy=hotScore&limit=100&offset=100'),
+            fetchPage('/api/v1/search-service/select/design2?orderBy=newUploads&limit=100&offset=0'),
+            fetchPage('/api/v1/search-service/select/design2?orderBy=newUploads&limit=100&offset=100')
+          ]);
+          collected.push(...hot0, ...hot1, ...new0, ...new1);
+          return collected;
+        })()
+      `),
+      new Promise((resolve) => setTimeout(() => resolve([]), 5000))
+    ]);
+
+    const seen = new Set();
+    const items = [];
+    for (const entry of Array.isArray(rawList) ? rawList : []) {
+      const d = entry && entry.design ? entry.design : entry;
+      if (!d || !d.id || d.nsfw) continue;
+      if (seen.has(d.id)) continue;
+      seen.add(d.id);
+      items.push(d);
+    }
+
+    const now = Date.now();
+    const buildTopForHours = (hours) => {
+      const cutoff = now - hours * 3600 * 1000;
+      let pool = items.filter((d) => {
+        const t = d.createTime ? Date.parse(d.createTime) : 0;
+        return t > 0 && t >= cutoff;
+      });
+      if (pool.length < 25) {
+        const fallbackCutoff = now - Math.max(hours * 2, 96) * 3600 * 1000;
+        const poolFallback = items.filter((d) => {
+          const t = d.createTime ? Date.parse(d.createTime) : 0;
+          return t > 0 && t >= fallbackCutoff;
+        });
+        pool = poolFallback.length >= 25 ? poolFallback : items;
+      }
+
+      const sorted = pool.slice().sort((a, b) =>
+        (Number(b.downloadCount) || 0) - (Number(a.downloadCount) || 0) ||
+        (Number(b.likeCount) || 0) - (Number(a.likeCount) || 0)
+      );
+
+      return sorted.slice(0, 25).map((d, idx) => {
+        const slugPart = d.slug ? `-${d.slug}` : '';
+        return {
+          rank: idx + 1,
+          id: String(d.id),
+          site: 'makerworld',
+          title: d.titleTranslated || d.title || `Modelo #${d.id}`,
+          originalTitle: d.title || '',
+          cover: d.cover || d.coverPortrait || '',
+          downloads: Number(d.downloadCount) || 0,
+          likes: Number(d.likeCount) || 0,
+          prints: Number(d.printCount) || 0,
+          author: (d.designCreator && (d.designCreator.name || d.designCreator.handle)) || 'MakerWorld',
+          authorAvatar: (d.designCreator && d.designCreator.avatar) || '',
+          publishedAt: d.createTime || '',
+          url: `https://makerworld.com/pt/models/${d.id}${slugPart}`
+        };
+      });
+    };
+
+    return {
+      '48h': buildTopForHours(48),
+      '7d': buildTopForHours(7 * 24),
+      '15d': buildTopForHours(15 * 24)
+    };
+  } catch (err) {
+    console.warn('Erro ao buscar Em Alta do MakerWorld:', err);
+    return emptyRanges;
+  } finally {
+    if (win && !win.isDestroyed()) {
+      win.destroy();
+    }
+  }
+}
+
+ipcMain.handle('fetch-trending-models', async (event, options = {}) => {
+  const force = Boolean(options && options.force);
+  const reqRange = ['48h', '7d', '15d'].includes(options?.range) ? options.range : '48h';
+
+  if (!force && trendingCache && Date.now() - trendingCache.updatedAt < TRENDING_CACHE_TTL) {
+    const rData = trendingCache.ranges?.[reqRange] || {
+      makerWorld: trendingCache.makerWorld || [],
+      makerOnline: trendingCache.makerOnline || []
+    };
+    return {
+      ...trendingCache,
+      makerWorld: rData.makerWorld,
+      makerOnline: rData.makerOnline,
+      makerworld: rData.makerWorld,
+      makeronline: rData.makerOnline
+    };
+  }
+
+  if (trendingFetchPromise) {
+    return trendingFetchPromise;
+  }
+
+  trendingFetchPromise = (async () => {
+    try {
+      const [mwRanges, moRanges] = await Promise.all([
+        fetchMakerWorldAllRanges(),
+        fetchMakerOnlineAllRanges()
+      ]);
+      const ranges = {
+        '48h': { makerWorld: mwRanges['48h'] || [], makerOnline: moRanges['48h'] || [] },
+        '7d': { makerWorld: mwRanges['7d'] || [], makerOnline: moRanges['7d'] || [] },
+        '15d': { makerWorld: mwRanges['15d'] || [], makerOnline: moRanges['15d'] || [] }
+      };
+      const active = ranges[reqRange] || ranges['48h'];
+      const result = {
+        success: active.makerWorld.length > 0 || active.makerOnline.length > 0,
+        ranges,
+        makerWorld: active.makerWorld,
+        makerOnline: active.makerOnline,
+        makerworld: active.makerWorld,
+        makeronline: active.makerOnline,
+        updatedAt: Date.now()
+      };
+      if (result.success) {
+        trendingCache = result;
+      }
+      return result;
+    } finally {
+      trendingFetchPromise = null;
+    }
+  })();
+
+  return trendingFetchPromise;
+});
+
+
 // ==========================================
 // Ciclo de Vida do Aplicativo e Instância Única
 // ==========================================

@@ -41,6 +41,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Cópia nativa direta para a Área de Transferência do Windows
   copyToClipboard: (text) => ipcRenderer.invoke('copy-to-clipboard', text),
 
+  // Busca nativa dos modelos Em Alta (MakerWorld + MakerOnline)
+  fetchTrendingModels: (options) => ipcRenderer.invoke('fetch-trending-models', options),
+
   // Gerenciamento de Atualização Automática
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
   restartAndInstallUpdate: () => ipcRenderer.invoke('restart-and-install-update'),

@@ -125,12 +125,38 @@ export function siteFromUrl(url) {
   if (!url) return null;
   const host = (url.match(/^https?:\/\/([^/]+)/i) || [])[1] || '';
   if (/makerworld/i.test(host)) return 'makerworld';
+  if (/makeronline/i.test(host)) return 'makeronline';
   if (/printables/i.test(host)) return 'printables';
   if (/thingiverse/i.test(host)) return 'thingiverse';
   if (/cults3d/i.test(host)) return 'cults3d';
   if (/myminifactory/i.test(host)) return 'myminifactory';
   if (/thangs/i.test(host)) return 'thangs';
   return 'web';
+}
+
+const MAKERONLINE_LICENSES = {
+  1: 'CC BY',
+  2: 'CC BY-SA',
+  3: 'CC BY-NC',
+  4: 'CC BY-NC-SA',
+  5: 'CC BY-ND',
+  6: 'CC BY-NC-ND',
+  7: 'CC0',
+  8: 'Standard Digital File License'
+};
+
+/** Lê Metadata/source_info.config gravado pelo MakerOnline / Anycubic Slicer Next */
+async function readSourceInfo(zip) {
+  const file = findFile(zip, 'Metadata/source_info.config');
+  if (!file) return null;
+  try {
+    const data = JSON.parse(await file.async('string'));
+    const moFileId = Number(data && data.mo_file_id);
+    if (moFileId > 0) {
+      return { moFileId, fileSource: data.file_source ?? null };
+    }
+  } catch (_) {}
+  return null;
 }
 
 /** Lê as configurações do projeto: JSON (Bambu/Orca) ou linhas "; chave = valor" (Prusa) */
@@ -206,7 +232,7 @@ function describeInfill(settings) {
  */
 async function readModelSettings(zip) {
   const file = findFile(zip, 'Metadata/model_settings.config');
-  const result = { plates: new Map(), usedExtruders: new Set(), objectCount: 0 };
+  const result = { plates: new Map(), usedExtruders: new Set(), objectCount: 0, searchHints: [] };
   if (!file) return result;
   let text = '';
   try { text = await file.async('string'); } catch (_) { return result; }
@@ -216,10 +242,13 @@ async function readModelSettings(zip) {
     return m ? m[1] : null;
   };
 
+  const rawNames = [];
   const objectExtruders = new Map();
   const objectRe = /<object\s+id=["'](\d+)["'][^>]*>([\s\S]*?)<\/object>/gi;
   let m;
   while ((m = objectRe.exec(text))) {
+    const objName = metaValue(m[2], 'name');
+    if (objName) rawNames.push(decodeEntities(objName));
     const set = new Set();
     const extRe = /key=["']extruder["']\s+value=["'](\d+)["']/gi;
     let e;
@@ -231,6 +260,31 @@ async function readModelSettings(zip) {
     objectExtruders.set(m[1], set);
   }
   result.objectCount = objectExtruders.size;
+
+  const genericRe = /^(object|part|cube|cylinder|sphere|cone|torus|mesh|default|box|plate|model|item|stl|step|stp|obj|3mf|\d+)([_\s-]*\d+)*$/i;
+  const cleanedNames = [];
+  for (const n of rawNames) {
+    const clean = n
+      .replace(/\.(stl|step|stp|obj|3mf)$/i, '')
+      .replace(/[_\s-]+(\d+|part\s*\d+|copy)$/i, '')
+      .replace(/[_-]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (clean.length >= 3 && !genericRe.test(clean) && !cleanedNames.some(x => x.toLowerCase() === clean.toLowerCase())) {
+      cleanedNames.push(clean);
+    }
+  }
+  // Se vários objetos compartilham uma primeira palavra significativa (ex.: "Ornstein base", "Ornstein body" -> "Ornstein")
+  if (cleanedNames.length >= 2) {
+    const firstWord = cleanedNames[0].split(/\s+/)[0];
+    if (firstWord && firstWord.length >= 3 && !genericRe.test(firstWord)) {
+      const sharedCount = cleanedNames.filter(c => c.toLowerCase().startsWith(firstWord.toLowerCase())).length;
+      if (sharedCount >= 2 && !cleanedNames.some(x => x.toLowerCase() === firstWord.toLowerCase())) {
+        cleanedNames.unshift(firstWord);
+      }
+    }
+  }
+  result.searchHints = cleanedNames.slice(0, 6);
 
   const plateBlocks = text.match(/<plate\b[\s\S]*?<\/plate>/gi) || [];
   plateBlocks.forEach((block, i) => {
@@ -255,6 +309,44 @@ function normalizeColor(c) {
   if (!c) return null;
   const m = String(c).match(/#([0-9a-f]{6})/i);
   return m ? `#${m[1].toLowerCase()}` : null;
+}
+
+function rgbStringToHex(paintColor) {
+  if (!paintColor) return null;
+  const direct = normalizeColor(paintColor);
+  if (direct) return direct;
+  const parts = String(paintColor).split(',').map(x => parseInt(x.trim(), 10));
+  if (parts.length >= 3 && parts.slice(0, 3).every(n => !isNaN(n) && n >= 0 && n <= 255)) {
+    return '#' + parts.slice(0, 3).map(n => n.toString(16).padStart(2, '0')).join('').toLowerCase();
+  }
+  return null;
+}
+
+function parseTimeLabelToSeconds(timeStr) {
+  if (!timeStr) return 0;
+  if (typeof timeStr === 'number') return Math.round(timeStr);
+  const str = String(timeStr).trim();
+  if (/^\d+$/.test(str)) return parseInt(str, 10);
+  const d = (str.match(/(\d+)\s*d/i) || [])[1];
+  const h = (str.match(/(\d+)\s*h/i) || [])[1];
+  const m = (str.match(/(\d+)\s*m/i) || [])[1];
+  const s = (str.match(/(\d+)\s*s/i) || [])[1];
+  let total = 0;
+  if (d) total += parseInt(d, 10) * 86400;
+  if (h) total += parseInt(h, 10) * 3600;
+  if (m) total += parseInt(m, 10) * 60;
+  if (s) total += parseInt(s, 10);
+  return total;
+}
+
+function formatSeconds(totalSeconds) {
+  if (!totalSeconds || totalSeconds <= 0) return null;
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  if (hours > 0) {
+    return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+  }
+  return `${Math.max(1, minutes)} min`;
 }
 
 function listAttachments(zip) {
@@ -286,7 +378,8 @@ export async function extract3MFExtras(zip, plates = [], sliceInfo = new Map()) 
     title: null, designer: null, description: null, license: null, copyright: null,
     created: null, application: null, source: null,
     printer: null, printerFull: null, nozzle: null, layerHeight: null, infill: null, support: null, profile: null,
-    filaments: [], pieces: null, attachments: []
+    filaments: [], pieces: null, attachments: [],
+    moFileId: null, moResolved: false, moChecked: false, searchHints: []
   };
 
   // 1. Autor, licença e origem
@@ -302,6 +395,21 @@ export async function extract3MFExtras(zip, plates = [], sliceInfo = new Map()) 
     extras.created = pickMeta(meta, 'CreationDate');
     extras.application = pickMeta(meta, 'Application');
     extras.source = detectSource(meta);
+  }
+
+  // 1b. MakerOnline / Anycubic Slicer Next: verificar Metadata/source_info.config
+  const sourceInfo = await readSourceInfo(zip);
+  if (sourceInfo && sourceInfo.moFileId) {
+    extras.moFileId = sourceInfo.moFileId;
+    if (!extras.source) {
+      extras.source = {
+        site: 'makeronline',
+        url: null,
+        moFileId: sourceInfo.moFileId
+      };
+    }
+  } else {
+    extras.moChecked = true;
   }
 
   // 2. Impressora e perfil
@@ -323,6 +431,7 @@ export async function extract3MFExtras(zip, plates = [], sliceInfo = new Map()) 
   // 3. Peças e filamentos usados por mesa
   const ms = await readModelSettings(zip);
   if (ms.objectCount) extras.pieces = ms.objectCount;
+  if (ms.searchHints && ms.searchHints.length) extras.searchHints = ms.searchHints;
 
   const filamentInfo = (index) => ({
     color: filamentColors[index - 1] || null,
@@ -374,3 +483,301 @@ export async function extract3MFExtras(zip, plates = [], sliceInfo = new Map()) 
 
   return extras;
 }
+
+// Cache em memória da sessão para evitar buscas repetidas do mesmo mo_file_id
+const moSessionCache = new Map();
+
+function buildMakerOnlineKeywords(fileName, extras) {
+  const candidates = [];
+  const addKw = (raw) => {
+    if (!raw) return;
+    const clean = String(raw)
+      .replace(/\.(3mf|stl|step|stp|obj)$/i, '')
+      .replace(/\s*\(\d+\)\s*$/g, '')
+      .replace(/\s*-\s*(copy|cópia|copia).*$/i, '')
+      .replace(/[_-]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (clean.length >= 2 && !candidates.some(c => c.toLowerCase() === clean.toLowerCase())) {
+      candidates.push(clean);
+    }
+  };
+
+  if (fileName) {
+    addKw(fileName);
+    const base = String(fileName)
+      .replace(/\.(3mf|stl|step|stp|obj)$/i, '')
+      .replace(/\s*\(\d+\)\s*$/g, '')
+      .replace(/[_-]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const words = base.split(/\s+/).filter(Boolean);
+    if (words.length >= 3) {
+      addKw(words.slice(0, -1).join(' '));
+      addKw(words.slice(0, 2).join(' '));
+    }
+    if (words.length >= 2 && words[0].length >= 3) {
+      addKw(words[0]);
+    }
+  }
+
+  if (extras && extras.title) addKw(extras.title);
+  if (extras && Array.isArray(extras.searchHints)) {
+    for (const h of extras.searchHints) {
+      addKw(h);
+      const w = String(h).split(/\s+/)[0];
+      if (w && w.length >= 3) addKw(w);
+    }
+  }
+
+  return candidates.slice(0, 6);
+}
+
+async function fetchJsonWithTimeout(url, options = {}, timeoutMs = 4500) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { ...options, signal: controller.signal });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (_) {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Consulta a API pública do MakerOnline usando `extras.moFileId` (de Metadata/source_info.config)
+ * para recuperar autor, título, licença, link direto da página, tempo/gramas por mesa e fotos/PDFs do modelo.
+ */
+export async function enrichFromMakerOnline(extras, plates = [], slicerData = null, fileName = '') {
+  if (!extras || !extras.moFileId) return false;
+  if (extras.moResolved) return true;
+
+  const targetMoFileId = Number(extras.moFileId);
+  const keywords = buildMakerOnlineKeywords(fileName, extras);
+
+  let matchedDetail = null;
+  let matchedProfile = null;
+
+  if (moSessionCache.has(targetMoFileId)) {
+    const cached = moSessionCache.get(targetMoFileId);
+    matchedDetail = cached.detail;
+    matchedProfile = cached.profile;
+  } else {
+    const checkedMoldIds = new Set();
+
+    for (const kw of keywords) {
+      if (matchedDetail) break;
+      const searchRes = await fetchJsonWithTimeout('https://www.makeronline.com/api/search/model', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keyword: kw, print_type: 0, page: 1, page_size: 12 })
+      });
+
+      const rows = (searchRes && searchRes.data && Array.isArray(searchRes.data.data)) ? searchRes.data.data : [];
+      const moldIds = rows
+        .map(r => Number(r.mold_id || r.id))
+        .filter(id => id > 0 && !checkedMoldIds.has(id));
+
+      moldIds.forEach(id => checkedMoldIds.add(id));
+
+      // Consulta detalhes em pequenos lotes paralelos de até 4 modelos
+      for (let i = 0; i < moldIds.length; i += 4) {
+        const batch = moldIds.slice(i, i + 4);
+        const details = await Promise.all(
+          batch.map(id => fetchJsonWithTimeout(`https://www.makeronline.com/api/mold/detail?id=${id}`))
+        );
+
+        for (const dRes of details) {
+          const d = dRes && dRes.data;
+          if (!d || !Array.isArray(d.print_profiles)) continue;
+          const prof = d.print_profiles.find(p =>
+            Number(p && p.download && p.download.id) === targetMoFileId ||
+            Number(p && p.id) === targetMoFileId
+          );
+          if (prof) {
+            matchedDetail = d;
+            matchedProfile = prof;
+            break;
+          }
+        }
+        if (matchedDetail) break;
+      }
+    }
+
+    if (matchedDetail) {
+      moSessionCache.set(targetMoFileId, { detail: matchedDetail, profile: matchedProfile });
+    }
+  }
+
+  if (!matchedDetail) {
+    // Mesmo que não tenha encontrado o perfil exato, configura o botão de busca no MakerOnline
+    const kw = keywords[0] || '';
+    if (!extras.source || !extras.source.url) {
+      extras.source = {
+        site: 'makeronline',
+        url: kw
+          ? `https://www.makeronline.com/en/model/list.html?keyword=${encodeURIComponent(kw)}`
+          : 'https://www.makeronline.com',
+        search: true,
+        moFileId: targetMoFileId
+      };
+    }
+    extras.moChecked = true;
+    return false;
+  }
+
+  // 1. Autor, título, licença, data e link direto da página no MakerOnline
+  extras.title = matchedDetail.title || extras.title;
+  extras.designer = matchedDetail.user_display_name || matchedDetail.user_name || extras.designer;
+  if (matchedDetail.license && MAKERONLINE_LICENSES[matchedDetail.license]) {
+    extras.license = MAKERONLINE_LICENSES[matchedDetail.license];
+  }
+  if (matchedDetail.created_time && !extras.created) {
+    extras.created = matchedDetail.created_time;
+  }
+  if (matchedDetail.description && !extras.description) {
+    extras.description = htmlToText(matchedDetail.description).slice(0, 1200);
+  }
+
+  const slug = (matchedDetail.title || 'model').trim().replace(/\s+/g, ' ');
+  extras.source = {
+    site: 'makeronline',
+    url: `https://www.makeronline.com/en/model/${encodeURIComponent(slug)}/${matchedDetail.id}.html`,
+    moFileId: targetMoFileId,
+    moldId: matchedDetail.id
+  };
+
+  // 2. Tempos e pesos por mesa de impressão + filamentos
+  const profile = matchedProfile || (Array.isArray(matchedDetail.print_profiles) ? matchedDetail.print_profiles[0] : null);
+  if (profile) {
+    const profileFiles = Array.isArray(profile.files) ? profile.files : [];
+    (plates || []).forEach((plate, idx) => {
+      if (plate.isCustomCover) return;
+      const pf = profileFiles.find(f => Number(f.id) === Number(plate.id)) || profileFiles[idx];
+      if (!pf) return;
+
+      const sec = parseTimeLabelToSeconds(pf.print_time);
+      if (sec > 0 && !plate.printTimeSeconds) {
+        plate.printTimeSeconds = sec;
+        plate.printTimeFormatted = formatSeconds(sec);
+      }
+
+      if (Array.isArray(pf.materials) && pf.materials.length > 0) {
+        const grams = pf.materials.reduce((sum, m) => sum + (parseFloat(m.filament_used_g) || 0), 0);
+        if (grams > 0 && !plate.filamentGrams) {
+          plate.filamentGrams = Math.round(grams * 10) / 10;
+        }
+        const types = Array.from(new Set(pf.materials.map(m => m.material_type).filter(Boolean)));
+        if (types.length) plate.filamentType = types.join(' + ');
+
+        if (!plate.colors || plate.colors.length === 0) {
+          plate.colors = Array.from(new Set(pf.materials.map(m => rgbStringToHex(m.paint_color)).filter(Boolean)));
+        }
+      }
+
+      if (!extras.layerHeight && pf.layer) {
+        extras.layerHeight = formatMm(pf.layer);
+      }
+    });
+
+    // Filamentos com gramas (materials_label traz o consolidado por cor/material do perfil)
+    const matLabels = Array.isArray(profile.materials_label) ? profile.materials_label : [];
+    if (matLabels.length > 0) {
+      const existingByColor = new Map();
+      (extras.filaments || []).forEach(f => {
+        if (f.color) existingByColor.set(f.color.toLowerCase(), f);
+      });
+
+      const enrichedFilaments = matLabels
+        .map((m, i) => {
+          const hex = rgbStringToHex(m.paint_color);
+          const grams = Math.round((parseFloat(m.filament_used_g) || 0) * 10) / 10;
+          const prev = (hex && existingByColor.get(hex)) || (extras.filaments && extras.filaments[i]) || {};
+          return {
+            color: hex || prev.color || null,
+            type: m.material_type || prev.type || null,
+            name: prev.name || m.material_type || null,
+            grams: grams > 0 ? grams : (prev.grams || null)
+          };
+        })
+        .sort((a, b) => (b.grams || 0) - (a.grams || 0));
+
+      extras.filaments = enrichedFilaments;
+    }
+
+    // Atualizar slicerData total do modelo (exibido no card e no cabeçalho do modal)
+    const totalSeconds = parseTimeLabelToSeconds(profile.print_time_label) ||
+      (plates || []).reduce((sum, p) => sum + (p.printTimeSeconds || 0), 0);
+    const totalGrams = (extras.filaments || []).reduce((sum, f) => sum + (f.grams || 0), 0) ||
+      (plates || []).reduce((sum, p) => sum + (p.filamentGrams || 0), 0);
+
+    if (slicerData && (totalSeconds > 0 || totalGrams > 0)) {
+      if (totalSeconds > 0) {
+        slicerData.printTimeSeconds = totalSeconds;
+        slicerData.printTimeFormatted = formatSeconds(totalSeconds);
+      }
+      if (totalGrams > 0) {
+        slicerData.filamentGrams = Math.round(totalGrams * 10) / 10;
+      }
+      const types = Array.from(new Set((extras.filaments || []).map(f => f.type).filter(Boolean)));
+      if (types.length) slicerData.filamentType = types.join(' + ');
+      slicerData.isSliced = true;
+    }
+  }
+
+  // 3. Anexos do autor (fotos reais do modelo + guias de montagem em PDF)
+  if (!extras.attachments || extras.attachments.length === 0) {
+    const attachments = [];
+    const imgs = Array.isArray(matchedDetail.images) ? [...matchedDetail.images] : [];
+    imgs.sort((a, b) => (b.is_main ? 1 : 0) - (a.is_main ? 1 : 0));
+
+    imgs.forEach((img, idx) => {
+      if (attachments.length >= MAX_ATTACHMENTS) return;
+      const url = img && (img.url || img.thumbnail_url);
+      if (!url) return;
+      const cleanUrl = url.split('?')[0];
+      const ext = (cleanUrl.split('.').pop() || 'webp').toLowerCase();
+      attachments.push({
+        path: url,
+        remoteUrl: url,
+        thumbnailUrl: img.thumbnail_url || url,
+        name: `Foto ${idx + 1}.${ext}`,
+        ext,
+        kind: 'image',
+        size: null,
+        group: 'Model Pictures'
+      });
+    });
+
+    const docs = Array.isArray(matchedDetail.docs) ? matchedDetail.docs : [];
+    const modelPageUrl = (extras.source && extras.source.url) || 'https://www.makeronline.com';
+    docs.forEach((doc, idx) => {
+      if (attachments.length >= MAX_ATTACHMENTS) return;
+      if (!doc || !doc.url) return;
+      const name = doc.file_name || `Guia ${idx + 1}.pdf`;
+      const ext = (name.split('.').pop() || 'pdf').toLowerCase();
+      const kind = ['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(ext) ? 'image' : (ext === 'pdf' ? 'pdf' : 'file');
+      const isPrivateS3 = /acop-prod-private\.s3/i.test(doc.url);
+      attachments.push({
+        path: doc.url,
+        remoteUrl: isPrivateS3 ? modelPageUrl : doc.url,
+        externalPageUrl: isPrivateS3 ? modelPageUrl : null,
+        name,
+        ext,
+        kind,
+        size: doc.file_size || null,
+        group: 'Assembly Guide'
+      });
+    });
+
+    extras.attachments = attachments;
+  }
+
+  extras.moResolved = true;
+  extras.moChecked = true;
+  return true;
+}
+

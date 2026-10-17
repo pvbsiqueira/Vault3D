@@ -1,6 +1,7 @@
 import * as THREE from 'https://esm.sh/three@0.160.0';
 import { OrbitControls } from 'https://esm.sh/three@0.160.0/examples/jsm/controls/OrbitControls.js';
 import { generateSTLThumbnail, extract3MFThumbnail, extract3MFCoverOptions, parse3MFGeometry } from './thumbnail-generator.js';
+import { enrichFromMakerOnline } from './threemf-extras.js';
 import JSZip from 'https://esm.sh/jszip@3.10.1';
 import { parseSTL } from './stl-parser.js';
 import { initAuth, getAuthenticatedUser } from './auth.js';
@@ -80,6 +81,7 @@ const folderInputFallback = document.getElementById('folderInputFallback');
 const navAllModels = document.getElementById('navAllModels');
 const navProjects = document.getElementById('navProjects');
 const navFavorites = document.getElementById('navFavorites');
+const navTrending = document.getElementById('navTrending');
 const navDuplicates = document.getElementById('navDuplicates');
 const sidebarAllCountBadge = document.getElementById('sidebarAllCountBadge');
 const sidebarProjectsCountBadge = document.getElementById('sidebarProjectsCountBadge');
@@ -102,9 +104,13 @@ const btnStatsReviewDuplicates = document.getElementById('btnStatsReviewDuplicat
 // Elementos DOM do Topbar & Filtros
 const currentViewTitle = document.getElementById('currentViewTitle');
 const currentViewSub = document.getElementById('currentViewSub');
+const shellSubtitle = document.getElementById('shellSubtitle');
 const searchInput = document.getElementById('searchInput');
 const filterBtns = document.querySelectorAll('.sidebar-format-btn, .pill-btn');
 const btnRefreshFolders = document.getElementById('btnRefreshFolders');
+const btnRefreshTrending = document.getElementById('btnRefreshTrending');
+const trendingRangeGroup = document.getElementById('trendingRangeGroup');
+const trendingUpdatedLabel = document.getElementById('trendingUpdatedLabel');
 const sortControlWrap = document.getElementById('sortControlWrap');
 const selectSortOrder = document.getElementById('selectSortOrder');
 
@@ -133,6 +139,10 @@ const savedFoldersPreviewList = document.getElementById('savedFoldersPreviewList
 const btnReconnectAllFolders = document.getElementById('btnReconnectAllFolders');
 const btnClearSavedFolders = document.getElementById('btnClearSavedFolders');
 const galleryContainer = document.getElementById('galleryContainer');
+const trendingContainer = document.getElementById('trendingContainer');
+const trendingUnifiedGrid = document.getElementById('trendingUnifiedGrid');
+const trendingMakerWorldGrid = document.getElementById('trendingMakerWorldGrid');
+const trendingMakerOnlineGrid = document.getElementById('trendingMakerOnlineGrid');
 const favoritesSection = document.getElementById('favoritesSection');
 const favoritesGrid = document.getElementById('favoritesGrid');
 const favoritesCountBadge = document.getElementById('favoritesCountBadge');
@@ -305,19 +315,47 @@ function init() {
       refreshConnectedFolders();
     });
   }
+  if (btnRefreshTrending) {
+    btnRefreshTrending.addEventListener('click', () => {
+      loadAndRenderTrending(true);
+    });
+  }
+  if (trendingRangeGroup) {
+    trendingRangeGroup.addEventListener('click', (e) => {
+      const btn = e.target.closest('.trending-range-btn');
+      if (!btn || !btn.dataset.range) return;
+      setTrendingRange(btn.dataset.range);
+    });
+  }
   window.addEventListener('keydown', (e) => {
-    if (e.key === 'F5' && !e.ctrlKey && !e.metaKey && !e.altKey && state.folders.length > 0) {
-      e.preventDefault();
-      refreshConnectedFolders();
+    if (e.key === 'F5' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      if (state.activeSection === 'trending') {
+        e.preventDefault();
+        loadAndRenderTrending(true);
+      } else if (state.folders.length > 0) {
+        e.preventDefault();
+        refreshConnectedFolders();
+      }
     }
   });
 
-  // Navegação da Barra Lateral (Todos / Projetos / Favoritos / Duplicados)
-  [navAllModels, navProjects, navFavorites, navDuplicates].forEach(navBtn => {
+  // Navegação da Barra Lateral (Todos / Projetos / Favoritos / Em Alta / Duplicados)
+  [navAllModels, navProjects, navFavorites, navTrending, navDuplicates].forEach(navBtn => {
     if (!navBtn) return;
     navBtn.addEventListener('click', () => {
       const section = navBtn.dataset.section || 'all';
       setNavSection(section);
+    });
+  });
+
+  // Links externos de plataforma dentro da seção Em Alta
+  document.querySelectorAll('.trending-platform-ext-link').forEach(link => {
+    link.addEventListener('click', (e) => {
+      const href = link.getAttribute('href');
+      if (href && window.electronAPI && typeof window.electronAPI.openExternalUrl === 'function') {
+        e.preventDefault();
+        window.electronAPI.openExternalUrl(href);
+      }
     });
   });
 
@@ -614,6 +652,11 @@ function init() {
 
     // Estatísticas de uso: só abertura/fechamento do app, nenhum dado de arquivo
     startUsageTracking(user);
+
+    // Pré-aquecer silenciosamente o cache da seção Em Alta em background
+    setTimeout(() => {
+      prefetchTrendingSilent();
+    }, 3500);
   });
 
   // Resetar estado e visualização da biblioteca ao desconectar
@@ -621,6 +664,11 @@ function init() {
     state.models = [];
     state.folders = [];
     state.currentPage = 1;
+    state.activeSection = 'all';
+    if (trendingContainer) trendingContainer.style.display = 'none';
+    if (trendingRangeGroup) trendingRangeGroup.style.display = 'none';
+    if (btnRefreshTrending) btnRefreshTrending.style.display = 'none';
+    if (trendingUpdatedLabel) trendingUpdatedLabel.style.display = 'none';
     if (dropZone) dropZone.style.display = 'block';
     if (galleryContainer) galleryContainer.style.display = 'none';
     if (topPageSizeWrap) topPageSizeWrap.style.display = 'none';
@@ -651,15 +699,49 @@ function copyModalFullPath() {
 }
 
 /**
- * Alterna a seção ativa da biblioteca (Todos os Modelos, Projetos, Favoritos, Duplicados)
+ * Alterna a seção ativa da biblioteca (Todos os Modelos, Projetos, Favoritos, Em Alta, Duplicados)
  */
 function setNavSection(section) {
   state.activeSection = section;
   state.currentPage = 1;
 
-  [navAllModels, navProjects, navFavorites, navDuplicates].forEach(btn => {
+  [navAllModels, navProjects, navFavorites, navTrending, navDuplicates].forEach(btn => {
     if (btn) btn.classList.toggle('active', btn.dataset.section === section);
   });
+
+  if (section === 'trending') {
+    if (currentViewTitle) currentViewTitle.textContent = 'Em Alta';
+    updateTrendingRangeUI();
+    if (dropZone) dropZone.style.display = 'none';
+    if (galleryContainer) galleryContainer.style.display = 'none';
+    if (sortControlWrap) sortControlWrap.style.display = 'none';
+    if (topPageSizeWrap) topPageSizeWrap.style.display = 'none';
+    if (btnRefreshFolders) btnRefreshFolders.style.display = 'none';
+    if (selectionActionBar) selectionActionBar.style.display = 'none';
+    if (trendingContainer) trendingContainer.style.display = 'flex';
+    if (trendingRangeGroup) trendingRangeGroup.style.display = 'inline-flex';
+    if (btnRefreshTrending) btnRefreshTrending.style.display = 'inline-flex';
+    loadAndRenderTrending(false);
+    return;
+  }
+
+  if (trendingContainer) trendingContainer.style.display = 'none';
+  if (trendingRangeGroup) trendingRangeGroup.style.display = 'none';
+  if (btnRefreshTrending) btnRefreshTrending.style.display = 'none';
+  if (trendingUpdatedLabel) trendingUpdatedLabel.style.display = 'none';
+  if (shellSubtitle) {
+    shellSubtitle.textContent = 'Seus arquivos STL e 3MF, lidos direto do seu computador.';
+  }
+  if (btnRefreshFolders) {
+    btnRefreshFolders.style.display = state.folders.length > 0 ? 'inline-flex' : 'none';
+  }
+  if (state.models.length === 0) {
+    if (dropZone) dropZone.style.display = 'block';
+    if (galleryContainer) galleryContainer.style.display = 'none';
+  } else {
+    if (dropZone) dropZone.style.display = 'none';
+    if (galleryContainer) galleryContainer.style.display = 'block';
+  }
 
   if (currentViewTitle) {
     if (section === 'projects') {
@@ -1865,13 +1947,17 @@ async function addFilesToLibrary(files, folderName, dirHandle = null, persistToD
   // Ordenar todos os modelos alfabeticamente (A-Z ocidentais primeiro, Kanjis/CJK ao final)
   state.models.sort((a, b) => compareModelNames(a.name, b.name));
 
-  // Atualizar visualização para exibir a galeria
-  dropZone.style.display = 'none';
-  galleryContainer.style.display = 'block';
+  // Atualizar visualização para exibir a galeria (exceto se o usuário estiver na aba Em Alta)
+  if (state.activeSection !== 'trending') {
+    dropZone.style.display = 'none';
+    galleryContainer.style.display = 'block';
+  }
 
   renderFolderChips();
   updateStatsBadge();
-  renderGallery();
+  if (state.activeSection !== 'trending') {
+    renderGallery();
+  }
 
   // Calcular impressões digitais e detectar duplicatas em background
   updateDuplicatesState();
@@ -2271,6 +2357,10 @@ function selectFolder(folderId, subfolderPath = null) {
   state.currentPage = 1;
   updateFolderSelectionUI();
   updateStatsBadge();
+  if (state.activeSection === 'trending') {
+    setNavSection('all');
+    return;
+  }
   renderGallery();
 }
 
@@ -2283,6 +2373,10 @@ function resetFolderFilter() {
   state.currentPage = 1;
   updateFolderSelectionUI();
   updateStatsBadge();
+  if (state.activeSection === 'trending') {
+    setNavSection('all');
+    return;
+  }
   renderGallery();
 }
 
@@ -2551,7 +2645,7 @@ function updateStatsBadge() {
     sidebarAllFoldersWrap.style.display = foldersCount > 0 ? 'block' : 'none';
   }
   if (btnRefreshFolders) {
-    btnRefreshFolders.style.display = foldersCount > 0 ? 'inline-flex' : 'none';
+    btnRefreshFolders.style.display = (foldersCount > 0 && state.activeSection !== 'trending') ? 'inline-flex' : 'none';
   }
 }
 
@@ -2803,6 +2897,9 @@ function compactCoverDataUrl(rawDataUrl, maxSide = 720, quality = 0.86) {
       return;
     }
     const img = new Image();
+    if (/^https?:\/\//i.test(rawDataUrl)) {
+      img.crossOrigin = 'anonymous';
+    }
     img.onload = () => {
       try {
         let w = img.naturalWidth || img.width || maxSide;
@@ -3108,8 +3205,11 @@ async function openEditCardModal(item) {
           item.file = await item.handle.getFile();
         }
         if (item.file) {
+          if (needsMakerOnlineCheck(item)) {
+            await ensureMakerOnlineEnriched(item);
+          }
           const buffer = await item.file.arrayBuffer();
-          const extracted = await extract3MFCoverOptions(buffer);
+          const extracted = await extract3MFCoverOptions(buffer, item);
           if (!editCardState || editCardState.token !== token) return;
 
           const autoOpt = extracted.find(o => o.id === 'auto');
@@ -3267,9 +3367,12 @@ async function confirmEditCardModal() {
     );
 
     if (selectedOpt && selectedOpt.dataUrl) {
+      const finalCoverUrl = /^https?:\/\//i.test(selectedOpt.dataUrl)
+        ? await compactCoverDataUrl(selectedOpt.dataUrl)
+        : selectedOpt.dataUrl;
       item.coverSource = selectedOpt.id;
-      item.thumbnailUrl = selectedOpt.dataUrl;
-      item.customCoverUrl = selectedOpt.id === 'custom' ? selectedOpt.dataUrl : (editCardState.customCoverUrl || null);
+      item.thumbnailUrl = finalCoverUrl;
+      item.customCoverUrl = selectedOpt.id === 'custom' ? finalCoverUrl : (editCardState.customCoverUrl || null);
 
       const defaultOpt = (editCardState.options || []).find(o => o.id === 'auto');
       if (defaultOpt && defaultOpt.dataUrl) {
@@ -5746,6 +5849,13 @@ function updatePaginationUI(total, totalPages, startIdx, endIdx) {
  * e carregamento estritamente sob demanda para cards em tela
  */
 function renderGallery() {
+  if (state.activeSection === 'trending') {
+    if (trendingState.data) {
+      renderTrendingSection(trendingState.data);
+    }
+    return;
+  }
+
   const allItems = applyCustomProjects(state.models);
 
   const filteredUnsorted = allItems
@@ -6008,6 +6118,9 @@ async function loadModelOnDemand(model) {
       model.plates = cached.plates || [];
       model.extras = cached.extras || null;
       updateCardThumbnail(model);
+      if (needsMakerOnlineCheck(model)) {
+        ensureMakerOnlineEnriched(model);
+      }
       return model;
     }
   } catch (err) {
@@ -6021,6 +6134,88 @@ async function loadModelOnDemand(model) {
     thumbQueue.push({ model, resolve });
     drainThumbQueue();
   });
+}
+
+/**
+ * Verifica se um arquivo 3MF ainda precisa checar/enriquecer dados do MakerOnline
+ * (cobre tanto modelos cacheados antes desta versão quanto modelos cujo moFileId ainda não foi resolvido).
+ */
+function needsMakerOnlineCheck(model) {
+  if (!model || model.type !== '3mf') return false;
+  if (!model.extras) return true;
+  if (model.extras.moFileId && !model.extras.moResolved) return true;
+  if (!model.extras.moChecked && !model.extras.designer && !model.extras.source) return true;
+  return false;
+}
+
+/**
+ * Enriquece em segundo plano arquivos 3MF do MakerOnline (incluindo os que já estavam no cache do IndexedDB),
+ * salvando o resultado no cache e atualizando card + modal aberto automaticamente.
+ */
+async function ensureMakerOnlineEnriched(model) {
+  if (!model || model.type !== '3mf') return false;
+  if (model._moEnrichPromise) return model._moEnrichPromise;
+
+  model._moEnrichPromise = (async () => {
+    try {
+      let changed = false;
+      if (model.extras && model.extras.moFileId && !model.extras.moResolved) {
+        if (!model.slicerData) model.slicerData = { isSliced: false };
+        changed = await enrichFromMakerOnline(model.extras, model.plates || [], model.slicerData, model.name);
+      } else if (!model.extras || (!model.extras.moChecked && !model.extras.designer && !model.extras.source)) {
+        if (!model.file && model.handle && typeof model.handle.getFile === 'function') {
+          model.file = await model.handle.getFile();
+        }
+        if (model.file) {
+          const buffer = await model.file.arrayBuffer();
+          const res = await extract3MFThumbnail(buffer, model.name);
+          if (res) {
+            model.slicerData = res.slicerData || model.slicerData;
+            model.plates = res.plates || model.plates || [];
+            model.extras = res.extras || model.extras || null;
+            changed = true;
+          }
+        }
+      }
+
+      if (model.thumbnailUrl && (changed || (model.extras && model.extras.moChecked))) {
+        await saveCachedThumbnail(getModelCacheKey(model), {
+          thumbnailUrl: model.thumbnailUrl,
+          defaultThumbnailUrl: model.defaultThumbnailUrl || model.thumbnailUrl,
+          coverSource: model.coverSource || 'auto',
+          customCoverUrl: model.customCoverUrl || null,
+          metadata: model.metadata,
+          slicerData: model.slicerData,
+          plates: model.plates,
+          extras: model.extras || null
+        });
+      }
+
+      if (changed) {
+        updateCardThumbnail(model);
+        if (state.activeModel && state.activeModel.id === model.id) {
+          if (model.plates && model.plates.length > 0) {
+            if (platesSection) platesSection.style.display = 'flex';
+            renderPlatesList(model.plates);
+            const same = model.plates.find(p => p.id === state.activePlateId);
+            if (same) state.activePlate = same;
+          }
+          fillModalDetails(model);
+          updateModalHeaderExtras();
+          updateViewerModeSeg();
+          if (state.activePlate) updateViewerPlateLabel(state.activePlate);
+        }
+      }
+      return changed;
+    } catch (e) {
+      console.warn('Falha ao enriquecer metadados do MakerOnline:', e);
+      return false;
+    } finally {
+      model._moEnrichPromise = null;
+    }
+  })();
+
+  return model._moEnrichPromise;
 }
 
 /**
@@ -6093,6 +6288,9 @@ async function extractModelThumbnailAndMeta(model, forceExtractPlates = false) {
         model.slicerData = cached.slicerData || null;
         model.plates = cached.plates || [];
         model.extras = cached.extras || null;
+        if (needsMakerOnlineCheck(model)) {
+          ensureMakerOnlineEnriched(model);
+        }
         return;
       }
     }
@@ -6116,7 +6314,7 @@ async function extractModelThumbnailAndMeta(model, forceExtractPlates = false) {
     }
     model.metadata = res.metadata;
   } else if (model.type === '3mf') {
-    const res = await extract3MFThumbnail(buffer);
+    const res = await extract3MFThumbnail(buffer, model.name);
     model.defaultThumbnailUrl = res.thumbnailUrl || model.defaultThumbnailUrl || model.thumbnailUrl;
     if (!hasUserChosenCover) {
       model.thumbnailUrl = res.thumbnailUrl || model.thumbnailUrl;
@@ -6189,18 +6387,24 @@ function updateCardThumbnail(model) {
         wrapper.appendChild(slicedBadge);
       }
       const cardBody = card.querySelector('.card-body');
-      if (cardBody && !cardBody.querySelector('.card-slicer-info')) {
-        const slicerDiv = document.createElement('div');
-        slicerDiv.className = 'card-slicer-info';
-        slicerDiv.innerHTML = `
+      if (cardBody) {
+        let slicerDiv = cardBody.querySelector('.card-slicer-info');
+        const slicerHtml = `
           ${model.slicerData.printTimeFormatted ? `<span>⏱️ ${model.slicerData.printTimeFormatted}</span>` : ''}
           ${model.slicerData.filamentGrams ? `<span>🧵 ${model.slicerData.filamentGrams}g ${model.slicerData.filamentType || ''}</span>` : ''}
         `;
-        const meta = cardBody.querySelector('.card-meta');
-        if (meta) {
-          cardBody.insertBefore(slicerDiv, meta);
+        if (!slicerDiv) {
+          slicerDiv = document.createElement('div');
+          slicerDiv.className = 'card-slicer-info';
+          slicerDiv.innerHTML = slicerHtml;
+          const meta = cardBody.querySelector('.card-meta');
+          if (meta) {
+            cardBody.insertBefore(slicerDiv, meta);
+          } else {
+            cardBody.appendChild(slicerDiv);
+          }
         } else {
-          cardBody.appendChild(slicerDiv);
+          slicerDiv.innerHTML = slicerHtml;
         }
       }
     }
@@ -6429,6 +6633,7 @@ function syncModalPathShort() {
 
 const SOURCE_SITES = {
   makerworld: { name: 'MakerWorld', short: 'MW', bg: '#00ae42', fg: '#ffffff' },
+  makeronline: { name: 'MakerOnline', short: 'MO', bg: '#2563eb', fg: '#ffffff' },
   printables: { name: 'Printables', short: 'P', bg: '#fa6831', fg: '#ffffff' },
   thingiverse: { name: 'Thingiverse', short: 'T', bg: '#248bfb', fg: '#ffffff' },
   cults3d: { name: 'Cults3D', short: 'C', bg: '#822ef5', fg: '#ffffff' },
@@ -6580,7 +6785,8 @@ function renderModalAttachments(model, extras) {
     const tile = document.createElement('button');
     tile.type = 'button';
     tile.className = `modal-attach modal-attach-${item.kind}`;
-    tile.title = `${item.name}${item.size ? ' · ' + formatBytes(item.size) : ''}`;
+    const isMoPrivateDoc = Boolean(item.externalPageUrl || /acop-prod-private\.s3/i.test(item.path || '') || /acop-prod-private\.s3/i.test(item.remoteUrl || ''));
+    tile.title = `${item.name}${item.size ? ' · ' + formatBytes(item.size) : ''}${isMoPrivateDoc ? ' · Baixar na página do MakerOnline' : ''}`;
     if (i === maxTiles - 1 && items.length > maxTiles) {
       tile.innerHTML = `<span class="modal-attach-more">+${items.length - maxTiles + 1}</span>`;
       tile.title = `${items.length - maxTiles + 1} anexos a mais: ${items.slice(maxTiles - 1).map(x => x.name).join(', ')}`;
@@ -6602,7 +6808,7 @@ function renderModalAttachments(model, extras) {
       if (state.modalItem !== model) return;
       gridEl.querySelectorAll('.modal-attach-image').forEach(tile => {
         const item = items[parseInt(tile.dataset.index, 10)];
-        const url = item && urls[item.path];
+        const url = item && (item.thumbnailUrl || urls[item.path]);
         if (url) tile.innerHTML = `<img src="${url}" alt="${escapeHtml(item.name)}" loading="lazy">`;
         else tile.innerHTML = `<span class="modal-attach-ext">IMG</span>`;
       });
@@ -6610,11 +6816,18 @@ function renderModalAttachments(model, extras) {
   }
 }
 
-/** Lê os anexos pedidos de dentro do 3MF e devolve URLs (blob) reaproveitadas pelo modelo */
+/** Lê os anexos pedidos de dentro do 3MF (ou URLs remotas do MakerOnline) e devolve URLs reaproveitadas pelo modelo */
 async function loadAttachmentUrls(model, items) {
   if (!model) return {};
   model._attachmentUrls = model._attachmentUrls || {};
-  const missing = items.filter(it => !model._attachmentUrls[it.path]);
+  for (const it of items) {
+    if (!it) continue;
+    const remote = it.remoteUrl || (/^https?:\/\//i.test(it.path) ? it.path : null);
+    if (remote && !model._attachmentUrls[it.path]) {
+      model._attachmentUrls[it.path] = remote;
+    }
+  }
+  const missing = items.filter(it => it && !model._attachmentUrls[it.path]);
   if (missing.length) {
     try {
       if (!model.file && model.handle && typeof model.handle.getFile === 'function') {
@@ -6638,6 +6851,14 @@ async function loadAttachmentUrls(model, items) {
 }
 
 async function openModalAttachment(model, item) {
+  // Os PDFs do MakerOnline ficam num bucket privado (acop-prod-private) que exige login e captcha na página do modelo
+  if (item && (item.externalPageUrl || /acop-prod-private\.s3/i.test(item.path || '') || /acop-prod-private\.s3/i.test(item.remoteUrl || ''))) {
+    const pageUrl = item.externalPageUrl || (model && model.extras && model.extras.source && model.extras.source.url) || 'https://www.makeronline.com';
+    showToast(`O MakerOnline exige login no site para baixar "${item.name}". Abrindo a página do modelo (seção Documentation)!`, 'info');
+    window.open(pageUrl, '_blank');
+    return;
+  }
+
   const urls = await loadAttachmentUrls(model, [item]);
   const url = urls[item.path];
   if (!url) {
@@ -7197,6 +7418,8 @@ async function openViewerModal(model) {
         console.warn('Erro ao extrair metadados e mesas do modelo em background:', e);
       }
     })();
+  } else if (needsMakerOnlineCheck(model)) {
+    ensureMakerOnlineEnriched(model);
   }
 }
 
@@ -7465,6 +7688,701 @@ function escapeHtml(str) {
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+// ==========================================
+// Seção "Em Alta" (Top 25 mais baixados - Ranking unificado 48h / 7 dias / 15 dias - MakerWorld & MakerOnline)
+// ==========================================
+const TRENDING_STORAGE_KEY = 'vault3d_trending_cache_v4';
+const TRENDING_RANGE_STORAGE_KEY = 'vault3d_trending_range';
+const TRENDING_LOCAL_TTL = 15 * 60 * 1000; // 15 minutos
+const TRENDING_TOP_LIMIT = 25;
+
+const TRENDING_RANGE_META = {
+  '48h': {
+    key: '48h',
+    hours: 48,
+    pillLabel: 'Top 25 · Últimas 48h',
+    subLabel: 'nas últimas 48 horas',
+    shortSubLabel: 'nas últimas 48h',
+    fallbackRel: 'Últimas 48h'
+  },
+  '7d': {
+    key: '7d',
+    hours: 7 * 24,
+    pillLabel: 'Top 25 · Últimos 7 dias',
+    subLabel: 'nos últimos 7 dias',
+    shortSubLabel: 'nos últimos 7 dias',
+    fallbackRel: 'Últimos 7 dias'
+  },
+  '15d': {
+    key: '15d',
+    hours: 15 * 24,
+    pillLabel: 'Top 25 · Últimos 15 dias',
+    subLabel: 'nos últimos 15 dias',
+    shortSubLabel: 'nos últimos 15 dias',
+    fallbackRel: 'Últimos 15 dias'
+  }
+};
+
+function getInitialTrendingRange() {
+  try {
+    const saved = localStorage.getItem(TRENDING_RANGE_STORAGE_KEY);
+    if (saved && TRENDING_RANGE_META[saved]) return saved;
+  } catch (_) {}
+  return '48h';
+}
+
+const trendingState = {
+  loading: false,
+  range: getInitialTrendingRange(),
+  data: null
+};
+
+function getCurrentTrendingRangeMeta() {
+  return TRENDING_RANGE_META[trendingState.range] || TRENDING_RANGE_META['48h'];
+}
+
+function updateTrendingRangeUI() {
+  const meta = getCurrentTrendingRangeMeta();
+
+  if (trendingRangeGroup) {
+    trendingRangeGroup.querySelectorAll('.trending-range-btn').forEach((btn) => {
+      const isActive = btn.dataset.range === meta.key;
+      btn.classList.toggle('active', isActive);
+      btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+    });
+  }
+
+  document.querySelectorAll('[data-trending-window-pill]').forEach((pill) => {
+    pill.textContent = meta.pillLabel;
+  });
+
+  if (state.activeSection === 'trending') {
+    if (currentViewSub) {
+      currentViewSub.textContent = `Top 25 modelos mais baixados ${meta.shortSubLabel}`;
+    }
+    if (shellSubtitle) {
+      shellSubtitle.textContent = `Os 25 modelos mais baixados ${meta.subLabel} combinando MakerWorld e MakerOnline.`;
+    }
+  }
+}
+
+function setTrendingRange(rangeKey) {
+  if (!TRENDING_RANGE_META[rangeKey]) return;
+  trendingState.range = rangeKey;
+  try {
+    localStorage.setItem(TRENDING_RANGE_STORAGE_KEY, rangeKey);
+  } catch (_) {}
+  updateTrendingRangeUI();
+
+  if (trendingState.data) {
+    renderTrendingSection(trendingState.data);
+  } else {
+    loadAndRenderTrending(false);
+  }
+}
+
+function normalizeTrendingPayload(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const pickArr = (obj, k1, k2) => {
+    if (!obj || typeof obj !== 'object') return [];
+    if (Array.isArray(obj[k1])) return obj[k1];
+    if (Array.isArray(obj[k2])) return obj[k2];
+    return [];
+  };
+
+  const baseMw = pickArr(raw, 'makerWorld', 'makerworld');
+  const baseMo = pickArr(raw, 'makerOnline', 'makeronline');
+  const rawRanges = (raw.ranges && typeof raw.ranges === 'object') ? raw.ranges : {};
+
+  const ranges = {};
+  ['48h', '7d', '15d'].forEach((rk) => {
+    const rObj = rawRanges[rk];
+    const mwList = pickArr(rObj, 'makerWorld', 'makerworld');
+    const moList = pickArr(rObj, 'makerOnline', 'makeronline');
+    ranges[rk] = {
+      makerWorld: mwList.length > 0 ? mwList : baseMw,
+      makerOnline: moList.length > 0 ? moList : (rk === '48h' ? baseMo : [])
+    };
+  });
+
+  const activeRange = ranges[trendingState.range] || ranges['48h'];
+  const hasAny = ['48h', '7d', '15d'].some(
+    (rk) => ranges[rk].makerWorld.length > 0 || ranges[rk].makerOnline.length > 0
+  );
+
+  return {
+    success: hasAny,
+    ranges,
+    makerWorld: activeRange.makerWorld,
+    makerOnline: activeRange.makerOnline,
+    updatedAt: raw.updatedAt || Date.now()
+  };
+}
+
+function getListsForCurrentRange(payload) {
+  if (!payload) return { makerWorld: [], makerOnline: [] };
+  const rk = trendingState.range || '48h';
+  const fromRange = payload.ranges && payload.ranges[rk];
+  return {
+    makerWorld: (fromRange && Array.isArray(fromRange.makerWorld) && fromRange.makerWorld.length > 0)
+      ? fromRange.makerWorld
+      : (Array.isArray(payload.makerWorld) ? payload.makerWorld : []),
+    makerOnline: (fromRange && Array.isArray(fromRange.makerOnline) && fromRange.makerOnline.length > 0)
+      ? fromRange.makerOnline
+      : (Array.isArray(payload.makerOnline) ? payload.makerOnline : [])
+  };
+}
+
+function buildUnifiedTop25(mwList, moList) {
+  const combined = [];
+  const seen = new Set();
+
+  const pushUnique = (arr, defaultSite) => {
+    if (!Array.isArray(arr)) return;
+    for (const item of arr) {
+      if (!item) continue;
+      const site = item.site || defaultSite;
+      const key = `${site}:${item.id || item.url || item.title}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      combined.push({ ...item, site });
+    }
+  };
+
+  pushUnique(mwList, 'makerworld');
+  pushUnique(moList, 'makeronline');
+
+  combined.sort(
+    (a, b) =>
+      (Number(b.downloads) || 0) - (Number(a.downloads) || 0) ||
+      (Number(b.likes) || 0) - (Number(a.likes) || 0)
+  );
+
+  return combined.slice(0, TRENDING_TOP_LIMIT).map((item, idx) => ({
+    ...item,
+    rank: idx + 1
+  }));
+}
+
+function loadTrendingFromLocalCache() {
+  try {
+    const raw = localStorage.getItem(TRENDING_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = normalizeTrendingPayload(JSON.parse(raw));
+    if (!parsed || !parsed.success) return null;
+    return parsed;
+  } catch (_) {
+    return null;
+  }
+}
+
+function saveTrendingToLocalCache(payload) {
+  try {
+    const norm = normalizeTrendingPayload(payload);
+    if (norm && norm.success) {
+      localStorage.setItem(TRENDING_STORAGE_KEY, JSON.stringify(norm));
+    }
+  } catch (_) {}
+}
+
+/**
+ * Fallback client-side para buscar Top 5 do MakerOnline nas 3 janelas (48h, 7d, 15d)
+ * caso o app esteja rodando fora do Electron ou como complemento.
+ */
+async function fetchMakerOnlineAllRangesClient() {
+  try {
+    const fetchPageBatch = (pageNumbers) =>
+      Promise.all(
+        pageNumbers.map((page) =>
+          fetch('https://www.makeronline.com/api/search/model', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json'
+            },
+            body: JSON.stringify({
+              page,
+              page_size: 50,
+              keyword: '',
+              category_id: 0,
+              print_type: 0,
+              order: 'submit_at_desc'
+            })
+          })
+            .then((r) => (r.ok ? r.json() : null))
+            .then((j) => (j && j.data && Array.isArray(j.data.data) ? j.data.data : []))
+            .catch(() => [])
+        )
+      );
+
+    const wave1Pages = Array.from({ length: 35 }, (_, i) => i + 1);
+    const wave2Pages = Array.from({ length: 35 }, (_, i) => i + 36);
+    const wave1 = await fetchPageBatch(wave1Pages);
+    const wave2 = await fetchPageBatch(wave2Pages);
+    const pages = [...wave1, ...wave2];
+
+    const seen = new Set();
+    const allRecent = [];
+    for (const list of pages) {
+      for (const item of list) {
+        if (!item || !item.mold_id || item.is_adult_nsfw) continue;
+        if (seen.has(item.mold_id)) continue;
+        seen.add(item.mold_id);
+        allRecent.push(item);
+      }
+    }
+
+    const now = Date.now();
+    const parseMoTime = (str) => {
+      if (!str || typeof str !== 'string') return 0;
+      const iso = str.includes('T') ? str : str.replace(' ', 'T') + '+08:00';
+      const t = Date.parse(iso);
+      return Number.isNaN(t) ? 0 : t;
+    };
+
+    const buildTopForHours = (hours) => {
+      const cutoff = now - hours * 3600 * 1000;
+      let pool = allRecent.filter((m) => {
+        const t = parseMoTime(m.publish_time);
+        return t > 0 ? t >= cutoff : true;
+      });
+      if (pool.length < TRENDING_TOP_LIMIT) {
+        pool = [...allRecent];
+      }
+      pool.sort(
+        (a, b) =>
+          (Number(b.download_num) || 0) - (Number(a.download_num) || 0) ||
+          (Number(b.like_num) || 0) - (Number(a.like_num) || 0)
+      );
+      return pool.slice(0, TRENDING_TOP_LIMIT).map((m, idx) => {
+        const pubMs = parseMoTime(m.publish_time);
+        const slug =
+          String(m.title || 'model')
+            .trim()
+            .replace(/[^a-zA-Z0-9]+/g, '-')
+            .replace(/^-+|-+$/g, '') || 'model';
+        return {
+          rank: idx + 1,
+          id: String(m.mold_id),
+          site: 'makeronline',
+          title: m.title || `Modelo #${m.mold_id}`,
+          cover: m.mold_image || '',
+          downloads: Number(m.download_num) || 0,
+          likes: Number(m.like_num) || 0,
+          prints: 0,
+          author: m.user_display_name || m.user_name || 'MakerOnline',
+          authorAvatar: m.user_avatar || '',
+          publishedAt: pubMs ? new Date(pubMs).toISOString() : '',
+          url: m.target_url || `https://www.makeronline.com/en/model/${slug}/${m.mold_id}.html`
+        };
+      });
+    };
+
+    return {
+      '48h': buildTopForHours(48),
+      '7d': buildTopForHours(7 * 24),
+      '15d': buildTopForHours(15 * 24)
+    };
+  } catch (err) {
+    console.warn('Erro no fallback MakerOnline:', err);
+    return { '48h': [], '7d': [], '15d': [] };
+  }
+}
+
+/**
+ * Pré-aquece os dados da aba Em Alta silenciosamente após iniciar o app
+ */
+async function prefetchTrendingSilent() {
+  updateTrendingRangeUI();
+  if (trendingState.loading) return;
+  const cached = loadTrendingFromLocalCache();
+  if (cached && cached.updatedAt && (Date.now() - cached.updatedAt < TRENDING_LOCAL_TTL) &&
+      cached.ranges?.['7d']?.makerOnline?.length >= 15 &&
+      cached.ranges?.['48h']?.makerWorld?.length > 0) {
+    trendingState.data = cached;
+    return;
+  }
+
+  try {
+    if (window.electronAPI && typeof window.electronAPI.fetchTrendingModels === 'function') {
+      const rawRes = await window.electronAPI.fetchTrendingModels({ force: false, range: trendingState.range });
+      let res = normalizeTrendingPayload(rawRes);
+      if (res && (!res.ranges?.['7d']?.makerOnline || res.ranges['7d'].makerOnline.length < 15)) {
+        const moByRange = await fetchMakerOnlineAllRangesClient().catch(() => null);
+        if (moByRange) {
+          ['48h', '7d', '15d'].forEach((rk) => {
+            if (moByRange[rk]?.length) res.ranges[rk].makerOnline = moByRange[rk];
+          });
+        }
+      }
+      if (res && res.success) {
+        trendingState.data = res;
+        saveTrendingToLocalCache(res);
+        if (state.activeSection === 'trending') {
+          renderTrendingSection(res);
+        }
+      }
+    }
+  } catch (_) {}
+}
+
+/**
+ * Carrega e renderiza os 25 modelos Em Alta (MakerWorld + MakerOnline unificados em 48h, 7d ou 15d)
+ */
+async function loadAndRenderTrending(force = false) {
+  if (!trendingContainer) return;
+  updateTrendingRangeUI();
+
+  const targetGrid = trendingUnifiedGrid || trendingMakerWorldGrid;
+  const cached = trendingState.data || loadTrendingFromLocalCache();
+  const hasFullMoRanges = cached?.ranges?.['48h']?.makerOnline?.length >= 15 &&
+    cached?.ranges?.['7d']?.makerOnline?.length >= 15 &&
+    cached?.ranges?.['15d']?.makerOnline?.length >= 15;
+  const isCacheFresh = cached && cached.updatedAt && (Date.now() - cached.updatedAt < TRENDING_LOCAL_TTL) &&
+    cached?.ranges?.['48h']?.makerWorld?.length > 0 &&
+    hasFullMoRanges;
+
+  if (!force && isCacheFresh) {
+    trendingState.data = cached;
+    renderTrendingSection(cached);
+    return;
+  }
+
+  const currentLists = getListsForCurrentRange(cached);
+  const currentMerged = buildUnifiedTop25(currentLists.makerWorld, currentLists.makerOnline);
+
+  // Se já temos cache anterior mas expirado, exibe imediatamente enquanto atualiza
+  if (cached && !force && currentMerged.length >= 10) {
+    trendingState.data = cached;
+    renderTrendingSection(cached);
+  } else if (targetGrid) {
+    renderTrendingSkeletons(targetGrid, 'Buscando os 25 modelos em alta no MakerWorld e MakerOnline...');
+  }
+
+  if (trendingState.loading) return;
+  trendingState.loading = true;
+
+  if (btnRefreshTrending) {
+    btnRefreshTrending.disabled = true;
+    btnRefreshTrending.classList.add('is-refreshing');
+    const span = btnRefreshTrending.querySelector('span');
+    if (span) span.textContent = 'Atualizando...';
+  }
+
+  try {
+    let payload = null;
+    if (window.electronAPI && typeof window.electronAPI.fetchTrendingModels === 'function') {
+      const rawRes = await window.electronAPI.fetchTrendingModels({ force, range: trendingState.range });
+      payload = normalizeTrendingPayload(rawRes);
+    }
+
+    // Se MakerOnline vier com menos de 15 itens por faixa ou estiver no navegador, completa via cliente
+    const missingMoRanges = !payload ||
+      (payload.ranges?.['48h']?.makerOnline?.length || 0) < 15 ||
+      (payload.ranges?.['7d']?.makerOnline?.length || 0) < 15 ||
+      (payload.ranges?.['15d']?.makerOnline?.length || 0) < 15;
+
+    if (missingMoRanges) {
+      const moByRange = await fetchMakerOnlineAllRangesClient().catch(() => ({ '48h': [], '7d': [], '15d': [] }));
+      if (!payload) {
+        payload = normalizeTrendingPayload({
+          ranges: {
+            '48h': { makerWorld: cached?.ranges?.['48h']?.makerWorld || [], makerOnline: moByRange['48h'] || [] },
+            '7d': { makerWorld: cached?.ranges?.['7d']?.makerWorld || [], makerOnline: moByRange['7d'] || [] },
+            '15d': { makerWorld: cached?.ranges?.['15d']?.makerWorld || [], makerOnline: moByRange['15d'] || [] }
+          },
+          updatedAt: Date.now()
+        });
+      } else {
+        ['48h', '7d', '15d'].forEach((rk) => {
+          if (moByRange[rk] && moByRange[rk].length > 0) {
+            payload.ranges[rk].makerOnline = moByRange[rk];
+          }
+        });
+        payload.makerOnline = payload.ranges[trendingState.range]?.makerOnline || moByRange['48h'] || [];
+        payload.success = true;
+      }
+    }
+
+    // Preservar cache anterior de uma plataforma caso uma requisição pontual tenha falhado por rede
+    if (cached && cached.ranges) {
+      ['48h', '7d', '15d'].forEach((rk) => {
+        if ((!payload.ranges[rk].makerWorld || payload.ranges[rk].makerWorld.length === 0) &&
+            cached.ranges[rk]?.makerWorld?.length) {
+          payload.ranges[rk].makerWorld = cached.ranges[rk].makerWorld;
+        }
+        if ((!payload.ranges[rk].makerOnline || payload.ranges[rk].makerOnline.length === 0) &&
+            cached.ranges[rk]?.makerOnline?.length) {
+          payload.ranges[rk].makerOnline = cached.ranges[rk].makerOnline;
+        }
+      });
+    }
+
+    trendingState.data = payload;
+    saveTrendingToLocalCache(payload);
+    renderTrendingSection(payload);
+
+    if (force) {
+      showToast('Ranking Top 25 Em Alta atualizado com sucesso! 🔥', 'success');
+    }
+  } catch (err) {
+    console.warn('Erro ao buscar modelos Em Alta:', err);
+    if (cached && cached.success) {
+      renderTrendingSection(cached);
+    } else if (targetGrid) {
+      renderTrendingEmptyOrError(targetGrid, 'MakerWorld e MakerOnline', 'https://makerworld.com/pt/3d-models');
+    }
+    if (force) {
+      showToast('Não foi possível atualizar alguns rankings agora.', 'warning');
+    }
+  } finally {
+    trendingState.loading = false;
+    if (btnRefreshTrending) {
+      btnRefreshTrending.disabled = false;
+      btnRefreshTrending.classList.remove('is-refreshing');
+      const span = btnRefreshTrending.querySelector('span');
+      if (span) span.textContent = 'Atualizar Em Alta';
+    }
+  }
+}
+
+function renderTrendingSkeletons(gridEl, message) {
+  if (!gridEl) return;
+  gridEl.innerHTML = '';
+  for (let i = 1; i <= 10; i++) {
+    const skel = document.createElement('div');
+    skel.className = 'trending-card is-skeleton';
+    skel.innerHTML = `
+      <div class="trending-card-thumb-wrap">
+        <span class="trending-rank-badge rank-${i}">#${i}</span>
+        <div class="thumb-loader">
+          <div class="spinner"></div>
+          <span>${escapeHtml(i === 1 ? message : 'Carregando...')}</span>
+        </div>
+      </div>
+      <div class="trending-card-body">
+        <div class="trending-skel-line title"></div>
+        <div class="trending-skel-line author"></div>
+        <div class="trending-skel-line stats"></div>
+      </div>
+    `;
+    gridEl.appendChild(skel);
+  }
+}
+
+function renderTrendingEmptyOrError(gridEl, platformName, platformUrl) {
+  if (!gridEl) return;
+  gridEl.innerHTML = `
+    <div class="trending-empty-box">
+      <p>Não foi possível carregar o Top 25 de <strong>${escapeHtml(platformName)}</strong> neste momento.</p>
+      <div class="trending-empty-actions">
+        <button type="button" class="btn-secondary btn-retry-trending">Tentar novamente</button>
+        <a href="${escapeHtml(platformUrl)}" target="_blank" rel="noopener noreferrer" class="btn-secondary trending-ext-fallback">Abrir ${escapeHtml(platformName)} ↗</a>
+      </div>
+    </div>
+  `;
+  const btnRetry = gridEl.querySelector('.btn-retry-trending');
+  if (btnRetry) {
+    btnRetry.addEventListener('click', () => loadAndRenderTrending(true));
+  }
+  const extLink = gridEl.querySelector('.trending-ext-fallback');
+  if (extLink) {
+    extLink.addEventListener('click', (e) => {
+      if (window.electronAPI && typeof window.electronAPI.openExternalUrl === 'function') {
+        e.preventDefault();
+        window.electronAPI.openExternalUrl(platformUrl);
+      }
+    });
+  }
+}
+
+function formatTrendingNumber(n) {
+  const num = Number(n) || 0;
+  return num.toLocaleString('pt-BR');
+}
+
+function formatTrendingRelativeTime(timestampInput) {
+  const meta = getCurrentTrendingRangeMeta();
+  if (!timestampInput) return meta.fallbackRel;
+  const ts = typeof timestampInput === 'number'
+    ? timestampInput
+    : Date.parse(String(timestampInput));
+  if (!ts || Number.isNaN(ts)) return meta.fallbackRel;
+  const diffMs = Math.max(0, Date.now() - ts);
+  const hours = Math.floor(diffMs / (3600 * 1000));
+  if (hours < 1) {
+    const mins = Math.max(1, Math.floor(diffMs / 60000));
+    return `há ${mins} min`;
+  }
+  if (hours < 48) {
+    return `há ${hours}h`;
+  }
+  const days = Math.floor(hours / 24);
+  return `há ${days}d`;
+}
+
+function formatUpdatedClock(timestampMs) {
+  if (!timestampMs) return '';
+  try {
+    const d = new Date(timestampMs);
+    return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  } catch (_) {
+    return '';
+  }
+}
+
+function createTrendingCard(item) {
+  const card = document.createElement('article');
+  const isMakerWorld = item.site === 'makerworld';
+  const siteClass = isMakerWorld ? 'is-makerworld' : 'is-makeronline';
+  const openBtnLabel = isMakerWorld ? 'Abrir no Maker World' : 'Abrir no Maker Online';
+  const rank = Number(item.rank) || 1;
+  const meta = getCurrentTrendingRangeMeta();
+  card.className = `trending-card ${siteClass} rank-card-${rank}`;
+  card.tabIndex = 0;
+  card.setAttribute('role', 'link');
+  card.title = `${openBtnLabel}: "${item.title}"`;
+
+  const relTime = formatTrendingRelativeTime(item.publishedAt);
+  const downloadsFmt = formatTrendingNumber(item.downloads);
+  const likesFmt = formatTrendingNumber(item.likes);
+  const printsFmt = formatTrendingNumber(item.prints);
+  const authorInitial = ((item.author || 'M').trim()[0] || 'M').toUpperCase();
+
+  card.innerHTML = `
+    <div class="trending-card-thumb-wrap">
+      <span class="trending-rank-badge rank-${rank}" title="${rank}º mais baixado ${escapeHtml(meta.shortSubLabel)}">#${rank}</span>
+      <span class="trending-time-badge" title="Publicado ${escapeHtml(relTime)}">${escapeHtml(relTime)}</span>
+      ${item.cover
+        ? `<img class="trending-card-thumb" src="${escapeHtml(item.cover)}" alt="${escapeHtml(item.title)}" loading="lazy" referrerpolicy="no-referrer">`
+        : `<div class="thumb-loader"><span>Sem capa</span></div>`
+      }
+    </div>
+    <div class="trending-card-body">
+      <h4 class="trending-card-title" title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</h4>
+      <div class="trending-card-author">
+        ${item.authorAvatar
+          ? `<img class="trending-author-avatar" src="${escapeHtml(item.authorAvatar)}" alt="${escapeHtml(item.author)}" loading="lazy" referrerpolicy="no-referrer">`
+          : `<span class="trending-author-avatar fallback">${escapeHtml(authorInitial)}</span>`
+        }
+        <span class="trending-author-name" title="Autor: ${escapeHtml(item.author)}">${escapeHtml(item.author)}</span>
+      </div>
+      <button type="button" class="trending-open-btn ${siteClass}" title="${escapeHtml(openBtnLabel)}">
+        <span>${escapeHtml(openBtnLabel)}</span>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+          <polyline points="15 3 21 3 21 9"></polyline>
+          <line x1="10" y1="14" x2="21" y2="3"></line>
+        </svg>
+      </button>
+      <div class="trending-card-metrics">
+        <div class="trending-metric primary" title="${downloadsFmt} downloads ${escapeHtml(meta.shortSubLabel)}">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="7 10 12 15 17 10"></polyline>
+            <line x1="12" y1="15" x2="12" y2="3"></line>
+          </svg>
+          <strong>${downloadsFmt}</strong>
+          <span class="trending-metric-unit">downloads</span>
+        </div>
+        <div class="trending-metrics-secondary">
+          <span class="trending-metric-mini" title="${likesFmt} curtidas">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true">
+              <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+            </svg>
+            ${likesFmt}
+          </span>
+          ${item.prints > 0 ? `
+            <span class="trending-metric-mini" title="${printsFmt} impressões / perfis">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polyline points="6 9 6 2 18 2 18 9"></polyline>
+                <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path>
+                <rect x="6" y="14" width="12" height="8"></rect>
+              </svg>
+              ${printsFmt}
+            </span>
+          ` : ''}
+        </div>
+      </div>
+    </div>
+  `;
+
+  // Fallback seguro caso o avatar falhe ao carregar
+  const avatarImg = card.querySelector('img.trending-author-avatar');
+  if (avatarImg) {
+    avatarImg.addEventListener('error', () => {
+      const span = document.createElement('span');
+      span.className = 'trending-author-avatar fallback';
+      span.textContent = authorInitial;
+      avatarImg.replaceWith(span);
+    });
+  }
+
+  const openModelPage = (e) => {
+    if (e) e.stopPropagation();
+    if (!item.url) return;
+    if (window.electronAPI && typeof window.electronAPI.openExternalUrl === 'function') {
+      window.electronAPI.openExternalUrl(item.url);
+    } else {
+      window.open(item.url, '_blank', 'noopener,noreferrer');
+    }
+  };
+
+  const openBtn = card.querySelector('.trending-open-btn');
+  if (openBtn) {
+    openBtn.addEventListener('click', openModelPage);
+  }
+
+  card.addEventListener('click', openModelPage);
+  card.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      openModelPage();
+    }
+  });
+
+  return card;
+}
+
+function renderTrendingSection(payload) {
+  if (!payload) return;
+  updateTrendingRangeUI();
+
+  if (trendingUpdatedLabel && state.activeSection === 'trending') {
+    const timeStr = formatUpdatedClock(payload.updatedAt);
+    if (timeStr) {
+      trendingUpdatedLabel.textContent = `Atualizado às ${timeStr}`;
+      trendingUpdatedLabel.style.display = 'inline-flex';
+    }
+  }
+
+  const { makerWorld: mwList, makerOnline: moList } = getListsForCurrentRange(payload);
+  const unifiedTop25 = buildUnifiedTop25(mwList, moList);
+
+  const query = (state.searchQuery || '').toLowerCase().trim();
+  const filteredItems = !query
+    ? unifiedTop25
+    : unifiedTop25.filter(it =>
+        (it.title && it.title.toLowerCase().includes(query)) ||
+        (it.originalTitle && it.originalTitle.toLowerCase().includes(query)) ||
+        (it.author && it.author.toLowerCase().includes(query))
+      );
+
+  const targetGrid = trendingUnifiedGrid || trendingMakerWorldGrid;
+  if (targetGrid) {
+    if (unifiedTop25.length > 0) {
+      targetGrid.innerHTML = '';
+      if (filteredItems.length === 0) {
+        targetGrid.innerHTML = `<div class="trending-empty-box"><p>Nenhum modelo do Top 25 Em Alta corresponde à busca "${escapeHtml(state.searchQuery)}".</p></div>`;
+      } else {
+        filteredItems.forEach(item => targetGrid.appendChild(createTrendingCard(item)));
+      }
+    } else {
+      renderTrendingEmptyOrError(targetGrid, 'MakerWorld e MakerOnline', 'https://makerworld.com/pt/3d-models');
+    }
+  }
+}
+
 // Inicializar aplicação
 window.addEventListener('DOMContentLoaded', init);
 
@@ -7477,6 +8395,8 @@ window.renderGallery = renderGallery;
 window.renderFolderChips = renderFolderChips;
 window.updateStatsBadge = updateStatsBadge;
 window.setNavSection = setNavSection;
+window.setTrendingRange = setTrendingRange;
+window.loadAndRenderTrending = loadAndRenderTrending;
 window.loadSampleModels = loadSampleModels;
 window.getModelCacheKey = getModelCacheKey;
 window.getCachedThumbnail = getCachedThumbnail;
@@ -7501,4 +8421,5 @@ window.closeViewerModal = closeViewerModal;
 window.openEditCardModal = openEditCardModal;
 window.closeEditCardModal = closeEditCardModal;
 window.showToast = showToast;
+
 

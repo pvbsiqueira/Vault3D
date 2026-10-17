@@ -1,7 +1,7 @@
 import * as THREE from 'https://esm.sh/three@0.160.0';
 import JSZip from 'https://esm.sh/jszip@3.10.1';
 import { parseSTL } from './stl-parser.js';
-import { extract3MFExtras } from './threemf-extras.js';
+import { extract3MFExtras, enrichFromMakerOnline } from './threemf-extras.js';
 
 let sharedRenderer = null;
 let sharedScene = null;
@@ -106,9 +106,9 @@ export async function generateSTLThumbnail(arrayBuffer) {
 }
 
 /**
- * Extrai miniatura embutida em arquivos 3MF (geradas por Bambu Studio, OrcaSlicer, Prusa, etc.)
+ * Extrai miniatura embutida em arquivos 3MF (geradas por Bambu Studio, OrcaSlicer, Prusa, Anycubic, etc.)
  */
-export async function extract3MFThumbnail(arrayBuffer) {
+export async function extract3MFThumbnail(arrayBuffer, fileName = '') {
   try {
     const zip = await JSZip.loadAsync(arrayBuffer);
     
@@ -121,6 +121,9 @@ export async function extract3MFThumbnail(arrayBuffer) {
     let extras = null;
     try {
       extras = await extract3MFExtras(zip, plates, await readSliceInfoPlates(zip));
+      if (extras && extras.moFileId) {
+        await enrichFromMakerOnline(extras, plates, slicerData, fileName);
+      }
     } catch (errExtras) {
       console.warn('Erro ao ler informações extras do 3MF:', errExtras);
     }
@@ -986,7 +989,7 @@ function escapeRegex(str) {
  * - Fotos do modelo/autor em Auxiliaries/ (Model Pictures, Profile Pictures, etc.)
  * Remove imagens duplicadas byte a byte e ignora máscaras técnicas do fatiador (pick_N, plate_no_light_N).
  */
-export async function extract3MFCoverOptions(arrayBuffer) {
+export async function extract3MFCoverOptions(arrayBuffer, model = null) {
   const zip = (arrayBuffer && arrayBuffer.file) ? arrayBuffer : await JSZip.loadAsync(arrayBuffer);
   const options = [];
   const seenFingerprints = new Set();
@@ -1104,6 +1107,27 @@ export async function extract3MFCoverOptions(arrayBuffer) {
     });
   }
 
+  // 3. Fotos remotas do autor (MakerOnline) quando não há Auxiliaries embutidos no 3MF
+  if (model && model.extras && Array.isArray(model.extras.attachments)) {
+    for (const att of model.extras.attachments) {
+      if (options.length >= 24) break;
+      if (!att || att.kind !== 'image') continue;
+      const remoteUrl = att.remoteUrl || (/^https?:\/\//i.test(att.path) ? att.path : null);
+      if (!remoteUrl || seenPaths.has(remoteUrl)) continue;
+      seenPaths.add(remoteUrl);
+      options.push({
+        id: `mo:${remoteUrl}`,
+        kind: 'photo',
+        label: `Foto ${photoCounter++}`,
+        sublabel: 'MakerOnline',
+        title: att.name || 'Foto do modelo (MakerOnline)',
+        dataUrl: remoteUrl,
+        imageUrl: remoteUrl
+      });
+    }
+  }
+
   return options;
 }
+
 
