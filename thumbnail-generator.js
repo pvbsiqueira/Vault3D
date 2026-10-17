@@ -979,3 +979,131 @@ function escapeRegex(str) {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+/**
+ * Extrai todas as opções de foto de capa disponíveis dentro de um arquivo 3MF:
+ * - Capa padrão configurada no pacote (_rels / Metadata/thumbnail.png)
+ * - Miniaturas de cada mesa de impressão (Metadata/plate_1.png, plate_2.png, ...)
+ * - Fotos do modelo/autor em Auxiliaries/ (Model Pictures, Profile Pictures, etc.)
+ * Remove imagens duplicadas byte a byte e ignora máscaras técnicas do fatiador (pick_N, plate_no_light_N).
+ */
+export async function extract3MFCoverOptions(arrayBuffer) {
+  const zip = (arrayBuffer && arrayBuffer.file) ? arrayBuffer : await JSZip.loadAsync(arrayBuffer);
+  const options = [];
+  const seenFingerprints = new Set();
+  const seenPaths = new Set();
+
+  const entryToData = async (entry) => {
+    if (!entry) return null;
+    try {
+      const b64 = await entry.async('base64');
+      if (!b64 || b64.length < 32) return null;
+      const ext = (entry.name.split('.').pop() || '').toLowerCase();
+      const mime = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : ext === 'webp' ? 'image/webp' : 'image/png';
+      const fp = `${b64.length}:${b64.slice(0, 64)}:${b64.slice(-64)}`;
+      return {
+        imageUrl: `data:${mime};base64,${b64}`,
+        fp,
+        normPath: entry.name.replace(/\\/g, '/')
+      };
+    } catch (_) {
+      return null;
+    }
+  };
+
+  // 1. Capa padrão oficial do 3MF
+  const defaultThumb = await getConfigured3MFThumbnailFile(zip);
+  if (defaultThumb) {
+    const d = await entryToData(defaultThumb);
+    if (d) {
+      seenFingerprints.add(d.fp);
+      seenPaths.add(d.normPath.toLowerCase());
+      options.push({
+        id: 'auto',
+        kind: 'default',
+        label: 'Capa padrão',
+        sublabel: 'Miniatura do 3MF',
+        title: 'Capa padrão do arquivo 3MF',
+        dataUrl: d.imageUrl,
+        imageUrl: d.imageUrl
+      });
+    }
+  }
+
+  // 2. Fotos do autor / anexos (Auxiliaries/ e capas extras em Metadata/, sem as mesas de impressão)
+  const primaryPhotos = [];
+  const fallbackThumbPhotos = [];
+
+  zip.forEach((relPath, entry) => {
+    if (entry.dir) return;
+    const norm = relPath.replace(/\\/g, '/');
+    const lower = norm.toLowerCase();
+    if (seenPaths.has(lower)) return;
+    if (!/\.(png|jpg|jpeg|webp)$/i.test(norm)) return;
+
+    // Ignorar miniaturas de mesas e máscaras técnicas do fatiador
+    if (/^metadata\/(plate_\d+|top_\d+|pick_\d+|plate_no_light_\d+|plate_\d+_small|top_\d+_small)\./i.test(norm)) {
+      return;
+    }
+
+    const parts = norm.split('/');
+    const fileName = parts[parts.length - 1] || '';
+    if (!fileName || fileName.startsWith('.')) return;
+
+    const isHiddenDir = parts.some(p => p.startsWith('.'));
+    if (isHiddenDir) {
+      fallbackThumbPhotos.push({ norm, fileName, entry });
+    } else {
+      const rank = /^auxiliaries\/model pictures\//i.test(norm) ? 0
+        : /^auxiliaries\/profile pictures\//i.test(norm) ? 1
+        : /^auxiliaries\//i.test(norm) ? 2
+        : 3;
+      primaryPhotos.push({ norm, fileName, entry, rank });
+    }
+  });
+
+  primaryPhotos.sort((a, b) => a.rank - b.rank || a.norm.localeCompare(b.norm, undefined, { numeric: true }));
+  fallbackThumbPhotos.sort((a, b) => a.norm.localeCompare(b.norm, undefined, { numeric: true }));
+
+  const loadedBaseNames = new Set();
+  const baseKey = (name) => name.replace(/\.[^.]+$/, '').toLowerCase();
+
+  let photoCounter = 1;
+  for (const item of primaryPhotos) {
+    if (options.length >= 24) break;
+    const d = await entryToData(item.entry);
+    if (!d || seenFingerprints.has(d.fp)) continue;
+    seenFingerprints.add(d.fp);
+    loadedBaseNames.add(baseKey(item.fileName));
+
+    options.push({
+      id: `zip:${item.norm}`,
+      kind: 'photo',
+      label: `Foto ${photoCounter++}`,
+      sublabel: item.fileName,
+      title: item.fileName,
+      dataUrl: d.imageUrl,
+      imageUrl: d.imageUrl
+    });
+  }
+
+  for (const item of fallbackThumbPhotos) {
+    if (options.length >= 24) break;
+    if (loadedBaseNames.has(baseKey(item.fileName))) continue;
+    const d = await entryToData(item.entry);
+    if (!d || seenFingerprints.has(d.fp)) continue;
+    seenFingerprints.add(d.fp);
+
+    options.push({
+      id: `zip:${item.norm}`,
+      kind: 'photo',
+      label: `Foto ${photoCounter++}`,
+      sublabel: item.fileName,
+      title: item.fileName,
+      dataUrl: d.imageUrl,
+      imageUrl: d.imageUrl
+    });
+  }
+
+  return options;
+}
+

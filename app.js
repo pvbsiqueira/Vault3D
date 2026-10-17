@@ -1,6 +1,6 @@
 import * as THREE from 'https://esm.sh/three@0.160.0';
 import { OrbitControls } from 'https://esm.sh/three@0.160.0/examples/jsm/controls/OrbitControls.js';
-import { generateSTLThumbnail, extract3MFThumbnail, parse3MFGeometry } from './thumbnail-generator.js';
+import { generateSTLThumbnail, extract3MFThumbnail, extract3MFCoverOptions, parse3MFGeometry } from './thumbnail-generator.js';
 import JSZip from 'https://esm.sh/jszip@3.10.1';
 import { parseSTL } from './stl-parser.js';
 import { initAuth, getAuthenticatedUser } from './auth.js';
@@ -104,6 +104,7 @@ const currentViewTitle = document.getElementById('currentViewTitle');
 const currentViewSub = document.getElementById('currentViewSub');
 const searchInput = document.getElementById('searchInput');
 const filterBtns = document.querySelectorAll('.sidebar-format-btn, .pill-btn');
+const btnRefreshFolders = document.getElementById('btnRefreshFolders');
 const sortControlWrap = document.getElementById('sortControlWrap');
 const selectSortOrder = document.getElementById('selectSortOrder');
 
@@ -292,10 +293,24 @@ function init() {
   // Mover arquivos entre as pastas conectadas no modo Desktop
   setupMoveFeature();
 
+  // Edição de nome e foto de capa de arquivos e projetos
+  setupEditCardFeature();
+
   if (btnSelectFolder) btnSelectFolder.addEventListener('click', handleChooseFolder);
   if (btnEmptySelectFolder) btnEmptySelectFolder.addEventListener('click', handleChooseFolder);
   if (folderInputFallback) folderInputFallback.addEventListener('change', handleFallbackFileSelect);
   if (btnLoadSample) btnLoadSample.addEventListener('click', loadSampleModels);
+  if (btnRefreshFolders) {
+    btnRefreshFolders.addEventListener('click', () => {
+      refreshConnectedFolders();
+    });
+  }
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'F5' && !e.ctrlKey && !e.metaKey && !e.altKey && state.folders.length > 0) {
+      e.preventDefault();
+      refreshConnectedFolders();
+    }
+  });
 
   // Navegação da Barra Lateral (Todos / Projetos / Favoritos / Duplicados)
   [navAllModels, navProjects, navFavorites, navDuplicates].forEach(navBtn => {
@@ -1303,6 +1318,9 @@ async function saveCachedThumbnail(key, data) {
     store.put({
       key,
       thumbnailUrl: data.thumbnailUrl,
+      defaultThumbnailUrl: data.defaultThumbnailUrl || data.thumbnailUrl || null,
+      coverSource: data.coverSource || 'auto',
+      customCoverUrl: data.customCoverUrl || null,
       metadata: data.metadata || null,
       slicerData: data.slicerData || null,
       plates: data.plates || [],
@@ -1861,6 +1879,246 @@ async function addFilesToLibrary(files, folderName, dirHandle = null, persistToD
   showToast(`Pasta "${folderName}" adicionada com ${newModels.length} modelo(s)!`, 'success');
 }
 
+let isRefreshingFolders = false;
+
+/**
+ * Re-escaneia incrementalmente todas as pastas conectadas para detectar novos arquivos
+ * ou arquivos removidos/atualizados sem perder miniaturas já carregadas nem filtros ativos.
+ */
+async function refreshConnectedFolders() {
+  if (isRefreshingFolders) return;
+  if (!state.folders || state.folders.length === 0) {
+    showToast('Nenhuma pasta conectada para atualizar.', 'info');
+    return;
+  }
+
+  isRefreshingFolders = true;
+  const labelSpan = btnRefreshFolders ? btnRefreshFolders.querySelector('span') : null;
+  if (btnRefreshFolders) {
+    btnRefreshFolders.disabled = true;
+    btnRefreshFolders.classList.add('is-refreshing');
+  }
+  if (labelSpan) labelSpan.textContent = 'Atualizando...';
+
+  const normRelKey = (p, fName) => {
+    let rel = (p || '').replace(/\\/g, '/').replace(/^\/+/, '');
+    if (fName && rel.toLowerCase().startsWith(fName.toLowerCase() + '/')) {
+      rel = rel.substring(fName.length + 1);
+    }
+    return rel.toLowerCase();
+  };
+
+  try {
+    const savedFolders = await getAllFoldersFromDB();
+    const savedFavs = loadFavorites();
+
+    let totalAdded = 0;
+    let totalRemoved = 0;
+    let totalUpdated = 0;
+
+    for (const folder of [...state.folders]) {
+      if (folder.name && folder.name.includes('sample_models')) continue;
+
+      const savedEntry = (savedFolders || []).find(
+        sf => sf.id === folder.id || (sf.name && folder.name && sf.name.toLowerCase() === folder.name.toLowerCase())
+      );
+
+      let scannedFiles = null;
+      let resolvedRootPath = null;
+
+      // 1. Modo Desktop (Electron): varredura nativa direta no disco
+      if (window.electronAPI && typeof window.electronAPI.scanFolderDisk === 'function') {
+        const diskPathCandidate = getFolderRootPath(folder)
+          || (savedEntry && savedEntry.diskPath)
+          || (state.folderDiskPaths && state.folderDiskPaths[folder.name])
+          || folder.name;
+
+        if (diskPathCandidate) {
+          try {
+            const scanRes = await window.electronAPI.scanFolderDisk(diskPathCandidate);
+            if (scanRes && scanRes.success && Array.isArray(scanRes.files)) {
+              resolvedRootPath = scanRes.folderPath || diskPathCandidate;
+              state.folderDiskPaths[folder.name] = resolvedRootPath;
+              saveFolderDiskPaths();
+              scannedFiles = scanRes.files.map(item => ({
+                file: createDesktopFileProxy(item.fullDiskPath, item.name, item.size, item.lastModified),
+                name: item.name,
+                size: item.size,
+                lastModified: item.lastModified,
+                type: item.type,
+                path: item.path,
+                fullDiskPath: item.fullDiskPath,
+                fullFolderDirectory: resolvedRootPath + '\\',
+                handle: null,
+                parentHandle: null
+              }));
+            }
+          } catch (errScan) {
+            console.warn('Falha ao atualizar pasta no disco:', folder.name, errScan);
+          }
+        }
+      }
+
+      // 2. Fallback Web: FileSystemDirectoryHandle
+      const dirHandle = folder.handle || (savedEntry && savedEntry.handle);
+      if (scannedFiles === null && dirHandle) {
+        try {
+          let perm = await dirHandle.queryPermission({ mode: 'read' });
+          if (perm !== 'granted') {
+            perm = await dirHandle.requestPermission({ mode: 'read' });
+          }
+          if (perm === 'granted') {
+            scannedFiles = await scanDirectoryHandle(dirHandle);
+          }
+        } catch (errWeb) {
+          console.warn('Falha ao atualizar pasta via handle web:', folder.name, errWeb);
+        }
+      }
+
+      if (!Array.isArray(scannedFiles)) continue;
+
+      const existingModels = state.models.filter(m => m.folderId === folder.id);
+      const existingByKey = new Map();
+      existingModels.forEach(m => {
+        existingByKey.set(normRelKey(m.path || m.name, folder.name), m);
+      });
+
+      const seenKeys = new Set();
+      const rootBase = resolvedRootPath
+        || getFolderRootPath(folder)
+        || (state.folderDiskPaths && state.folderDiskPaths[folder.name])
+        || `C:\\Users\\eustudio\\Downloads\\${folder.name}`;
+
+      scannedFiles.forEach((item, index) => {
+        const key = normRelKey(item.path || item.name, folder.name);
+        seenKeys.add(key);
+        const existing = existingByKey.get(key);
+
+        if (existing) {
+          const itemLastMod = item.lastModified || (item.file && item.file.lastModified) || 0;
+          const sizeChanged = typeof item.size === 'number' && existing.size !== item.size;
+          const timeChanged = itemLastMod > 0 && existing.lastModified > 0 && existing.lastModified !== itemLastMod;
+
+          if (sizeChanged || timeChanged) {
+            existing.size = item.size;
+            existing.lastModified = itemLastMod || existing.lastModified;
+            existing.file = item.file;
+            existing.thumbnailUrl = null;
+            existing.defaultThumbnailUrl = null;
+            existing.metadata = null;
+            existing.slicerData = null;
+            existing.plates = [];
+            existing.extras = undefined;
+            existing.fingerprint = null;
+            totalUpdated++;
+          }
+        } else {
+          let sub = (item.path || item.name).replace(/\//g, '\\');
+          if (sub.toLowerCase().startsWith(folder.name.toLowerCase() + '\\')) {
+            sub = sub.substring(folder.name.length + 1);
+          }
+          const newModel = {
+            id: `model-${folder.id}-sync-${Date.now()}-${index}-${Math.random().toString(36).substr(2, 4)}`,
+            folderId: folder.id,
+            folderName: folder.name,
+            file: item.file,
+            name: item.name,
+            size: item.size,
+            lastModified: item.lastModified || (item.file && item.file.lastModified) || Date.now(),
+            type: item.type,
+            path: item.path,
+            handle: item.handle || null,
+            parentHandle: item.parentHandle || null,
+            isFavorite: savedFavs.has(item.name) || Boolean(item.path && savedFavs.has(item.path)),
+            thumbnailUrl: null,
+            metadata: null,
+            slicerData: null,
+            plates: [],
+            loadingThumbnail: false,
+            fingerprint: null,
+            isDuplicate: false,
+            duplicatesCount: 0,
+            duplicateOrigins: '',
+            fullFolderDirectory: rootBase + '\\',
+            fullDiskPath: item.fullDiskPath || `${rootBase}\\${sub}`.replace(/\\\\+/g, '\\')
+          };
+          state.models.push(newModel);
+          totalAdded++;
+        }
+      });
+
+      // Remover modelos que foram deletados ou movidos para fora da pasta pelo Explorer
+      const removedIds = new Set();
+      existingByKey.forEach((model, key) => {
+        if (!seenKeys.has(key)) {
+          removedIds.add(model.id);
+          state.selectedModelIds.delete(model.id);
+          if (state.activeModel && state.activeModel.id === model.id) {
+            closeViewerModal();
+          }
+          totalRemoved++;
+        }
+      });
+
+      if (removedIds.size > 0) {
+        state.models = state.models.filter(m => !removedIds.has(m.id));
+      }
+
+      folder.count = state.models.filter(m => m.folderId === folder.id).length;
+      await saveFolderToDB({
+        id: folder.id,
+        name: folder.name,
+        handle: dirHandle || null,
+        count: folder.count,
+        isSample: false,
+        diskPath: resolvedRootPath || (savedEntry && savedEntry.diskPath) || state.folderDiskPaths?.[folder.name] || null
+      });
+    }
+
+    if (totalAdded > 0 || totalRemoved > 0 || totalUpdated > 0) {
+      state.models.sort((a, b) => compareModelNames(a.name, b.name));
+      renderFolderChips();
+      updateStatsBadge();
+      renderGallery();
+      updateDuplicatesState();
+
+      if (totalAdded > 0 && totalRemoved === 0) {
+        showToast(
+          totalAdded === 1
+            ? '✨ 1 novo arquivo encontrado e adicionado à galeria!'
+            : `✨ ${totalAdded} novos arquivos encontrados e adicionados à galeria!`,
+          'success'
+        );
+      } else if (totalAdded === 0 && totalRemoved > 0) {
+        showToast(
+          totalRemoved === 1
+            ? '1 arquivo que não está mais na pasta foi removido da galeria.'
+            : `${totalRemoved} arquivos que não estão mais na pasta foram removidos da galeria.`,
+          'info'
+        );
+      } else if (totalAdded > 0 && totalRemoved > 0) {
+        showToast(`✨ Biblioteca atualizada: +${totalAdded} novo(s), -${totalRemoved} removido(s).`, 'success');
+      } else {
+        showToast(`🔄 ${totalUpdated} arquivo(s) modificado(s) atualizado(s)!`, 'success');
+      }
+    } else {
+      renderFolderChips();
+      updateStatsBadge();
+      showToast('Tudo em dia! Nenhum arquivo novo encontrado nas pastas.', 'info');
+    }
+  } catch (err) {
+    console.error('Erro ao atualizar pastas conectadas:', err);
+    showToast('Erro ao atualizar pastas: ' + err.message, 'error');
+  } finally {
+    isRefreshingFolders = false;
+    if (btnRefreshFolders) {
+      btnRefreshFolders.disabled = false;
+      btnRefreshFolders.classList.remove('is-refreshing');
+    }
+    if (labelSpan) labelSpan.textContent = 'Atualizar';
+  }
+}
+
 /**
  * Remove uma pasta específica e todos os seus modelos associados da biblioteca
  */
@@ -2292,6 +2550,9 @@ function updateStatsBadge() {
   if (sidebarAllFoldersWrap) {
     sidebarAllFoldersWrap.style.display = foldersCount > 0 ? 'block' : 'none';
   }
+  if (btnRefreshFolders) {
+    btnRefreshFolders.style.display = foldersCount > 0 ? 'inline-flex' : 'none';
+  }
 }
 
 /**
@@ -2451,13 +2712,32 @@ async function renameModelFile(model, newBaseName) {
     showToast(`Nome atualizado para "${newFullName}".`, 'info');
   }
 
+  const oldName = model.name;
+
   // Se o modelo era favorito, atualizar o nome nos favoritos
   const favs = loadFavorites();
-  if (favs.has(model.name)) {
-    favs.delete(model.name);
+  if (favs.has(oldName)) {
+    favs.delete(oldName);
     favs.add(newFullName);
     saveFavorites(favs);
   }
+
+  // Se o modelo fazia parte de algum projeto customizado, atualizar a referência
+  let projectsChanged = false;
+  (state.customProjects || []).forEach(project => {
+    if (Array.isArray(project.fileKeys)) {
+      const idx = project.fileKeys.indexOf(oldName);
+      if (idx !== -1) {
+        project.fileKeys[idx] = newFullName;
+        projectsChanged = true;
+      }
+    }
+    if (project.coverKey === oldName) {
+      project.coverKey = newFullName;
+      projectsChanged = true;
+    }
+  });
+  if (projectsChanged) saveCustomProjects();
 
   // Atualizar dados em memória
   model.name = newFullName;
@@ -2468,6 +2748,20 @@ async function renameModelFile(model, newBaseName) {
   }
   if (model.fullFolderDirectory) {
     model.fullDiskPath = `${model.fullFolderDirectory}${newFullName}`;
+  }
+
+  // Migrar miniatura e capa escolhida para a nova chave no IndexedDB
+  if (model.thumbnailUrl) {
+    saveCachedThumbnail(getModelCacheKey(model), {
+      thumbnailUrl: model.thumbnailUrl,
+      defaultThumbnailUrl: model.defaultThumbnailUrl || model.thumbnailUrl,
+      coverSource: model.coverSource || 'auto',
+      customCoverUrl: model.customCoverUrl || null,
+      metadata: model.metadata,
+      slicerData: model.slicerData,
+      plates: model.plates,
+      extras: model.extras || null
+    });
   }
 
   // Se o modal estiver aberto exibindo este mesmo modelo, atualizar o título do modal
@@ -2485,8 +2779,611 @@ async function renameModelFile(model, newBaseName) {
   // Reordenar a lista global após renomear
   state.models.sort((a, b) => compareModelNames(a.name, b.name));
 
-  showToast(`Arquivo renomeado para "${newFullName}" com sucesso!`, 'success');
   return true;
+}
+
+// ==========================================
+// Modal de Edição de Card (Nome + Foto de Capa)
+// ==========================================
+
+let editCardState = null;
+
+function isEditCardModalOpen() {
+  const modal = document.getElementById('editCardModal');
+  return !!(modal && modal.style.display !== 'none' && editCardState);
+}
+
+/**
+ * Redimensiona/comprime uma imagem enviada do PC para caber com folga no cache (IndexedDB / localStorage)
+ */
+function compactCoverDataUrl(rawDataUrl, maxSide = 720, quality = 0.86) {
+  return new Promise((resolve) => {
+    if (!rawDataUrl || typeof rawDataUrl !== 'string') {
+      resolve(rawDataUrl);
+      return;
+    }
+    const img = new Image();
+    img.onload = () => {
+      try {
+        let w = img.naturalWidth || img.width || maxSide;
+        let h = img.naturalHeight || img.height || maxSide;
+        if (w > maxSide || h > maxSide) {
+          if (w >= h) {
+            h = Math.max(1, Math.round((h * maxSide) / w));
+            w = maxSide;
+          } else {
+            w = Math.max(1, Math.round((w * maxSide) / h));
+            h = maxSide;
+          }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        const out = canvas.toDataURL('image/webp', quality);
+        resolve(out && out.startsWith('data:image/') ? out : rawDataUrl);
+      } catch (_) {
+        resolve(rawDataUrl);
+      }
+    };
+    img.onerror = () => resolve(rawDataUrl);
+    img.src = rawDataUrl;
+  });
+}
+
+function getFileBaseName(filename) {
+  const dot = (filename || '').lastIndexOf('.');
+  return dot !== -1 ? filename.substring(0, dot) : (filename || '');
+}
+
+/**
+ * Renderiza a grade de opções de foto de capa dentro do modal #editCardModal
+ */
+function renderEditCardCoverGrid() {
+  const grid = document.getElementById('editCardCoverGrid');
+  const hint = document.getElementById('editCardCoverHint');
+  if (!grid || !editCardState) return;
+
+  grid.innerHTML = '';
+  const options = editCardState.options || [];
+
+  if (hint) {
+    if (editCardState.loadingOptions) {
+      hint.textContent = 'Lendo imagens internas do arquivo...';
+    } else if (options.length > 1) {
+      hint.textContent = `${options.length} opções disponíveis`;
+    } else if (options.length === 1) {
+      hint.textContent = '1 opção (ou envie uma foto do PC)';
+    } else {
+      hint.textContent = 'Envie uma foto do computador';
+    }
+  }
+
+  if (options.length === 0) {
+    grid.innerHTML = `
+      <div class="edit-cover-empty">
+        ${editCardState.loadingOptions ? 'Carregando miniaturas disponíveis...' : 'Nenhuma miniatura pronta ainda. Você pode enviar uma foto do PC.'}
+      </div>
+    `;
+    return;
+  }
+
+  options.forEach((opt) => {
+    const imgSrc = opt.dataUrl || opt.imageUrl || '';
+    if (!imgSrc) return;
+    opt.dataUrl = imgSrc;
+    const subText = opt.sublabel || opt.title || '';
+    const btn = document.createElement('button');
+    const isSel = editCardState.selectedSource === opt.id;
+    btn.type = 'button';
+    btn.className = `edit-cover-option ${isSel ? 'is-selected' : ''}`;
+    btn.dataset.sourceId = opt.id;
+    btn.dataset.kind = opt.kind || 'default';
+    btn.setAttribute('role', 'option');
+    btn.setAttribute('aria-selected', isSel ? 'true' : 'false');
+    btn.title = `${opt.label}${subText ? ' — ' + subText : ''}`;
+
+    btn.innerHTML = `
+      <div class="edit-cover-thumb">
+        <img src="${imgSrc}" alt="${escapeHtml(opt.label)}" loading="lazy">
+      </div>
+      <span class="edit-cover-check" aria-hidden="true">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="20 6 9 17 4 12"></polyline>
+        </svg>
+      </span>
+      <div class="edit-cover-meta">
+        <span class="edit-cover-label">${escapeHtml(opt.label)}</span>
+        <span class="edit-cover-sub">${escapeHtml(subText)}</span>
+      </div>
+    `;
+
+    btn.addEventListener('click', () => {
+      if (!editCardState) return;
+      editCardState.selectedSource = opt.id;
+      grid.querySelectorAll('.edit-cover-option').forEach((el) => {
+        const active = el.dataset.sourceId === opt.id;
+        el.classList.toggle('is-selected', active);
+        el.setAttribute('aria-selected', active ? 'true' : 'false');
+      });
+    });
+
+    grid.appendChild(btn);
+  });
+}
+
+/**
+ * Abre o modal de edição de card (para um arquivo .3MF/.STL ou para um Projeto Multi-peças)
+ */
+async function openEditCardModal(item) {
+  if (!item) return;
+
+  const modal = document.getElementById('editCardModal');
+  const titleEl = document.getElementById('editCardModalTitle');
+  const subEl = document.getElementById('editCardModalSub');
+  const nameLabel = document.getElementById('editCardNameLabel');
+  const nameInput = document.getElementById('editCardNameInput');
+  const extBadge = document.getElementById('editCardExtBadge');
+  const fileInput = document.getElementById('editCardCustomCoverInput');
+  const btnConfirm = document.getElementById('btnConfirmEditCard');
+
+  if (!modal || !nameInput) return;
+  if (fileInput) fileInput.value = '';
+  if (btnConfirm) btnConfirm.disabled = false;
+
+  const token = Date.now() + Math.random();
+  const isProject = !!item.isProject;
+
+  if (isProject) {
+    const projectRecord = (state.customProjects || []).find(
+      p => p.id === (item.customProjectId || item.id)
+    );
+    const currentCustomUrl = (projectRecord && projectRecord.customCoverUrl) || item.customCoverUrl || null;
+    const parts = item.parts || [];
+
+    const options = [];
+    if (currentCustomUrl) {
+      options.push({
+        id: '__custom__',
+        kind: 'custom',
+        label: 'Foto enviada',
+        sublabel: 'Computador',
+        dataUrl: currentCustomUrl
+      });
+    }
+
+    parts.forEach((part, idx) => {
+      if (part.thumbnailUrl) {
+        options.push({
+          id: part.name,
+          kind: 'plate',
+          label: getFileBaseName(part.name),
+          sublabel: `Peça ${idx + 1} (${part.type.toUpperCase()})`,
+          dataUrl: part.thumbnailUrl
+        });
+      }
+    });
+
+    let selectedSource = (projectRecord && projectRecord.coverKey) || null;
+    if (!selectedSource || (!options.some(o => o.id === selectedSource) && selectedSource !== '__custom__')) {
+      selectedSource = currentCustomUrl
+        ? '__custom__'
+        : (options[0] ? options[0].id : (parts[0] ? parts[0].name : null));
+    }
+
+    editCardState = {
+      token,
+      item,
+      isProject: true,
+      projectRecord,
+      initialBaseName: item.name,
+      ext: '',
+      options,
+      selectedSource,
+      initialSource: selectedSource,
+      customCoverUrl: currentCustomUrl,
+      initialCustomCoverUrl: currentCustomUrl,
+      loadingOptions: parts.some(p => !p.thumbnailUrl),
+      saving: false
+    };
+
+    if (titleEl) titleEl.textContent = 'Editar projeto';
+    if (subEl) subEl.textContent = 'Altere o nome do projeto ou escolha qual foto representa a capa';
+    if (nameLabel) nameLabel.textContent = 'Nome do projeto';
+    if (extBadge) extBadge.hidden = true;
+    nameInput.value = item.name || '';
+
+    renderEditCardCoverGrid();
+    modal.style.display = 'flex';
+    requestAnimationFrame(() => {
+      nameInput.focus();
+      nameInput.select();
+    });
+
+    // Se alguma peça do projeto ainda não tiver miniatura gerada, carregar sob demanda
+    parts.forEach((part, idx) => {
+      if (!part.thumbnailUrl) {
+        loadModelOnDemand(part).then((loaded) => {
+          if (!editCardState || editCardState.token !== token) return;
+          if (loaded && loaded.thumbnailUrl && !editCardState.options.some(o => o.id === part.name)) {
+            editCardState.options.push({
+              id: part.name,
+              kind: 'plate',
+              label: getFileBaseName(part.name),
+              sublabel: `Peça ${idx + 1} (${part.type.toUpperCase()})`,
+              dataUrl: loaded.thumbnailUrl
+            });
+          }
+          editCardState.loadingOptions = parts.some(p => !p.thumbnailUrl);
+          renderEditCardCoverGrid();
+        });
+      }
+    });
+    return;
+  }
+
+  // Card de arquivo individual (.3MF ou .STL)
+  const dotIdx = item.name.lastIndexOf('.');
+  const ext = dotIdx !== -1 ? item.name.substring(dotIdx) : `.${item.type}`;
+  const baseName = dotIdx !== -1 ? item.name.substring(0, dotIdx) : item.name;
+
+  // Garantir leitura do cache caso ainda não tenha sido hidratado em memória
+  if (!item.defaultThumbnailUrl && !item.coverSource) {
+    try {
+      const cached = await getCachedThumbnail(getModelCacheKey(item));
+      if (cached) {
+        if (cached.defaultThumbnailUrl) item.defaultThumbnailUrl = cached.defaultThumbnailUrl;
+        if (cached.coverSource) item.coverSource = cached.coverSource;
+        if (cached.customCoverUrl) item.customCoverUrl = cached.customCoverUrl;
+      }
+    } catch (_) {}
+  }
+
+  const initialOptions = [];
+  const defaultThumb = item.defaultThumbnailUrl || (item.coverSource !== 'custom' ? item.thumbnailUrl : null);
+
+  if (item.customCoverUrl) {
+    initialOptions.push({
+      id: 'custom',
+      kind: 'custom',
+      label: 'Foto enviada',
+      sublabel: 'Computador',
+      dataUrl: item.customCoverUrl
+    });
+  }
+
+  if (defaultThumb) {
+    initialOptions.push({
+      id: 'auto',
+      kind: 'default',
+      label: item.type === '3mf' ? 'Capa padrão' : 'Miniatura 3D',
+      sublabel: item.type === '3mf' ? 'Miniatura do 3MF' : 'Gerada do STL',
+      dataUrl: defaultThumb
+    });
+  }
+
+  const currentSource = item.coverSource || 'auto';
+
+  editCardState = {
+    token,
+    item,
+    isProject: false,
+    initialBaseName: baseName,
+    ext,
+    options: initialOptions,
+    selectedSource: currentSource,
+    initialSource: currentSource,
+    customCoverUrl: item.customCoverUrl || null,
+    initialCustomCoverUrl: item.customCoverUrl || null,
+    loadingOptions: item.type === '3mf' || !defaultThumb,
+    saving: false
+  };
+
+  if (titleEl) titleEl.textContent = 'Editar arquivo';
+  if (subEl) {
+    subEl.textContent = item.type === '3mf'
+      ? 'Altere o nome ou escolha entre as fotos internas do 3MF e do computador'
+      : 'Altere o nome ou escolha uma foto personalizada para representar este STL';
+  }
+  if (nameLabel) nameLabel.textContent = 'Nome do arquivo';
+  if (extBadge) {
+    extBadge.textContent = ext.toLowerCase();
+    extBadge.hidden = false;
+  }
+  nameInput.value = baseName;
+
+  renderEditCardCoverGrid();
+  modal.style.display = 'flex';
+  requestAnimationFrame(() => {
+    nameInput.focus();
+    nameInput.select();
+  });
+
+  // Carregar todas as opções de capa do arquivo em segundo plano sem travar a digitação
+  (async () => {
+    try {
+      if (item.type === '3mf') {
+        if (!item.file && item.handle && typeof item.handle.getFile === 'function') {
+          item.file = await item.handle.getFile();
+        }
+        if (item.file) {
+          const buffer = await item.file.arrayBuffer();
+          const extracted = await extract3MFCoverOptions(buffer);
+          if (!editCardState || editCardState.token !== token) return;
+
+          const autoOpt = extracted.find(o => o.id === 'auto');
+          if (autoOpt && autoOpt.dataUrl) {
+            item.defaultThumbnailUrl = autoOpt.dataUrl;
+          }
+
+          const merged = [];
+          if (editCardState.customCoverUrl) {
+            merged.push({
+              id: 'custom',
+              kind: 'custom',
+              label: 'Foto enviada',
+              sublabel: 'Computador',
+              dataUrl: editCardState.customCoverUrl
+            });
+          }
+          extracted.forEach(opt => merged.push(opt));
+
+          editCardState.options = merged;
+          // Se a fonte salva não existir mais na lista, selecionar a primeira correspondente
+          if (!merged.some(o => o.id === editCardState.selectedSource)) {
+            const matchByUrl = merged.find(o => o.dataUrl === item.thumbnailUrl);
+            editCardState.selectedSource = matchByUrl ? matchByUrl.id : (merged[0] ? merged[0].id : 'auto');
+          }
+        }
+      } else if (item.type === 'stl' && !defaultThumb) {
+        const loaded = await loadModelOnDemand(item);
+        if (!editCardState || editCardState.token !== token) return;
+        const stlThumb = (loaded && (loaded.defaultThumbnailUrl || loaded.thumbnailUrl)) || item.thumbnailUrl;
+        if (stlThumb && !editCardState.options.some(o => o.id === 'auto')) {
+          editCardState.options.push({
+            id: 'auto',
+            kind: 'default',
+            label: 'Miniatura 3D',
+            sublabel: 'Gerada do STL',
+            dataUrl: stlThumb
+          });
+        }
+      }
+    } catch (err) {
+      console.warn('Erro ao listar opções de capa do arquivo:', err);
+    } finally {
+      if (editCardState && editCardState.token === token) {
+        editCardState.loadingOptions = false;
+        renderEditCardCoverGrid();
+      }
+    }
+  })();
+}
+
+function closeEditCardModal() {
+  const modal = document.getElementById('editCardModal');
+  if (modal) modal.style.display = 'none';
+  editCardState = null;
+}
+
+async function confirmEditCardModal() {
+  if (!editCardState || editCardState.saving) return;
+
+  const nameInput = document.getElementById('editCardNameInput');
+  const btnConfirm = document.getElementById('btnConfirmEditCard');
+  const rawName = nameInput ? nameInput.value.trim() : '';
+
+  const { item, isProject } = editCardState;
+
+  if (!rawName) {
+    showToast(isProject ? 'O nome do projeto não pode ficar vazio.' : 'O nome do arquivo não pode ficar vazio.', 'error');
+    if (nameInput) nameInput.focus();
+    return;
+  }
+
+  editCardState.saving = true;
+  if (btnConfirm) btnConfirm.disabled = true;
+
+  try {
+    if (isProject) {
+      const projRecord = editCardState.projectRecord || (state.customProjects || []).find(
+        p => p.id === (item.customProjectId || item.id)
+      );
+      const selectedOpt = (editCardState.options || []).find(o => o.id === editCardState.selectedSource);
+
+      const nameChanged = rawName !== editCardState.initialBaseName;
+      const coverChanged = editCardState.selectedSource !== editCardState.initialSource
+        || editCardState.customCoverUrl !== editCardState.initialCustomCoverUrl;
+
+      if (projRecord) {
+        projRecord.name = rawName;
+        if (editCardState.selectedSource === '__custom__' && editCardState.customCoverUrl) {
+          projRecord.coverKey = '__custom__';
+          projRecord.customCoverUrl = editCardState.customCoverUrl;
+        } else if (editCardState.selectedSource) {
+          projRecord.coverKey = editCardState.selectedSource;
+          projRecord.customCoverUrl = null;
+        }
+        saveCustomProjects();
+      }
+
+      // Atualizar favoritos se o projeto era favorito e mudou de nome
+      if (nameChanged && item.isFavorite) {
+        const favs = loadFavorites();
+        if (favs.has(item.name)) {
+          favs.delete(item.name);
+          favs.add(rawName);
+          saveFavorites(favs);
+        }
+      }
+
+      item.name = rawName;
+      if (selectedOpt && selectedOpt.dataUrl) {
+        item.thumbnailUrl = selectedOpt.dataUrl;
+      }
+
+      // Se o visualizador 3D estiver aberto neste projeto, atualizar cabeçalho
+      if (state.activeProject && state.activeProject.id === item.id) {
+        state.activeProject.name = rawName;
+        if (modalPathName) modalPathName.textContent = rawName;
+        else if (modalFileName) modalFileName.textContent = rawName;
+      }
+
+      closeEditCardModal();
+      renderGallery();
+      updateStatsBadge();
+
+      if (nameChanged || coverChanged) {
+        showToast('Projeto atualizado com sucesso!', 'success');
+      }
+      return;
+    }
+
+    // Arquivo individual (.3MF ou .STL)
+    let cleanBase = rawName;
+    if (editCardState.ext && cleanBase.toLowerCase().endsWith(editCardState.ext.toLowerCase())) {
+      cleanBase = cleanBase.substring(0, cleanBase.length - editCardState.ext.length).trim();
+    }
+
+    const nameChanged = cleanBase !== editCardState.initialBaseName;
+    if (nameChanged) {
+      const renamed = await renameModelFile(item, cleanBase);
+      if (!renamed) {
+        editCardState.saving = false;
+        if (btnConfirm) btnConfirm.disabled = false;
+        if (nameInput) nameInput.focus();
+        return;
+      }
+    }
+
+    const selectedOpt = (editCardState.options || []).find(o => o.id === editCardState.selectedSource);
+    const coverChanged = Boolean(
+      selectedOpt && (
+        editCardState.selectedSource !== editCardState.initialSource ||
+        (editCardState.selectedSource === 'custom' && editCardState.customCoverUrl !== editCardState.initialCustomCoverUrl) ||
+        selectedOpt.dataUrl !== item.thumbnailUrl
+      )
+    );
+
+    if (selectedOpt && selectedOpt.dataUrl) {
+      item.coverSource = selectedOpt.id;
+      item.thumbnailUrl = selectedOpt.dataUrl;
+      item.customCoverUrl = selectedOpt.id === 'custom' ? selectedOpt.dataUrl : (editCardState.customCoverUrl || null);
+
+      const defaultOpt = (editCardState.options || []).find(o => o.id === 'auto');
+      if (defaultOpt && defaultOpt.dataUrl) {
+        item.defaultThumbnailUrl = defaultOpt.dataUrl;
+      }
+
+      await saveCachedThumbnail(getModelCacheKey(item), {
+        thumbnailUrl: item.thumbnailUrl,
+        defaultThumbnailUrl: item.defaultThumbnailUrl || item.thumbnailUrl,
+        coverSource: item.coverSource,
+        customCoverUrl: item.customCoverUrl,
+        metadata: item.metadata,
+        slicerData: item.slicerData,
+        plates: item.plates,
+        extras: item.extras || null
+      });
+
+      updateCardThumbnail(item);
+
+      // Se o visualizador 3D estiver exibindo este arquivo na foto da capa, atualizar
+      if (state.activeModel && state.activeModel.id === item.id && modalPlateImg && (!state.activePlate || state.activePlate.id === 1)) {
+        if (item.type === 'stl' || !item.plates || item.plates.length === 0) {
+          modalPlateImg.src = item.thumbnailUrl;
+        }
+      }
+    }
+
+    closeEditCardModal();
+
+    if (nameChanged) {
+      renderGallery();
+      updateStatsBadge();
+    } else if (coverChanged) {
+      // Se este arquivo for a capa de algum projeto, re-renderizar a galeria para atualizar o projeto
+      const isUsedInProject = (state.customProjects || []).some(p => p.coverKey === item.name || (p.fileKeys && p.fileKeys.includes(item.name)));
+      if (isUsedInProject) {
+        renderGallery();
+      }
+      showToast('Foto de capa atualizada!', 'success');
+    }
+  } finally {
+    if (editCardState) editCardState.saving = false;
+    if (btnConfirm) btnConfirm.disabled = false;
+  }
+}
+
+function setupEditCardFeature() {
+  const on = (id, fn) => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('click', fn);
+  };
+
+  on('editCardModalBackdrop', closeEditCardModal);
+  on('btnCloseEditCardModal', closeEditCardModal);
+  on('btnCancelEditCard', closeEditCardModal);
+  on('btnConfirmEditCard', confirmEditCardModal);
+  on('btnModalEdit', () => {
+    const target = state.modalItem || state.activeProject || state.activeModel;
+    if (target) openEditCardModal(target);
+  });
+
+  const btnUpload = document.getElementById('btnEditUploadCover');
+  const fileInput = document.getElementById('editCardCustomCoverInput');
+  if (btnUpload && fileInput) {
+    btnUpload.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file || !editCardState) return;
+      const token = editCardState.token;
+      const reader = new FileReader();
+      reader.onload = async (ev) => {
+        const rawUrl = ev.target && ev.target.result;
+        if (!rawUrl || !editCardState || editCardState.token !== token) return;
+        const compactUrl = await compactCoverDataUrl(rawUrl);
+        if (!editCardState || editCardState.token !== token) return;
+
+        const customId = editCardState.isProject ? '__custom__' : 'custom';
+        editCardState.customCoverUrl = compactUrl;
+        editCardState.selectedSource = customId;
+
+        const existingIdx = editCardState.options.findIndex(o => o.id === customId);
+        const customOpt = {
+          id: customId,
+          kind: 'custom',
+          label: 'Foto enviada',
+          sublabel: file.name || 'Computador',
+          dataUrl: compactUrl
+        };
+        if (existingIdx !== -1) {
+          editCardState.options[existingIdx] = customOpt;
+        } else {
+          editCardState.options.unshift(customOpt);
+        }
+        renderEditCardCoverGrid();
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  // Captura de teclado: com o modal de edição aberto, Enter salva e Esc fecha sem afetar o fundo
+  window.addEventListener('keydown', (e) => {
+    if (!isEditCardModalOpen()) return;
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      closeEditCardModal();
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      confirmEditCardModal();
+    } else {
+      e.stopImmediatePropagation();
+    }
+  }, true);
 }
 
 // ==========================================
@@ -2880,8 +3777,25 @@ function applyModelMove(model, folder, subPath, res) {
         project.fileKeys.push(newName);
         projectsChanged = true;
       }
+      if (project.coverKey === oldName) {
+        project.coverKey = newName;
+        projectsChanged = true;
+      }
     });
     if (projectsChanged) saveCustomProjects();
+  }
+
+  if (model.thumbnailUrl) {
+    saveCachedThumbnail(getModelCacheKey(model), {
+      thumbnailUrl: model.thumbnailUrl,
+      defaultThumbnailUrl: model.defaultThumbnailUrl || model.thumbnailUrl,
+      coverSource: model.coverSource || 'auto',
+      customCoverUrl: model.customCoverUrl || null,
+      metadata: model.metadata,
+      slicerData: model.slicerData,
+      plates: model.plates,
+      extras: model.extras || null
+    });
   }
 }
 
@@ -4452,6 +5366,11 @@ function createModelCard(model) {
           <div class="card-title" title="${escapeHtml(model.name)} (${model.partsCount} arquivos)" data-fullname="${escapeHtml(model.name)}">
             <span class="card-title-base card-title-project">${escapeHtml(model.name)}</span>
           </div>
+          <button class="btn-card-rename" title="Editar nome e foto de capa do projeto" aria-label="Editar projeto" type="button">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
+            </svg>
+          </button>
         </div>
         <div class="card-meta">
           <span>${formattedSize} total</span>
@@ -4497,8 +5416,24 @@ function createModelCard(model) {
       });
     }
 
+    const btnEditProject = card.querySelector('.btn-card-rename');
+    if (btnEditProject) {
+      btnEditProject.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openEditCardModal(model);
+      });
+    }
+
+    const projTitleEl = card.querySelector('.card-title');
+    if (projTitleEl) {
+      projTitleEl.addEventListener('dblclick', (e) => {
+        e.stopPropagation();
+        openEditCardModal(model);
+      });
+    }
+
     card.addEventListener('click', (e) => {
-      if (e.target.closest('.btn-favorite') || e.target.closest('.btn-open-slicer') || e.target.closest('.btn-dissolve-card')) return;
+      if (e.target.closest('.btn-favorite') || e.target.closest('.btn-open-slicer') || e.target.closest('.btn-dissolve-card') || e.target.closest('.btn-card-rename')) return;
       openViewerModal(model);
     });
 
@@ -4554,7 +5489,7 @@ function createModelCard(model) {
         <div class="card-title" title="${escapeHtml(model.name)}" data-fullname="${escapeHtml(model.name)}">
           <span class="card-title-base">${escapeHtml(baseName)}</span><span class="card-title-ext">${escapeHtml(ext)}</span>
         </div>
-        <button class="btn-card-rename" title="Renomear arquivo" aria-label="Renomear arquivo" type="button">
+        <button class="btn-card-rename" title="Editar nome e foto de capa" aria-label="Editar nome e foto de capa" type="button">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
           </svg>
@@ -4627,21 +5562,20 @@ function createModelCard(model) {
     });
   }
 
-  // Eventos de Renomear e Título
+  // Eventos de Editar Card (Nome + Foto de Capa) e Lixeira
   const titleRow = card.querySelector('.card-title-row');
-
-  const setupTitleRowEvents = () => {
+  if (titleRow) {
     const btnRename = titleRow.querySelector('.btn-card-rename');
     const titleEl = titleRow.querySelector('.card-title');
+    const btnTrash = titleRow.querySelector('.btn-card-trash');
 
     if (btnRename) {
       btnRename.addEventListener('click', (e) => {
         e.stopPropagation();
-        enterRenameMode();
+        openEditCardModal(model);
       });
     }
 
-    const btnTrash = titleRow.querySelector('.btn-card-trash');
     if (btnTrash) {
       btnTrash.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -4652,116 +5586,10 @@ function createModelCard(model) {
     if (titleEl) {
       titleEl.addEventListener('dblclick', (e) => {
         e.stopPropagation();
-        enterRenameMode();
+        openEditCardModal(model);
       });
     }
-  };
-
-  const enterRenameMode = () => {
-    const curDot = model.name.lastIndexOf('.');
-    const curExt = curDot !== -1 ? model.name.substring(curDot) : `.${model.type}`;
-    const curBase = curDot !== -1 ? model.name.substring(0, curDot) : model.name;
-
-    titleRow.innerHTML = `
-      <div class="card-rename-box">
-        <div class="card-rename-input-wrapper">
-          <input type="text" class="card-rename-input" value="${escapeHtml(curBase)}" spellcheck="false" autocomplete="off" />
-          <span class="card-rename-ext-locked" title="A extensão é protegida e não pode ser alterada">${escapeHtml(curExt)}</span>
-        </div>
-        <div class="card-rename-actions">
-          <button class="btn-rename-action btn-rename-confirm" title="Salvar (Enter)" type="button">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="20 6 9 17 4 12"></polyline>
-            </svg>
-          </button>
-          <button class="btn-rename-action btn-rename-cancel" title="Cancelar (Esc)" type="button">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="18" y1="6" x2="6" y2="18"></line>
-              <line x1="6" y1="6" x2="18" y2="18"></line>
-            </svg>
-          </button>
-        </div>
-      </div>
-    `;
-
-    const renameBox = titleRow.querySelector('.card-rename-box');
-    const input = titleRow.querySelector('.card-rename-input');
-    const btnConfirm = titleRow.querySelector('.btn-rename-confirm');
-    const btnCancel = titleRow.querySelector('.btn-rename-cancel');
-
-    renameBox.addEventListener('click', (ev) => ev.stopPropagation());
-
-    input.focus();
-    input.select();
-
-    let isSaving = false;
-
-    const handleSave = async () => {
-      if (isSaving) return;
-      isSaving = true;
-      const newBase = input.value;
-      input.disabled = true;
-      btnConfirm.disabled = true;
-      btnCancel.disabled = true;
-
-      const success = await renameModelFile(model, newBase);
-      if (success) {
-        renderGallery();
-      } else {
-        isSaving = false;
-        input.disabled = false;
-        btnConfirm.disabled = false;
-        btnCancel.disabled = false;
-        input.focus();
-      }
-    };
-
-    const exitRenameMode = () => {
-      const nextDot = model.name.lastIndexOf('.');
-      const nextExt = nextDot !== -1 ? model.name.substring(nextDot) : `.${model.type}`;
-      const nextBase = nextDot !== -1 ? model.name.substring(0, nextDot) : model.name;
-
-      titleRow.innerHTML = `
-        <div class="card-title" title="${escapeHtml(model.name)}" data-fullname="${escapeHtml(model.name)}">
-          <span class="card-title-base">${escapeHtml(nextBase)}</span><span class="card-title-ext">${escapeHtml(nextExt)}</span>
-        </div>
-        <button class="btn-card-rename" title="Renomear arquivo" aria-label="Renomear arquivo" type="button">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
-          </svg>
-        </button>
-        <button class="btn-card-trash trash-only" title="Mover para a Lixeira" aria-label="Mover para a Lixeira" type="button">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M3 6h18"></path><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
-          </svg>
-        </button>
-      `;
-      setupTitleRowEvents();
-    };
-
-    btnConfirm.addEventListener('click', (ev) => {
-      ev.stopPropagation();
-      handleSave();
-    });
-
-    btnCancel.addEventListener('click', (ev) => {
-      ev.stopPropagation();
-      exitRenameMode();
-    });
-
-    input.addEventListener('keydown', (ev) => {
-      ev.stopPropagation();
-      if (ev.key === 'Enter') {
-        ev.preventDefault();
-        handleSave();
-      } else if (ev.key === 'Escape') {
-        ev.preventDefault();
-        exitRenameMode();
-      }
-    });
-  };
-
-  setupTitleRowEvents();
+  }
 
   card.addEventListener('click', (e) => {
     if (e.target.closest('.card-rename-box') || e.target.closest('.btn-card-rename') || e.target.closest('.btn-favorite') || e.target.closest('.btn-open-slicer') || e.target.closest('.btn-keep-only') || e.target.closest('.btn-card-trash')) {
@@ -5172,6 +6000,9 @@ async function loadModelOnDemand(model) {
     const cached = await getCachedThumbnail(cacheKey);
     if (cached && cached.thumbnailUrl) {
       model.thumbnailUrl = cached.thumbnailUrl;
+      model.defaultThumbnailUrl = cached.defaultThumbnailUrl || cached.thumbnailUrl;
+      model.coverSource = cached.coverSource || 'auto';
+      model.customCoverUrl = cached.customCoverUrl || null;
       model.metadata = cached.metadata || null;
       model.slicerData = cached.slicerData || null;
       model.plates = cached.plates || [];
@@ -5246,20 +6077,26 @@ async function extractModelThumbnailAndMeta(model, forceExtractPlates = false) {
 
   const cacheKey = getModelCacheKey(model);
 
-  // Checagem rápida antes de processar buffer pesado (se não estiver forçando extração de mesas)
-  if (!forceExtractPlates) {
-    try {
-      const cached = await getCachedThumbnail(cacheKey);
-      if (cached && cached.thumbnailUrl) {
+  // Checagem rápida antes de processar buffer pesado
+  try {
+    const cached = await getCachedThumbnail(cacheKey);
+    if (cached && cached.thumbnailUrl) {
+      if (!model.coverSource && cached.coverSource) model.coverSource = cached.coverSource;
+      if (!model.customCoverUrl && cached.customCoverUrl) model.customCoverUrl = cached.customCoverUrl;
+      if (!model.defaultThumbnailUrl && cached.defaultThumbnailUrl) model.defaultThumbnailUrl = cached.defaultThumbnailUrl;
+      if (!forceExtractPlates) {
         model.thumbnailUrl = cached.thumbnailUrl;
+        model.defaultThumbnailUrl = cached.defaultThumbnailUrl || cached.thumbnailUrl;
+        model.coverSource = cached.coverSource || 'auto';
+        model.customCoverUrl = cached.customCoverUrl || null;
         model.metadata = cached.metadata || null;
         model.slicerData = cached.slicerData || null;
         model.plates = cached.plates || [];
         model.extras = cached.extras || null;
         return;
       }
-    } catch (_) {}
-  }
+    }
+  } catch (_) {}
 
   if (!model.file && model.handle && typeof model.handle.getFile === 'function') {
     model.file = await model.handle.getFile();
@@ -5269,14 +6106,21 @@ async function extractModelThumbnailAndMeta(model, forceExtractPlates = false) {
   }
 
   const buffer = await model.file.arrayBuffer();
+  const hasUserChosenCover = model.coverSource && model.coverSource !== 'auto' && model.thumbnailUrl;
 
   if (model.type === 'stl') {
     const res = await generateSTLThumbnail(buffer);
-    model.thumbnailUrl = res.thumbnailUrl;
+    model.defaultThumbnailUrl = res.thumbnailUrl || model.defaultThumbnailUrl || model.thumbnailUrl;
+    if (!hasUserChosenCover) {
+      model.thumbnailUrl = res.thumbnailUrl;
+    }
     model.metadata = res.metadata;
   } else if (model.type === '3mf') {
     const res = await extract3MFThumbnail(buffer);
-    model.thumbnailUrl = res.thumbnailUrl || model.thumbnailUrl;
+    model.defaultThumbnailUrl = res.thumbnailUrl || model.defaultThumbnailUrl || model.thumbnailUrl;
+    if (!hasUserChosenCover) {
+      model.thumbnailUrl = res.thumbnailUrl || model.thumbnailUrl;
+    }
     model.metadata = res.metadata;
     model.slicerData = res.slicerData;
     model.plates = res.plates || [];
@@ -5287,6 +6131,9 @@ async function extractModelThumbnailAndMeta(model, forceExtractPlates = false) {
   if (model.thumbnailUrl) {
     saveCachedThumbnail(cacheKey, {
       thumbnailUrl: model.thumbnailUrl,
+      defaultThumbnailUrl: model.defaultThumbnailUrl || model.thumbnailUrl,
+      coverSource: model.coverSource || 'auto',
+      customCoverUrl: model.customCoverUrl || null,
       metadata: model.metadata,
       slicerData: model.slicerData,
       plates: model.plates,
@@ -6651,4 +7498,7 @@ window.dissolveCustomProject = dissolveCustomProject;
 window.applyCustomProjects = applyCustomProjects;
 window.openViewerModal = openViewerModal;
 window.closeViewerModal = closeViewerModal;
+window.openEditCardModal = openEditCardModal;
+window.closeEditCardModal = closeEditCardModal;
 window.showToast = showToast;
+
