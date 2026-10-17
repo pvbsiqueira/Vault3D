@@ -1598,9 +1598,42 @@ body.is-moving-files .sidebar-folder-item.is-move-source { opacity: 0.5; }
 }
 .toast-action:hover { background: var(--accent-soft); }
 
-/* Link externo na barra lateral (Indicações) */
-.sidebar-nav-link .nav-external { margin-left: auto; display: inline-flex; color: var(--text-muted, var(--text-secondary)); }
+/* Links externos na barra lateral (Indicações e Grupo do WhatsApp) */
+.sidebar-nav-link .nav-external { margin-left: auto; display: inline-flex; color: var(--text-muted, var(--text-secondary)); transition: color 0.15s ease; }
 .sidebar-nav-link:hover .nav-external { color: var(--accent); }
+.sidebar-bottom-links {
+  padding: 6px 10px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.sidebar-indicacoes-link .indicacoes-icon {
+  color: #fb923c;
+  transition: transform 0.15s ease, color 0.15s ease;
+}
+.sidebar-indicacoes-link:hover {
+  background: var(--bg-card);
+  color: var(--text-primary);
+}
+.sidebar-indicacoes-link:hover .indicacoes-icon,
+.sidebar-indicacoes-link:hover .nav-external {
+  color: #fb923c;
+}
+.sidebar-whatsapp-link .whatsapp-icon {
+  color: var(--accent-3mf);
+  transition: transform 0.15s ease, color 0.15s ease;
+}
+.sidebar-whatsapp-link:hover {
+  background: var(--bg-card);
+  color: var(--text-primary);
+}
+.sidebar-whatsapp-link:hover .whatsapp-icon {
+  color: #34d399;
+}
+.sidebar-whatsapp-link:hover .nav-external {
+  color: var(--accent-3mf);
+}
 
 /* ---------------------------------------------------------------
    Modal de edição do Card (Nome + Foto de Capa)

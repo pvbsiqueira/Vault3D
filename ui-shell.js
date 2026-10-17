@@ -39,12 +39,14 @@
   const navDup = document.getElementById('navDuplicates');
   if (btnReviewDup && navDup) btnReviewDup.addEventListener('click', () => navDup.click());
 
-  // "Indicações" abre a página do site no navegador padrão (o main.js manda
-  // qualquer window.open http(s) para o navegador do sistema)
-  const navIndicacoes = document.getElementById('navIndicacoes');
-  if (navIndicacoes) {
-    navIndicacoes.addEventListener('click', () => window.open(navIndicacoes.dataset.href, '_blank', 'noopener'));
-  }
+  // Links externos da barra lateral ("Indicações" e "Grupo do WhatsApp") abrem no navegador padrão
+  document.querySelectorAll('.sidebar-nav-link[data-href]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      if (btn.dataset.href) {
+        window.open(btn.dataset.href, '_blank', 'noopener');
+      }
+    });
+  });
 
   document.addEventListener('keydown', (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k' && search) {
