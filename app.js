@@ -6,7 +6,7 @@ import JSZip from 'https://esm.sh/jszip@3.10.1';
 import { parseSTL } from './stl-parser.js';
 import { initAuth, getAuthenticatedUser } from './auth.js';
 import { startUsageTracking } from './usage-tracker.js';
-import { initSlicerPicker, isSlicerChoiceSupported, slicerSplitHtml, openSlicerMenu, getDefaultSlicerName, getSlicerState, onSlicersChanged, getSlicerNames, getLastSlicer, setLastSlicer } from './slicer-picker.js';
+import { initSlicerPicker, isSlicerChoiceSupported, slicerSplitHtml, openSlicerMenu, getDefaultSlicerName, getSlicerState, onSlicersChanged, getSlicerNames, getLastSlicer, setLastSlicer, slicerIconHtml } from './slicer-picker.js';
 
 // Estado global da aplicação
 const state = {
@@ -4638,16 +4638,23 @@ function getSlicerButtonConfig(model = null) {
   const isDesktop = Boolean(typeof window !== 'undefined' && window.electronAPI && window.electronAPI.isElectron);
   if (isDesktop) {
     const defaultName = getDefaultSlicerName();
-    // Último fatiador escolhido para este arquivo: o botão passa a mostrar o nome dele
-    const last = model ? getSlicerNames(getLastSlicer(getSlicerFileKey(model))) : null;
+    const fileKey = model ? getSlicerFileKey(model) : '';
+    // Último fatiador escolhido para este arquivo: o botão passa a mostrar o nome e o ícone dele
+    const last = fileKey ? getSlicerNames(getLastSlicer(fileKey)) : null;
+    // Sem histórico, mostra o padrão quando já se sabe que é ele que abre
+    // (um 3MF pode ir para o fatiador que o criou, então nele o padrão não é garantido)
+    const slicerPrefs = getSlicerState();
+    const opensWithDefault = !last && fileKey && slicerPrefs.defaultId !== 'system'
+      && (!/\.3mf$/i.test(fileKey) || !slicerPrefs.matchCreator);
+    const known = last || (opensWithDefault ? getSlicerNames(slicerPrefs.defaultId) : null);
     return {
-      text: last ? `Abrir no ${last.short}` : 'Abrir no Fatiador',
+      text: known ? `Abrir no ${known.short}` : 'Abrir no Fatiador',
       title: last
         ? `Abrir no ${last.full} (último usado neste arquivo; a setinha troca o fatiador)`
         : defaultName
-        ? `Abrir no ${defaultName}${getSlicerState().matchCreator ? ' (arquivos 3MF abrem no fatiador que os criou)' : ''}`
+        ? `Abrir no ${defaultName}${slicerPrefs.matchCreator ? ' (arquivos 3MF abrem no fatiador que os criou)' : ''}`
         : 'Abrir arquivo diretamente no seu Fatiador 3D padrão (Bambu Studio, OrcaSlicer, etc.)',
-      icon: `
+      icon: known ? slicerIconHtml(known.iconUrl, 16) : `
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
           <polyline points="15 3 21 3 21 9"></polyline>

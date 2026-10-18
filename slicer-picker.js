@@ -52,7 +52,15 @@ export function getSlicerNames(id) {
   if (!id || id === 'system') return null;
   const s = slicerState.slicers.find((x) => x.id === id);
   if (!s) return null;
-  return { short: SHORT_NAMES[id] || s.name, full: s.name };
+  return { short: SHORT_NAMES[id] || s.name, full: s.name, iconUrl: s.iconUrl || null };
+}
+
+const GENERIC_SLICER_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>`;
+
+/** Ícone da marca (tirado do programa instalado) ou um ícone genérico */
+export function slicerIconHtml(iconUrl, size = 16) {
+  if (!iconUrl) return `<span class="slicer-brand-icon is-generic" aria-hidden="true">${GENERIC_SLICER_ICON}</span>`;
+  return `<img class="slicer-brand-icon" src="${escapeHtml(iconUrl)}" width="${size}" height="${size}" alt="" aria-hidden="true" draggable="false">`;
 }
 
 /* Último fatiador usado em cada arquivo (fica salvo neste computador) */
@@ -165,8 +173,8 @@ export function openSlicerMenu(anchor, { getFullPath, onPick } = {}) {
   if (!anchor.dataset.slicerMenuId) anchor.dataset.slicerMenuId = `sm-${Math.random().toString(36).slice(2)}`;
 
   const items = [
-    ...slicerState.slicers.map((s) => ({ id: s.id, name: s.name })),
-    { id: 'system', name: slicerState.systemName }
+    ...slicerState.slicers.map((s) => ({ id: s.id, name: s.name, iconUrl: s.iconUrl })),
+    { id: 'system', name: slicerState.systemName, iconUrl: null }
   ];
 
   menuEl = document.createElement('div');
@@ -177,6 +185,7 @@ export function openSlicerMenu(anchor, { getFullPath, onPick } = {}) {
     <div class="slicer-menu-head">Abrir com</div>
     ${items.map((it) => `
       <button class="slicer-menu-item" type="button" role="menuitem" data-slicer-id="${escapeHtml(it.id)}">
+        ${slicerIconHtml(it.iconUrl, 18)}
         <span class="slicer-menu-name">${escapeHtml(it.name)}</span>
         <span class="slicer-menu-tag" data-tag-for="${escapeHtml(it.id)}">${it.id === slicerState.defaultId ? 'padrão' : ''}</span>
       </button>`).join('')}
@@ -337,6 +346,7 @@ function renderModalList() {
       <li class="slicer-row ${selected ? 'is-selected' : ''}" data-id="${escapeHtml(s.id)}" role="radio" aria-checked="${selected}" tabindex="0"
           title="${escapeHtml(s.system ? 'Usa o programa que o Windows associa a arquivos .stl e .3mf' : s.exePath || '')}">
         <span class="slicer-row-radio" aria-hidden="true">${selected ? CHECK_ICON : ''}</span>
+        ${slicerIconHtml(s.iconUrl, 18)}
         <span class="slicer-row-name">${escapeHtml(s.name)}</span>
         ${s.system ? '<span class="slicer-row-tag">programa associado no Windows</span>' : ''}
         ${s.custom ? `<button type="button" class="slicer-remove" data-id="${escapeHtml(s.id)}" title="Remover da lista" aria-label="Remover ${escapeHtml(s.name)}">&times;</button>` : ''}

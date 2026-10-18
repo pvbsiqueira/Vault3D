@@ -2617,3 +2617,9 @@ body.has-slicer-choice .slicer-split-modal .btn-slicer-caret.is-open { filter: b
 .slicer-toggle-text strong { font-weight: 600; }
 .slicer-toggle-text small { font-size: 12px; color: var(--text-muted); line-height: 1.4; }
 .slicer-split .btn-open-slicer span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Ícone da marca do fatiador (vem do programa instalado) */
+.slicer-brand-icon { flex: none; width: 16px; height: 16px; object-fit: contain; border-radius: 3px; }
+.slicer-menu-item .slicer-brand-icon,
+.slicer-row .slicer-brand-icon { width: 18px; height: 18px; }
+.slicer-brand-icon.is-generic { display: inline-grid; place-items: center; color: var(--text-muted); }
+.btn-modal-slicer-footer .slicer-brand-icon { width: 20px; height: 20px; background: rgba(255, 255, 255, 0.9); padding: 1px; border-radius: 4px; }

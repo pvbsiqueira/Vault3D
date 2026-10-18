@@ -402,9 +402,31 @@ ipcMain.handle('open-in-slicer', async (event, targetPath, slicerId) => {
 });
 
 // 6b. Fatiadores instalados e preferências (fatiador padrão, abrir 3MF no fatiador que o criou)
+// Cada fatiador vem com o ícone do próprio programa instalado, para o botão mostrar a marca.
+const slicerIconCache = new Map();
+async function getSlicerIcon(exePath) {
+  if (!exePath) return null;
+  if (slicerIconCache.has(exePath)) return slicerIconCache.get(exePath);
+  let url = null;
+  try {
+    const img = await app.getFileIcon(exePath, { size: 'normal' });
+    if (img && !img.isEmpty()) url = img.toDataURL();
+  } catch (e) {
+    console.warn('Ícone do fatiador indisponível:', exePath, e.message);
+  }
+  slicerIconCache.set(exePath, url);
+  return url;
+}
+
+async function listSlicersWithIcons(force) {
+  const res = await slicers.listSlicers(Boolean(force));
+  res.slicers = await Promise.all(res.slicers.map(async (s) => ({ ...s, iconUrl: await getSlicerIcon(s.exePath) })));
+  return res;
+}
+
 ipcMain.handle('list-slicers', async (event, force) => {
   try {
-    return { success: true, ...(await slicers.listSlicers(Boolean(force))) };
+    return { success: true, ...(await listSlicersWithIcons(force)) };
   } catch (e) {
     console.warn('Erro ao listar fatiadores:', e);
     return { success: false, message: e.message, slicers: [], defaultId: slicers.SYSTEM_ID, matchCreator: true };
@@ -413,7 +435,7 @@ ipcMain.handle('list-slicers', async (event, force) => {
 
 ipcMain.handle('set-slicer-prefs', async (event, prefs) => {
   slicers.setPrefs(prefs || {});
-  return { success: true, ...(await slicers.listSlicers()) };
+  return { success: true, ...(await listSlicersWithIcons()) };
 });
 
 ipcMain.handle('add-custom-slicer', async () => {
@@ -426,12 +448,12 @@ ipcMain.handle('add-custom-slicer', async () => {
     return { success: false, canceled: true };
   }
   const entry = slicers.addCustom(result.filePaths[0]);
-  return { success: Boolean(entry), added: entry, ...(await slicers.listSlicers()) };
+  return { success: Boolean(entry), added: entry, ...(await listSlicersWithIcons()) };
 });
 
 ipcMain.handle('remove-custom-slicer', async (event, id) => {
   slicers.removeCustom(id);
-  return { success: true, ...(await slicers.listSlicers()) };
+  return { success: true, ...(await listSlicersWithIcons()) };
 });
 
 ipcMain.handle('get-3mf-creator', async (event, filePath) => {
