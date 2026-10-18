@@ -26,7 +26,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openInExplorer: (filePath) => ipcRenderer.invoke('open-in-explorer', filePath),
 
   // Abrir arquivo 3D diretamente no Fatiador associado (Bambu Studio, OrcaSlicer, Cura, etc.)
-  openInSlicer: (filePath) => ipcRenderer.invoke('open-in-slicer', filePath),
+  // slicerId opcional: fatiador escolhido no menu do card (sem ele, vale o padrão configurado)
+  openInSlicer: (filePath, slicerId) => ipcRenderer.invoke('open-in-slicer', filePath, slicerId),
+
+  // Fatiadores instalados e preferências de qual usar
+  listSlicers: (force) => ipcRenderer.invoke('list-slicers', force),
+  setSlicerPrefs: (prefs) => ipcRenderer.invoke('set-slicer-prefs', prefs),
+  addCustomSlicer: () => ipcRenderer.invoke('add-custom-slicer'),
+  removeCustomSlicer: (id) => ipcRenderer.invoke('remove-custom-slicer', id),
+  get3mfCreator: (filePath) => ipcRenderer.invoke('get-3mf-creator', filePath),
 
   // Renomear arquivo diretamente no disco (Windows)
   renameFile: (oldPath, newName) => ipcRenderer.invoke('rename-file', { oldPath, newName }),

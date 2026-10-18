@@ -1,9 +1,12 @@
 const { app, BrowserWindow, ipcMain, shell, dialog, session, clipboard } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const { spawn } = require('child_process');
 const { autoUpdater } = require('electron-updater');
+const slicers = require('./slicers');
 
 app.name = 'Vault3D';
+slicers.init(app.getPath('userData'));
 
 const PROTOCOL_PREFIX = 'vault3d';
 
@@ -363,23 +366,80 @@ ipcMain.handle('select-folder-dialog', async (event, defaultPath) => {
   };
 });
 
-// 6. Abrir arquivo 3D diretamente no Fatiador associado pelo Windows (Bambu, Orca, Cura, etc.)
-ipcMain.handle('open-in-slicer', async (event, targetPath) => {
+// 6. Abrir arquivo 3D no Fatiador: o escolhido no menu do card, o que criou o 3MF ou o padrão do usuário.
+// Sem fatiador escolhido, usa o programa associado pelo Windows (comportamento original).
+ipcMain.handle('open-in-slicer', async (event, targetPath, slicerId) => {
   if (!targetPath) return { success: false, message: 'Caminho não fornecido' };
   try {
-    if (fs.existsSync(targetPath)) {
-      const errorMsg = await shell.openPath(targetPath);
-      if (errorMsg) {
-        return { success: false, message: errorMsg };
-      }
-      return { success: true };
-    } else {
+    if (!fs.existsSync(targetPath)) {
       return { success: false, message: 'Arquivo não encontrado no disco local' };
     }
+    const { slicer, reason } = await slicers.resolveSlicerFor(targetPath, slicerId);
+    if (slicer && slicer.exePath) {
+      try {
+        const child = spawn(slicer.exePath, [targetPath], {
+          detached: true,
+          stdio: 'ignore',
+          cwd: path.dirname(slicer.exePath),
+          windowsHide: false
+        });
+        child.on('error', (err) => console.warn('Erro ao iniciar o fatiador:', err));
+        child.unref();
+        return { success: true, slicerName: slicer.name, reason };
+      } catch (err) {
+        console.warn('Falha ao iniciar o fatiador escolhido, usando o padrão do Windows:', err);
+      }
+    }
+    const errorMsg = await shell.openPath(targetPath);
+    if (errorMsg) {
+      return { success: false, message: errorMsg };
+    }
+    return { success: true, slicerName: null, reason: 'system' };
   } catch (e) {
     console.warn('Erro ao abrir no fatiador:', e);
     return { success: false, message: e.message };
   }
+});
+
+// 6b. Fatiadores instalados e preferências (fatiador padrão, abrir 3MF no fatiador que o criou)
+ipcMain.handle('list-slicers', async (event, force) => {
+  try {
+    return { success: true, ...(await slicers.listSlicers(Boolean(force))) };
+  } catch (e) {
+    console.warn('Erro ao listar fatiadores:', e);
+    return { success: false, message: e.message, slicers: [], defaultId: slicers.SYSTEM_ID, matchCreator: true };
+  }
+});
+
+ipcMain.handle('set-slicer-prefs', async (event, prefs) => {
+  slicers.setPrefs(prefs || {});
+  return { success: true, ...(await slicers.listSlicers()) };
+});
+
+ipcMain.handle('add-custom-slicer', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Escolha o programa do fatiador',
+    properties: ['openFile'],
+    filters: [{ name: 'Programas', extensions: ['exe'] }]
+  });
+  if (result.canceled || !result.filePaths || !result.filePaths[0]) {
+    return { success: false, canceled: true };
+  }
+  const entry = slicers.addCustom(result.filePaths[0]);
+  return { success: Boolean(entry), added: entry, ...(await slicers.listSlicers()) };
+});
+
+ipcMain.handle('remove-custom-slicer', async (event, id) => {
+  slicers.removeCustom(id);
+  return { success: true, ...(await slicers.listSlicers()) };
+});
+
+ipcMain.handle('get-3mf-creator', async (event, filePath) => {
+  if (!filePath || !/\.3mf$/i.test(filePath) || !fs.existsSync(filePath)) return { success: false };
+  const application = slicers.readCreatorApplication(filePath);
+  const list = await slicers.listSlicers();
+  const match = slicers.matchCreator(application, list.slicers);
+  return { success: true, application, slicerId: match ? match.id : null, slicerName: match ? match.name : null };
 });
 
 // 7. Renomear arquivo diretamente no disco (Windows)

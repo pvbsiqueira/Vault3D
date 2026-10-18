@@ -6,6 +6,7 @@ import JSZip from 'https://esm.sh/jszip@3.10.1';
 import { parseSTL } from './stl-parser.js';
 import { initAuth, getAuthenticatedUser } from './auth.js';
 import { startUsageTracking } from './usage-tracker.js';
+import { initSlicerPicker, isSlicerChoiceSupported, slicerSplitHtml, openSlicerMenu, getDefaultSlicerName, getSlicerState, onSlicersChanged } from './slicer-picker.js';
 
 // Estado global da aplicação
 const state = {
@@ -523,7 +524,26 @@ function init() {
         openModelInSlicer(modelToOpen, btnModalOpenSlicer);
       }
     });
+
+    // Setinha ao lado do botão para abrir em outro fatiador
+    if (isSlicerChoiceSupported()) {
+      const split = document.createElement('div');
+      split.className = 'slicer-split slicer-split-modal';
+      btnModalOpenSlicer.parentNode.insertBefore(split, btnModalOpenSlicer);
+      split.appendChild(btnModalOpenSlicer);
+      split.insertAdjacentHTML('beforeend', `<button class="btn-slicer-caret" type="button" title="Abrir em outro fatiador" aria-label="Abrir em outro fatiador" aria-haspopup="menu"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></button>`);
+      const getModalTarget = () => (state.activePlate && state.activePlate.model && !state.activePlate.isCustomCover ? state.activePlate.model : null)
+        || (state.activeProject ? (state.activeProject.primaryPart || (state.activeProject.parts && state.activeProject.parts[0])) : null)
+        || state.activeModel;
+      wireSlicerCaret(split.querySelector('.btn-slicer-caret'), getModalTarget, btnModalOpenSlicer);
+    }
   }
+  initSlicerPicker();
+  // O título dos botões mostra o fatiador padrão escolhido
+  onSlicersChanged(() => {
+    const { title } = getSlicerButtonConfig();
+    document.querySelectorAll('.btn-open-slicer, #btnModalOpenSlicer').forEach((b) => { b.title = title; });
+  });
   if (modalPlateImg) {
     setupModelDraggable(modalPlateImg, () => {
       return (state.activePlate && state.activePlate.model && !state.activePlate.isCustomCover ? state.activePlate.model : null)
@@ -4623,8 +4643,11 @@ async function copyTextToClipboard(text) {
 function getSlicerButtonConfig() {
   const isDesktop = Boolean(typeof window !== 'undefined' && window.electronAPI && window.electronAPI.isElectron);
   if (isDesktop) {
+    const defaultName = getDefaultSlicerName();
     return {
-      title: 'Abrir arquivo diretamente no seu Fatiador 3D padrão (Bambu Studio, OrcaSlicer, etc.)',
+      title: defaultName
+        ? `Abrir no ${defaultName}${getSlicerState().matchCreator ? ' (arquivos 3MF abrem no fatiador que os criou)' : ''}`
+        : 'Abrir arquivo diretamente no seu Fatiador 3D padrão (Bambu Studio, OrcaSlicer, etc.)',
       text: 'Abrir no Fatiador',
       icon: `
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -4648,14 +4671,10 @@ function getSlicerButtonConfig() {
 }
 
 /**
- * Abre o arquivo 3D diretamente no Fatiador (no app Desktop) ou copia o caminho (na Web)
+ * Resolve o arquivo real (peça principal de um projeto) e o caminho completo dele no disco
  */
-async function openModelInSlicer(model, buttonEl) {
-  if (!model) return;
-  if (!getAuthenticatedUser()) {
-    showToast('Acesso restrito: faça login com Magic Link para copiar o caminho do modelo.', 'warning');
-    return;
-  }
+async function resolveSlicerTarget(model) {
+  if (!model) return { targetModel: null, fullPath: null };
 
   // 1. Resolver o modelo real caso seja um Projeto consolidado
   let targetModel = model;
@@ -4668,54 +4687,92 @@ async function openModelInSlicer(model, buttonEl) {
       targetModel = model.parts[0];
     }
   }
+  if (!targetModel) return { targetModel: null, fullPath: null };
 
-  if (!targetModel) {
-    showToast('Nenhum arquivo 3D encontrado.', 'warning');
+  // 2. Resolver o caminho completo do arquivo no disco
+  const folderName = targetModel.folderName || '';
+  const relPath = (targetModel.path || targetModel.name).replace(/\//g, '\\');
+
+  let fullPath = targetModel.fullDiskPath;
+  if (!fullPath && window.electronAPI && typeof window.electronAPI.resolveDiskPath === 'function') {
+    try {
+      const resolved = await window.electronAPI.resolveDiskPath(folderName, relPath);
+      if (resolved && resolved.success && resolved.fullPath) {
+        fullPath = resolved.fullPath;
+        targetModel.fullDiskPath = fullPath;
+        targetModel.fullFolderDirectory = resolved.folderPath;
+      }
+    } catch (err) {
+      console.warn('Erro ao resolver caminho no disco via Electron:', err);
+    }
+  }
+
+  if (!fullPath) {
+    const rootBase = (state.folderDiskPaths && state.folderDiskPaths[folderName]) || (
+      folderName.includes('sample_models') || relPath.includes('sample_models')
+        ? 'C:\\Users\\eustudio\\Desktop\\Projeto\\sample_models'
+        : `C:\\Users\\eustudio\\Downloads\\${folderName}`
+    );
+    let sub = relPath;
+    if (sub.toLowerCase().startsWith(folderName.toLowerCase() + '\\')) {
+      sub = sub.substring(folderName.length + 1);
+    }
+    fullPath = `${rootBase}\\${sub}`.replace(/\\\\+/g, '\\');
+    targetModel.fullDiskPath = fullPath;
+    targetModel.fullFolderDirectory = rootBase + '\\';
+  }
+
+  return { targetModel, fullPath };
+}
+
+/**
+ * Liga a setinha ▾ ao menu de fatiadores (abre o arquivo no fatiador escolhido)
+ */
+function wireSlicerCaret(caretEl, getModel, mainBtn) {
+  if (!caretEl) return;
+  caretEl.addEventListener('mousedown', (e) => e.stopPropagation());
+  caretEl.addEventListener('click', (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    openSlicerMenu(caretEl, {
+      getFullPath: async () => {
+        const m = getModel();
+        if (!m || !getAuthenticatedUser()) return null;
+        return (await resolveSlicerTarget(m)).fullPath;
+      },
+      onPick: (slicerId) => {
+        const m = getModel();
+        if (m) openModelInSlicer(m, mainBtn, slicerId);
+      }
+    });
+  });
+}
+
+/**
+ * Abre o arquivo 3D diretamente no Fatiador (no app Desktop) ou copia o caminho (na Web).
+ * slicerId (opcional) vem do menu da setinha; sem ele vale o padrão configurado em "Fatiadores".
+ */
+async function openModelInSlicer(model, buttonEl, slicerId) {
+  if (!model) return;
+  if (!getAuthenticatedUser()) {
+    showToast('Acesso restrito: faça login com Magic Link para copiar o caminho do modelo.', 'warning');
     return;
   }
 
-  const modelDisplayName = targetModel.name || targetModel.path || 'modelo 3D';
-
   try {
-    // 2. Resolver o caminho completo do arquivo no disco
-    const folderName = targetModel.folderName || '';
-    const relPath = (targetModel.path || targetModel.name).replace(/\//g, '\\');
-
-    let fullPath = targetModel.fullDiskPath;
-    if (!fullPath && window.electronAPI && typeof window.electronAPI.resolveDiskPath === 'function') {
-      try {
-        const resolved = await window.electronAPI.resolveDiskPath(folderName, relPath);
-        if (resolved && resolved.success && resolved.fullPath) {
-          fullPath = resolved.fullPath;
-          targetModel.fullDiskPath = fullPath;
-          targetModel.fullFolderDirectory = resolved.folderPath;
-        }
-      } catch (err) {
-        console.warn('Erro ao resolver caminho no disco via Electron:', err);
-      }
+    const { targetModel, fullPath } = await resolveSlicerTarget(model);
+    if (!targetModel) {
+      showToast('Nenhum arquivo 3D encontrado.', 'warning');
+      return;
     }
-
-    if (!fullPath) {
-      const rootBase = (state.folderDiskPaths && state.folderDiskPaths[folderName]) || (
-        folderName.includes('sample_models') || relPath.includes('sample_models')
-          ? 'C:\\Users\\eustudio\\Desktop\\Projeto\\sample_models'
-          : `C:\\Users\\eustudio\\Downloads\\${folderName}`
-      );
-      let sub = relPath;
-      if (sub.toLowerCase().startsWith(folderName.toLowerCase() + '\\')) {
-        sub = sub.substring(folderName.length + 1);
-      }
-      fullPath = `${rootBase}\\${sub}`.replace(/\\\\+/g, '\\');
-      targetModel.fullDiskPath = fullPath;
-      targetModel.fullFolderDirectory = rootBase + '\\';
-    }
+    const modelDisplayName = targetModel.name || targetModel.path || 'modelo 3D';
 
     // 3. Se estiver no app Desktop (Electron), abrir diretamente no fatiador!
     if (window.electronAPI && typeof window.electronAPI.openInSlicer === 'function' && fullPath) {
       // Também copia para a área de transferência silenciosamente como conveniência
       copyTextToClipboard(fullPath).catch(() => {});
 
-      const res = await window.electronAPI.openInSlicer(fullPath);
+      const res = await window.electronAPI.openInSlicer(fullPath, slicerId);
       if (res && res.success) {
         if (buttonEl) {
           if (!buttonEl.dataset.origHtml) {
@@ -4736,7 +4793,7 @@ async function openModelInSlicer(model, buttonEl) {
           }, 2200);
         }
 
-        showToast(`🚀 Abrindo ${modelDisplayName} no seu fatiador!`, 'success');
+        showToast(`🚀 Abrindo ${modelDisplayName} no ${res.slicerName || 'seu fatiador'}!`, 'success');
         return;
       } else {
         console.warn('openInSlicer retornou aviso/erro, usando fallback de cópia:', res?.message);
@@ -5484,10 +5541,7 @@ function createModelCard(model) {
             <span class="card-folder-icon">📁</span>
             <span class="card-folder-name">${escapeHtml(folderInfo.name)}</span>
           </div>
-          <button class="btn-open-slicer" title="${slicerBtn.title}" type="button">
-            ${slicerBtn.icon}
-            <span>${slicerBtn.text}</span>
-          </button>
+          ${slicerSplitHtml(slicerBtn)}
         </div>
       </div>
     `;
@@ -5509,6 +5563,7 @@ function createModelCard(model) {
         e.stopPropagation();
         openModelInSlicer(model.primaryPart || model.parts[0], btnSlicer);
       });
+      wireSlicerCaret(card.querySelector('.btn-slicer-caret'), () => model.primaryPart || model.parts[0], btnSlicer);
     }
 
     const btnDissolve = card.querySelector('.btn-dissolve-card');
@@ -5536,7 +5591,7 @@ function createModelCard(model) {
     }
 
     card.addEventListener('click', (e) => {
-      if (e.target.closest('.btn-favorite') || e.target.closest('.btn-open-slicer') || e.target.closest('.btn-dissolve-card') || e.target.closest('.btn-card-rename')) return;
+      if (e.target.closest('.btn-favorite') || e.target.closest('.btn-open-slicer') || e.target.closest('.btn-slicer-caret') || e.target.closest('.btn-dissolve-card') || e.target.closest('.btn-card-rename')) return;
       openViewerModal(model);
     });
 
@@ -5627,10 +5682,7 @@ function createModelCard(model) {
           <span class="card-folder-icon">📁</span>
           <span class="card-folder-name">${escapeHtml(folderInfo.name)}</span>
         </div>
-        <button class="btn-open-slicer" title="${slicerBtn.title}" type="button">
-          ${slicerBtn.icon}
-          <span>${slicerBtn.text}</span>
-        </button>
+        ${slicerSplitHtml(slicerBtn)}
       </div>
     </div>
   `;
@@ -5645,6 +5697,7 @@ function createModelCard(model) {
       e.stopPropagation();
       openModelInSlicer(model, btnOpenSlicer);
     });
+    wireSlicerCaret(card.querySelector('.btn-slicer-caret'), () => model, btnOpenSlicer);
   }
 
   // Evento de Favoritar
