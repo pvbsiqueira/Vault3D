@@ -4649,6 +4649,8 @@ function getSlicerButtonConfig(model = null) {
     const known = last || (opensWithDefault ? getSlicerNames(slicerPrefs.defaultId) : null);
     return {
       text: known ? `Abrir no ${known.short}` : 'Abrir no Fatiador',
+      // No card o espaço é curto: ícone + nome do fatiador já dizem o que o botão faz
+      cardText: known ? known.short : 'Abrir no Fatiador',
       title: last
         ? `Abrir no ${last.full} (último usado neste arquivo; a setinha troca o fatiador)`
         : defaultName
@@ -4700,16 +4702,16 @@ function getModalSlicerTarget() {
 
 /** Atualiza o nome do fatiador nos botões dos cards e do visualizador */
 function refreshSlicerLabels() {
-  const apply = (btn, model) => {
+  const apply = (btn, model, compact) => {
     const cfg = getSlicerButtonConfig(model);
-    const html = `${cfg.icon}<span>${escapeHtml(cfg.text)}</span>`;
+    const html = `${cfg.icon}<span>${escapeHtml(compact ? cfg.cardText : cfg.text)}</span>`;
     btn.title = cfg.title;
     // Durante o "Fatiador aberto!" só troca o que volta depois
     if (btn.classList.contains('btn-copied')) btn.dataset.origHtml = html;
     else btn.innerHTML = html;
   };
   document.querySelectorAll('.btn-open-slicer[data-slicer-key]').forEach((btn) => {
-    apply(btn, { slicerKey: btn.dataset.slicerKey });
+    apply(btn, { slicerKey: btn.dataset.slicerKey }, true);
   });
   const modalBtn = document.getElementById('btnModalOpenSlicer');
   if (modalBtn) apply(modalBtn, getModalSlicerTarget());

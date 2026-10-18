@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, dialog, session, clipboard } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, dialog, session, clipboard, nativeImage } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -404,23 +404,31 @@ ipcMain.handle('open-in-slicer', async (event, targetPath, slicerId) => {
 // 6b. Fatiadores instalados e preferências (fatiador padrão, abrir 3MF no fatiador que o criou)
 // Cada fatiador vem com o ícone do próprio programa instalado, para o botão mostrar a marca.
 const slicerIconCache = new Map();
-async function getSlicerIcon(exePath) {
-  if (!exePath) return null;
-  if (slicerIconCache.has(exePath)) return slicerIconCache.get(exePath);
+async function getSlicerIcon(slicer) {
+  const cacheKey = slicer.iconPath || slicer.exePath;
+  if (!cacheKey) return null;
+  if (slicerIconCache.has(cacheKey)) return slicerIconCache.get(cacheKey);
   let url = null;
   try {
-    const img = await app.getFileIcon(exePath, { size: 'normal' });
-    if (img && !img.isEmpty()) url = img.toDataURL();
+    if (slicer.iconPath) {
+      // Logo da marca guardado na pasta do fatiador (quando o .exe não tem ícone próprio)
+      const img = nativeImage.createFromPath(slicer.iconPath);
+      if (img && !img.isEmpty()) url = img.resize({ width: 32, height: 32, quality: 'best' }).toDataURL();
+    }
+    if (!url && slicer.exePath) {
+      const img = await app.getFileIcon(slicer.exePath, { size: 'normal' });
+      if (img && !img.isEmpty()) url = img.toDataURL();
+    }
   } catch (e) {
-    console.warn('Ícone do fatiador indisponível:', exePath, e.message);
+    console.warn('Ícone do fatiador indisponível:', cacheKey, e.message);
   }
-  slicerIconCache.set(exePath, url);
+  slicerIconCache.set(cacheKey, url);
   return url;
 }
 
 async function listSlicersWithIcons(force) {
   const res = await slicers.listSlicers(Boolean(force));
-  res.slicers = await Promise.all(res.slicers.map(async (s) => ({ ...s, iconUrl: await getSlicerIcon(s.exePath) })));
+  res.slicers = await Promise.all(res.slicers.map(async (s) => ({ ...s, iconUrl: await getSlicerIcon(s) })));
   return res;
 }
 

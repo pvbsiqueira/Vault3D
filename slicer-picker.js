@@ -135,7 +135,7 @@ export function slicerSplitHtml(cfg, extraClass = '', fileKey = '') {
   const btn = `
     <button class="btn-open-slicer ${extraClass}" title="${escapeHtml(cfg.title)}" type="button"${fileKey ? ` data-slicer-key="${escapeHtml(fileKey)}"` : ''}>
       ${cfg.icon}
-      <span>${escapeHtml(cfg.text)}</span>
+      <span>${escapeHtml(cfg.cardText || cfg.text)}</span>
     </button>`;
   if (!isSlicerChoiceSupported()) return btn;
   return `

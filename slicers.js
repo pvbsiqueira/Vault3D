@@ -16,7 +16,9 @@ const KNOWN_SLICERS = [
   { id: 'prusa', name: 'PrusaSlicer', dir: /^(prusa3d|prusaslicer)/i, exe: ['prusa-slicer.exe'], creator: /prusa ?slicer|slic3r/i },
   { id: 'cura', name: 'UltiMaker Cura', dir: /^(ulti ?maker )?cura/i, exe: ['UltiMaker-Cura.exe', 'Ultimaker-Cura.exe', 'Cura.exe'], creator: /cura/i },
   { id: 'creality', name: 'Creality Print', dir: /^creality/i, exe: ['CrealityPrint.exe', 'Creality Print.exe'], creator: /creality/i },
-  { id: 'anycubic', name: 'Anycubic Slicer Next', dir: /^anycubic ?slicer/i, exe: ['AnycubicSlicerNext.exe', 'anycubicslicernext.exe', 'AnycubicSlicer.exe'], creator: /anycubic/i },
+  // O AnycubicSlicerNext.exe é só um lançador sem ícone próprio: o logo fica nas imagens do programa
+  { id: 'anycubic', name: 'Anycubic Slicer Next', dir: /^anycubic ?slicer/i, exe: ['AnycubicSlicerNext.exe', 'anycubicslicernext.exe', 'AnycubicSlicer.exe'], creator: /anycubic/i,
+    icons: ['resources/images/AnycubicSlicerNext_256px.png', 'resources/images/AnycubicSlicer_64.png', 'resources/images/AnycubicSlicer.ico'] },
   { id: 'elegoo', name: 'ElegooSlicer', dir: /^elegoo ?slicer/i, exe: ['elegoo-slicer.exe', 'ElegooSlicer.exe'], creator: /elegoo/i },
   { id: 'flashforge', name: 'Orca-Flashforge', dir: /^orca-flashforge/i, exe: ['orca-flashforge.exe', 'Orca-Flashforge.exe'], creator: /flashforge/i },
   { id: 'snapmaker', name: 'Snapmaker Orca', dir: /^snapmaker ?orca/i, exe: ['snapmaker-orca.exe', 'Snapmaker_Orca.exe', 'Snapmaker Orca.exe'], creator: /snapmaker/i },
@@ -150,6 +152,17 @@ function queryUninstallRegistry() {
   });
 }
 
+/** Logo do fatiador dentro da pasta de instalação, quando o .exe não traz o ícone da marca */
+function findIconFile(def, exePath) {
+  if (!def.icons) return null;
+  const dir = path.dirname(exePath);
+  for (const rel of def.icons) {
+    const p = path.join(dir, rel);
+    if (fs.existsSync(p)) return p;
+  }
+  return null;
+}
+
 async function detectInstalled(force = false) {
   if (detectedCache && !force) return detectedCache;
   if (process.platform !== 'win32') {
@@ -186,7 +199,7 @@ async function detectInstalled(force = false) {
 
   detectedCache = KNOWN_SLICERS
     .filter((d) => found[d.id])
-    .map((d) => ({ id: d.id, name: d.name, exePath: found[d.id], custom: false }));
+    .map((d) => ({ id: d.id, name: d.name, exePath: found[d.id], iconPath: findIconFile(d, found[d.id]), custom: false }));
   return detectedCache;
 }
 
