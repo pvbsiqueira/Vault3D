@@ -6,7 +6,7 @@ import JSZip from 'https://esm.sh/jszip@3.10.1';
 import { parseSTL } from './stl-parser.js';
 import { initAuth, getAuthenticatedUser } from './auth.js';
 import { startUsageTracking } from './usage-tracker.js';
-import { initSlicerPicker, isSlicerChoiceSupported, slicerSplitHtml, openSlicerMenu, getDefaultSlicerName, getSlicerState, onSlicersChanged } from './slicer-picker.js';
+import { initSlicerPicker, isSlicerChoiceSupported, slicerSplitHtml, openSlicerMenu, getDefaultSlicerName, getSlicerState, onSlicersChanged, getSlicerNames, getLastSlicer, setLastSlicer } from './slicer-picker.js';
 
 // Estado global da aplicação
 const state = {
@@ -508,7 +508,7 @@ function init() {
     // Rótulo do botão principal conforme o ambiente (desktop abre no fatiador; web copia o caminho)
     const footerCfg = getSlicerButtonConfig();
     btnModalOpenSlicer.title = footerCfg.title;
-    btnModalOpenSlicer.innerHTML = `${footerCfg.icon}<span>${footerCfg.text}</span>`;
+    btnModalOpenSlicer.innerHTML = `${footerCfg.icon}<span>${escapeHtml(footerCfg.text)}</span>`;
 
     setupModelDraggable(btnModalOpenSlicer, () => {
       return (state.activePlate && state.activePlate.model && !state.activePlate.isCustomCover ? state.activePlate.model : null)
@@ -532,18 +532,12 @@ function init() {
       btnModalOpenSlicer.parentNode.insertBefore(split, btnModalOpenSlicer);
       split.appendChild(btnModalOpenSlicer);
       split.insertAdjacentHTML('beforeend', `<button class="btn-slicer-caret" type="button" title="Abrir em outro fatiador" aria-label="Abrir em outro fatiador" aria-haspopup="menu"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></button>`);
-      const getModalTarget = () => (state.activePlate && state.activePlate.model && !state.activePlate.isCustomCover ? state.activePlate.model : null)
-        || (state.activeProject ? (state.activeProject.primaryPart || (state.activeProject.parts && state.activeProject.parts[0])) : null)
-        || state.activeModel;
-      wireSlicerCaret(split.querySelector('.btn-slicer-caret'), getModalTarget, btnModalOpenSlicer);
+      wireSlicerCaret(split.querySelector('.btn-slicer-caret'), getModalSlicerTarget, btnModalOpenSlicer);
     }
   }
   initSlicerPicker();
-  // O título dos botões mostra o fatiador padrão escolhido
-  onSlicersChanged(() => {
-    const { title } = getSlicerButtonConfig();
-    document.querySelectorAll('.btn-open-slicer, #btnModalOpenSlicer').forEach((b) => { b.title = title; });
-  });
+  // Os botões mostram o último fatiador usado em cada arquivo (ou o padrão escolhido)
+  onSlicersChanged(() => refreshSlicerLabels());
   if (modalPlateImg) {
     setupModelDraggable(modalPlateImg, () => {
       return (state.activePlate && state.activePlate.model && !state.activePlate.isCustomCover ? state.activePlate.model : null)
@@ -4640,15 +4634,19 @@ async function copyTextToClipboard(text) {
 /**
  * Retorna as configurações visuais do botão do Fatiador (Adapta entre Desktop e Web)
  */
-function getSlicerButtonConfig() {
+function getSlicerButtonConfig(model = null) {
   const isDesktop = Boolean(typeof window !== 'undefined' && window.electronAPI && window.electronAPI.isElectron);
   if (isDesktop) {
     const defaultName = getDefaultSlicerName();
+    // Último fatiador escolhido para este arquivo: o botão passa a mostrar o nome dele
+    const last = model ? getSlicerNames(getLastSlicer(getSlicerFileKey(model))) : null;
     return {
-      title: defaultName
+      text: last ? `Abrir no ${last.short}` : 'Abrir no Fatiador',
+      title: last
+        ? `Abrir no ${last.full} (último usado neste arquivo; a setinha troca o fatiador)`
+        : defaultName
         ? `Abrir no ${defaultName}${getSlicerState().matchCreator ? ' (arquivos 3MF abrem no fatiador que os criou)' : ''}`
         : 'Abrir arquivo diretamente no seu Fatiador 3D padrão (Bambu Studio, OrcaSlicer, etc.)',
-      text: 'Abrir no Fatiador',
       icon: `
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
@@ -4668,6 +4666,46 @@ function getSlicerButtonConfig() {
       </svg>
     `
   };
+}
+
+/**
+ * Arquivo que o botão do fatiador abre (peça principal no caso de projeto)
+ */
+function getSlicerTargetModel(model) {
+  if (!model) return null;
+  if (model.isProject) return model.primaryPart || (model.parts && model.parts[0]) || null;
+  return model;
+}
+
+/** Chave estável do arquivo para lembrar o último fatiador usado nele */
+function getSlicerFileKey(model) {
+  if (model && model.slicerKey) return model.slicerKey;
+  const target = getSlicerTargetModel(model);
+  if (!target) return '';
+  return `${target.folderName || ''}/${(target.path || target.name || '').replace(/\\/g, '/')}`.toLowerCase();
+}
+
+function getModalSlicerTarget() {
+  return (state.activePlate && state.activePlate.model && !state.activePlate.isCustomCover ? state.activePlate.model : null)
+    || (state.activeProject ? (state.activeProject.primaryPart || (state.activeProject.parts && state.activeProject.parts[0])) : null)
+    || state.activeModel;
+}
+
+/** Atualiza o nome do fatiador nos botões dos cards e do visualizador */
+function refreshSlicerLabels() {
+  const apply = (btn, model) => {
+    const cfg = getSlicerButtonConfig(model);
+    const html = `${cfg.icon}<span>${escapeHtml(cfg.text)}</span>`;
+    btn.title = cfg.title;
+    // Durante o "Fatiador aberto!" só troca o que volta depois
+    if (btn.classList.contains('btn-copied')) btn.dataset.origHtml = html;
+    else btn.innerHTML = html;
+  };
+  document.querySelectorAll('.btn-open-slicer[data-slicer-key]').forEach((btn) => {
+    apply(btn, { slicerKey: btn.dataset.slicerKey });
+  });
+  const modalBtn = document.getElementById('btnModalOpenSlicer');
+  if (modalBtn) apply(modalBtn, getModalSlicerTarget());
 }
 
 /**
@@ -4766,14 +4804,18 @@ async function openModelInSlicer(model, buttonEl, slicerId) {
       return;
     }
     const modelDisplayName = targetModel.name || targetModel.path || 'modelo 3D';
+    const fileKey = getSlicerFileKey(targetModel);
+    // Clique normal: reabre no último fatiador usado neste arquivo (escolhido pela setinha ou não)
+    const chosenSlicerId = slicerId || getLastSlicer(fileKey) || undefined;
 
     // 3. Se estiver no app Desktop (Electron), abrir diretamente no fatiador!
     if (window.electronAPI && typeof window.electronAPI.openInSlicer === 'function' && fullPath) {
       // Também copia para a área de transferência silenciosamente como conveniência
       copyTextToClipboard(fullPath).catch(() => {});
 
-      const res = await window.electronAPI.openInSlicer(fullPath, slicerId);
+      const res = await window.electronAPI.openInSlicer(fullPath, chosenSlicerId);
       if (res && res.success) {
+        if (res.slicerId) setLastSlicer(fileKey, res.slicerId);
         if (buttonEl) {
           if (!buttonEl.dataset.origHtml) {
             buttonEl.dataset.origHtml = buttonEl.innerHTML;
@@ -4789,9 +4831,12 @@ async function openModelInSlicer(model, buttonEl, slicerId) {
             buttonEl.classList.remove('btn-copied');
             if (buttonEl.dataset.origHtml) {
               buttonEl.innerHTML = buttonEl.dataset.origHtml;
+              delete buttonEl.dataset.origHtml;
             }
           }, 2200);
         }
+        // O nome do fatiador usado passa a aparecer nos botões deste arquivo
+        refreshSlicerLabels();
 
         showToast(`🚀 Abrindo ${modelDisplayName} no ${res.slicerName || 'seu fatiador'}!`, 'success');
         return;
@@ -4822,6 +4867,7 @@ async function openModelInSlicer(model, buttonEl, slicerId) {
         buttonEl.classList.remove('btn-copied');
         if (buttonEl.dataset.origHtml) {
           buttonEl.innerHTML = buttonEl.dataset.origHtml;
+          delete buttonEl.dataset.origHtml;
         }
       }, 2200);
     }
@@ -5479,7 +5525,8 @@ function createModelCard(model) {
   card.className = `model-card ${model.isProject ? 'is-project' : ''}`;
   card.dataset.id = model.id;
 
-  const slicerBtn = getSlicerButtonConfig();
+  const slicerBtn = getSlicerButtonConfig(model);
+  const slicerKey = getSlicerFileKey(model);
 
   // Renderização especializada para Card de Projeto Multi-peças
   if (model.isProject) {
@@ -5541,7 +5588,7 @@ function createModelCard(model) {
             <span class="card-folder-icon">📁</span>
             <span class="card-folder-name">${escapeHtml(folderInfo.name)}</span>
           </div>
-          ${slicerSplitHtml(slicerBtn)}
+          ${slicerSplitHtml(slicerBtn, '', slicerKey)}
         </div>
       </div>
     `;
@@ -5682,7 +5729,7 @@ function createModelCard(model) {
           <span class="card-folder-icon">📁</span>
           <span class="card-folder-name">${escapeHtml(folderInfo.name)}</span>
         </div>
-        ${slicerSplitHtml(slicerBtn)}
+        ${slicerSplitHtml(slicerBtn, '', slicerKey)}
       </div>
     </div>
   `;
@@ -7328,6 +7375,7 @@ async function openViewerModal(model) {
   state.activePlate = null;
   state.activePlateId = 1;
   state.isMeshLoaded = false;
+  refreshSlicerLabels();
   updateViewerPlateLabel(null);
   if (modalPlateImg) modalPlateImg.removeAttribute('src');
 

@@ -385,7 +385,7 @@ ipcMain.handle('open-in-slicer', async (event, targetPath, slicerId) => {
         });
         child.on('error', (err) => console.warn('Erro ao iniciar o fatiador:', err));
         child.unref();
-        return { success: true, slicerName: slicer.name, reason };
+        return { success: true, slicerId: slicer.id, slicerName: slicer.name, reason };
       } catch (err) {
         console.warn('Falha ao iniciar o fatiador escolhido, usando o padrão do Windows:', err);
       }
@@ -394,7 +394,7 @@ ipcMain.handle('open-in-slicer', async (event, targetPath, slicerId) => {
     if (errorMsg) {
       return { success: false, message: errorMsg };
     }
-    return { success: true, slicerName: null, reason: 'system' };
+    return { success: true, slicerId: 'system', slicerName: null, reason: 'system' };
   } catch (e) {
     console.warn('Erro ao abrir no fatiador:', e);
     return { success: false, message: e.message };

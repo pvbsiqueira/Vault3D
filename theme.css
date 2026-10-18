@@ -2616,3 +2616,4 @@ body.has-slicer-choice .slicer-split-modal .btn-slicer-caret.is-open { filter: b
 .slicer-toggle-text { display: flex; flex-direction: column; gap: 2px; font-size: 13px; color: var(--text-primary); }
 .slicer-toggle-text strong { font-weight: 600; }
 .slicer-toggle-text small { font-size: 12px; color: var(--text-muted); line-height: 1.4; }
+.slicer-split .btn-open-slicer span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

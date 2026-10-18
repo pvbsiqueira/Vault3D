@@ -40,6 +40,56 @@ export function onSlicersChanged(fn) {
   return () => listeners.delete(fn);
 }
 
+// Nomes curtos para caber no botão do card
+const SHORT_NAMES = {
+  anycubic: 'Slicer Next',
+  cura: 'Cura',
+  flashforge: 'Orca-Flashforge'
+};
+
+/** Nome do fatiador para o botão (curto) e para a dica (completo); null se não estiver instalado */
+export function getSlicerNames(id) {
+  if (!id || id === 'system') return null;
+  const s = slicerState.slicers.find((x) => x.id === id);
+  if (!s) return null;
+  return { short: SHORT_NAMES[id] || s.name, full: s.name };
+}
+
+/* Último fatiador usado em cada arquivo (fica salvo neste computador) */
+const LAST_USED_KEY = 'vault3d_last_slicer_by_file';
+let lastUsedCache = null;
+
+function readLastUsed() {
+  if (lastUsedCache) return lastUsedCache;
+  try {
+    lastUsedCache = JSON.parse(localStorage.getItem(LAST_USED_KEY) || '{}') || {};
+  } catch (_) {
+    lastUsedCache = {};
+  }
+  return lastUsedCache;
+}
+
+/** Último fatiador que abriu o arquivo, se ele ainda estiver na lista */
+export function getLastSlicer(fileKey) {
+  if (!fileKey) return null;
+  const id = readLastUsed()[fileKey];
+  if (!id) return null;
+  if (id === 'system') return 'system';
+  return slicerState.slicers.some((s) => s.id === id) ? id : null;
+}
+
+export function setLastSlicer(fileKey, slicerId) {
+  if (!fileKey || !slicerId) return;
+  const map = readLastUsed();
+  if (map[fileKey] === slicerId) return;
+  map[fileKey] = slicerId;
+  try {
+    localStorage.setItem(LAST_USED_KEY, JSON.stringify(map));
+  } catch (e) {
+    console.warn('Erro ao salvar o último fatiador do arquivo:', e);
+  }
+}
+
 /** Nome do fatiador usado no clique normal (padrão do usuário) */
 export function getDefaultSlicerName() {
   const s = slicerState.slicers.find((x) => x.id === slicerState.defaultId);
@@ -73,11 +123,11 @@ export async function loadSlicers(force = false) {
 }
 
 /** Botão "Abrir no Fatiador" + setinha. A setinha some via CSS quando não há o que escolher. */
-export function slicerSplitHtml(cfg, extraClass = '') {
+export function slicerSplitHtml(cfg, extraClass = '', fileKey = '') {
   const btn = `
-    <button class="btn-open-slicer ${extraClass}" title="${escapeHtml(cfg.title)}" type="button">
+    <button class="btn-open-slicer ${extraClass}" title="${escapeHtml(cfg.title)}" type="button"${fileKey ? ` data-slicer-key="${escapeHtml(fileKey)}"` : ''}>
       ${cfg.icon}
-      <span>${cfg.text}</span>
+      <span>${escapeHtml(cfg.text)}</span>
     </button>`;
   if (!isSlicerChoiceSupported()) return btn;
   return `
