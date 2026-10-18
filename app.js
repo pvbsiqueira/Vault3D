@@ -6,7 +6,7 @@ import JSZip from 'https://esm.sh/jszip@3.10.1';
 import { parseSTL } from './stl-parser.js';
 import { initAuth, getAuthenticatedUser } from './auth.js';
 import { startUsageTracking } from './usage-tracker.js';
-import { initSlicerPicker, isSlicerChoiceSupported, slicerSplitHtml, openSlicerMenu, getDefaultSlicerName, getSlicerState, onSlicersChanged, getSlicerNames, getLastSlicer, setLastSlicer, slicerIconHtml } from './slicer-picker.js';
+import { initSlicerPicker, isSlicerChoiceSupported, slicerSplitHtml, openSlicerMenu, getDefaultSlicerName, getSlicerState, onSlicersChanged, getSlicerNames, getLastSlicer, setLastSlicer, slicerIconHtml, refreshSlicerSettings } from './slicer-picker.js';
 
 // Estado global da aplicação
 const state = {
@@ -84,6 +84,8 @@ const navProjects = document.getElementById('navProjects');
 const navFavorites = document.getElementById('navFavorites');
 const navTrending = document.getElementById('navTrending');
 const navDuplicates = document.getElementById('navDuplicates');
+const navSettings = document.getElementById('navSettings');
+const settingsContainer = document.getElementById('settingsContainer');
 const sidebarAllCountBadge = document.getElementById('sidebarAllCountBadge');
 const sidebarProjectsCountBadge = document.getElementById('sidebarProjectsCountBadge');
 const sidebarFavoritesCountBadge = document.getElementById('sidebarFavoritesCountBadge');
@@ -340,8 +342,8 @@ function init() {
     }
   });
 
-  // Navegação da Barra Lateral (Todos / Projetos / Favoritos / Em Alta / Duplicados)
-  [navAllModels, navProjects, navFavorites, navTrending, navDuplicates].forEach(navBtn => {
+  // Navegação da Barra Lateral (Todos / Projetos / Favoritos / Em Alta / Duplicados / Configurações)
+  [navAllModels, navProjects, navFavorites, navTrending, navDuplicates, navSettings].forEach(navBtn => {
     if (!navBtn) return;
     navBtn.addEventListener('click', () => {
       const section = navBtn.dataset.section || 'all';
@@ -536,6 +538,11 @@ function init() {
     }
   }
   initSlicerPicker();
+  // "Configurar fatiadores…" no menu da setinha abre a página Configurações
+  document.addEventListener('vault3d:open-settings', () => {
+    if (typeof closeViewerModal === 'function' && viewerModal && viewerModal.classList.contains('active')) closeViewerModal();
+    setNavSection('settings');
+  });
   // Os botões mostram o último fatiador usado em cada arquivo (ou o padrão escolhido)
   onSlicersChanged(() => refreshSlicerLabels());
   if (modalPlateImg) {
@@ -712,6 +719,11 @@ function copyModalFullPath() {
   }
 }
 
+/** Em Alta e Configurações ocupam a área da biblioteca: a galeria fica escondida */
+function isOffLibrarySection() {
+  return state.activeSection === 'trending' || state.activeSection === 'settings';
+}
+
 /**
  * Alterna a seção ativa da biblioteca (Todos os Modelos, Projetos, Favoritos, Em Alta, Duplicados)
  */
@@ -719,9 +731,30 @@ function setNavSection(section) {
   state.activeSection = section;
   state.currentPage = 1;
 
-  [navAllModels, navProjects, navFavorites, navTrending, navDuplicates].forEach(btn => {
+  [navAllModels, navProjects, navFavorites, navTrending, navDuplicates, navSettings].forEach(btn => {
     if (btn) btn.classList.toggle('active', btn.dataset.section === section);
   });
+
+  // Página Configurações: esconde a biblioteca e mostra os cartões de configuração
+  const isSettings = section === 'settings';
+  if (settingsContainer) settingsContainer.style.display = isSettings ? 'flex' : 'none';
+  document.body.classList.toggle('is-settings-page', isSettings);
+  if (isSettings) {
+    if (dropZone) dropZone.style.display = 'none';
+    if (galleryContainer) galleryContainer.style.display = 'none';
+    if (trendingContainer) trendingContainer.style.display = 'none';
+    if (trendingRangeGroup) trendingRangeGroup.style.display = 'none';
+    if (btnRefreshTrending) btnRefreshTrending.style.display = 'none';
+    if (trendingUpdatedLabel) trendingUpdatedLabel.style.display = 'none';
+    if (sortControlWrap) sortControlWrap.style.display = 'none';
+    if (topPageSizeWrap) topPageSizeWrap.style.display = 'none';
+    if (btnRefreshFolders) btnRefreshFolders.style.display = 'none';
+    if (selectionActionBar) selectionActionBar.style.display = 'none';
+    if (currentViewTitle) currentViewTitle.textContent = 'Configurações';
+    if (shellSubtitle) shellSubtitle.textContent = 'Ajustes do Vault3D neste computador.';
+    refreshSlicerSettings();
+    return;
+  }
 
   if (section === 'trending') {
     if (currentViewTitle) currentViewTitle.textContent = 'Em Alta';
@@ -1962,14 +1995,14 @@ async function addFilesToLibrary(files, folderName, dirHandle = null, persistToD
   state.models.sort((a, b) => compareModelNames(a.name, b.name));
 
   // Atualizar visualização para exibir a galeria (exceto se o usuário estiver na aba Em Alta)
-  if (state.activeSection !== 'trending') {
+  if (!isOffLibrarySection()) {
     dropZone.style.display = 'none';
     galleryContainer.style.display = 'block';
   }
 
   renderFolderChips();
   updateStatsBadge();
-  if (state.activeSection !== 'trending') {
+  if (!isOffLibrarySection()) {
     renderGallery();
   }
 
@@ -2371,7 +2404,7 @@ function selectFolder(folderId, subfolderPath = null) {
   state.currentPage = 1;
   updateFolderSelectionUI();
   updateStatsBadge();
-  if (state.activeSection === 'trending') {
+  if (isOffLibrarySection()) {
     setNavSection('all');
     return;
   }
@@ -2387,7 +2420,7 @@ function resetFolderFilter() {
   state.currentPage = 1;
   updateFolderSelectionUI();
   updateStatsBadge();
-  if (state.activeSection === 'trending') {
+  if (isOffLibrarySection()) {
     setNavSection('all');
     return;
   }
@@ -2659,7 +2692,7 @@ function updateStatsBadge() {
     sidebarAllFoldersWrap.style.display = foldersCount > 0 ? 'block' : 'none';
   }
   if (btnRefreshFolders) {
-    btnRefreshFolders.style.display = (foldersCount > 0 && state.activeSection !== 'trending') ? 'inline-flex' : 'none';
+    btnRefreshFolders.style.display = (foldersCount > 0 && !isOffLibrarySection()) ? 'inline-flex' : 'none';
   }
 }
 
@@ -5949,6 +5982,7 @@ function updatePaginationUI(total, totalPages, startIdx, endIdx) {
  * e carregamento estritamente sob demanda para cards em tela
  */
 function renderGallery() {
+  if (state.activeSection === 'settings') return;
   if (state.activeSection === 'trending') {
     if (trendingState.data) {
       renderTrendingSection(trendingState.data);

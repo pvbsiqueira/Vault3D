@@ -2460,7 +2460,6 @@ body.is-moving-files .sidebar-folder-item.is-move-source { opacity: 0.5; }
 
 /* ---------- Escolha do fatiador (setinha ▾, menu e modal "Fatiadores") ---------- */
 body:not(.can-pick-slicer) .slicer-only { display: none !important; }
-.sidebar-nav-slicers .slicers-icon { color: var(--accent); }
 
 .slicer-split { display: flex; align-items: stretch; width: 100%; min-width: 0; }
 .slicer-split .btn-open-slicer,
@@ -2534,7 +2533,6 @@ body.has-slicer-choice .slicer-split-modal .btn-slicer-caret.is-open { filter: b
 .slicer-menu-sep { height: 1px; margin: 4px 2px; background: var(--line); }
 .slicer-menu-config { color: var(--text-secondary); font-size: 12.5px; }
 
-.slicer-settings-card { max-width: 460px; }
 .slicer-list {
   list-style: none;
   margin: 0;
@@ -2594,3 +2592,41 @@ body.has-slicer-choice .slicer-split-modal .btn-slicer-caret.is-open { filter: b
 .slicer-row .slicer-brand-icon { width: 18px; height: 18px; }
 .slicer-brand-icon.is-generic { display: inline-grid; place-items: center; color: var(--text-muted); }
 .btn-modal-slicer-footer .slicer-brand-icon { width: 20px; height: 20px; background: rgba(255, 255, 255, 0.9); padding: 1px; border-radius: 4px; }
+
+/* ---------- Página Configurações (um cartão por assunto) ---------- */
+.settings-view {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 16px;
+  padding-bottom: 28px;
+}
+.settings-card {
+  flex: 1 1 420px;
+  max-width: 560px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px;
+  background: var(--bg-panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg, 10px);
+  font-family: var(--font-ui);
+}
+.settings-card-head { display: flex; align-items: flex-start; gap: 12px; }
+.settings-card-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.settings-card-text { min-width: 0; }
+.settings-card-title { margin: 0; font-size: 15px; font-weight: 700; color: var(--text-primary); }
+.settings-card-sub { margin: 3px 0 0; font-size: 12.5px; line-height: 1.5; color: var(--text-secondary); }
+.settings-card-foot { display: flex; align-items: center; justify-content: space-between; }
+.sidebar-nav-settings .settings-icon { color: var(--text-secondary); }
+.sidebar-nav-settings.active .settings-icon { color: var(--accent); }

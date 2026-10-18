@@ -2,7 +2,7 @@
  * Vault3D · Escolha do fatiador (renderer)
  * - Lista os fatiadores detectados pelo processo principal (slicers.js)
  * - Setinha ▾ ao lado do "Abrir no Fatiador" com um menu para abrir em outro fatiador
- * - Modal "Fatiadores": fatiador padrão e fatiadores extras
+ * - Seção "Fatiadores" da página Configurações: fatiador padrão e fatiadores extras
  * Só existe no app Desktop; na Web o botão continua copiando o caminho.
  */
 
@@ -235,77 +235,9 @@ export function openSlicerMenu(anchor, { onPick } = {}) {
 
 }
 
-/* ---------------------- Modal "Fatiadores" ---------------------- */
+/* ---------------------- Seção "Fatiadores" da página Configurações ---------------------- */
 
-let modalBuilt = false;
-
-function buildModal() {
-  if (modalBuilt) return document.getElementById('slicerSettingsModal');
-  modalBuilt = true;
-  const modal = document.createElement('div');
-  modal.className = 'modal move-modal slicer-settings-modal';
-  modal.id = 'slicerSettingsModal';
-  modal.style.display = 'none';
-  modal.setAttribute('role', 'dialog');
-  modal.setAttribute('aria-modal', 'true');
-  modal.setAttribute('aria-labelledby', 'slicerSettingsTitle');
-  modal.innerHTML = `
-    <div class="modal-backdrop" data-close></div>
-    <div class="move-card slicer-settings-card">
-      <div class="move-card-head">
-        <h3 class="move-card-title" id="slicerSettingsTitle">Fatiadores</h3>
-        <p class="move-card-sub">Escolha qual fatiador o botão Abrir no Fatiador usa</p>
-      </div>
-      <ul class="slicer-list" id="slicerSettingsList" role="radiogroup" aria-label="Fatiador padrão"></ul>
-      <div class="move-card-footer">
-        <button type="button" class="btn-move-new" id="btnAddCustomSlicer">+ Adicionar outro fatiador</button>
-        <div class="move-card-footer-right">
-          <button type="button" class="btn-move-confirm" data-close>Concluir</button>
-        </div>
-      </div>
-    </div>
-  `;
-  document.body.appendChild(modal);
-
-  modal.addEventListener('click', async (e) => {
-    if (e.target.closest('[data-close]')) {
-      closeSlicerSettings();
-      return;
-    }
-    const remove = e.target.closest('.slicer-remove');
-    if (remove) {
-      e.preventDefault();
-      e.stopPropagation();
-      applyState(await api().removeCustomSlicer(remove.dataset.id));
-      renderModalList();
-      return;
-    }
-    const row = e.target.closest('.slicer-row');
-    if (row && row.dataset.id !== slicerState.defaultId) {
-      applyState(await api().setSlicerPrefs({ defaultId: row.dataset.id }));
-      renderModalList();
-    }
-  });
-
-  modal.querySelector('#btnAddCustomSlicer').addEventListener('click', async () => {
-    const res = await api().addCustomSlicer();
-    if (res && !res.canceled) {
-      applyState(res);
-      renderModalList();
-    }
-  });
-
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && modal.style.display !== 'none') {
-      e.stopPropagation();
-      closeSlicerSettings();
-    }
-  }, true);
-
-  return modal;
-}
-
-function renderModalList() {
+function renderSettingsList() {
   const list = document.getElementById('slicerSettingsList');
   if (!list) return;
   const rows = [
@@ -329,32 +261,60 @@ function renderModalList() {
   }
 }
 
-export async function openSlicerSettings() {
+/** Atualiza a seção Fatiadores (detecta de novo: pega fatiadores instalados depois que o app abriu) */
+export async function refreshSlicerSettings() {
   if (!api()) return;
-  const modal = buildModal();
-  renderModalList();
-  modal.style.display = 'flex';
-  // Detecta de novo ao abrir: pega fatiadores instalados depois que o app abriu
+  renderSettingsList();
   await loadSlicers(true);
-  renderModalList();
+  renderSettingsList();
 }
 
-export function closeSlicerSettings() {
-  const modal = document.getElementById('slicerSettingsModal');
-  if (modal) modal.style.display = 'none';
+/** "Configurar fatiadores…" no menu leva para a página Configurações (app.js escuta este evento) */
+export function openSlicerSettings() {
+  document.dispatchEvent(new CustomEvent('vault3d:open-settings', { detail: { section: 'slicers' } }));
+}
+
+function bindSettingsSection() {
+  const list = document.getElementById('slicerSettingsList');
+  if (list) {
+    list.addEventListener('click', async (e) => {
+      const remove = e.target.closest('.slicer-remove');
+      if (remove) {
+        e.preventDefault();
+        e.stopPropagation();
+        applyState(await api().removeCustomSlicer(remove.dataset.id));
+        renderSettingsList();
+        return;
+      }
+      const row = e.target.closest('.slicer-row');
+      if (row && row.dataset.id !== slicerState.defaultId) {
+        applyState(await api().setSlicerPrefs({ defaultId: row.dataset.id }));
+        renderSettingsList();
+      }
+    });
+    // Enter/Espaço escolhe a linha
+    list.addEventListener('keydown', (e) => {
+      const row = e.target.closest && e.target.closest('.slicer-row');
+      if (row && (e.key === 'Enter' || e.key === ' ')) {
+        e.preventDefault();
+        row.click();
+      }
+    });
+  }
+  const btnAdd = document.getElementById('btnAddCustomSlicer');
+  if (btnAdd) {
+    btnAdd.addEventListener('click', async () => {
+      const res = await api().addCustomSlicer();
+      if (res && !res.canceled) {
+        applyState(res);
+        renderSettingsList();
+      }
+    });
+  }
 }
 
 export function initSlicerPicker() {
   if (!api()) return;
   loadSlicers();
-  const nav = document.getElementById('navSlicers');
-  if (nav) nav.addEventListener('click', openSlicerSettings);
-  // Enter/Espaço escolhe a linha no modal
-  document.addEventListener('keydown', (e) => {
-    const row = e.target && e.target.closest && e.target.closest('.slicer-row');
-    if (row && (e.key === 'Enter' || e.key === ' ')) {
-      e.preventDefault();
-      row.click();
-    }
-  });
+  bindSettingsSection();
 }

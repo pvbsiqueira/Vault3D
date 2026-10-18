@@ -204,13 +204,6 @@
 
       <!-- Links fixos antes do rodapé: Indicações e Grupo do WhatsApp -->
       <div class="sidebar-bottom-links">
-        <button class="sidebar-nav-item sidebar-nav-slicers slicer-only" id="navSlicers" type="button" title="Escolher o fatiador padrão e os fatiadores instalados">
-          <span class="nav-icon slicers-icon" aria-hidden="true">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
-          </span>
-          <span class="nav-label">Fatiadores</span>
-        </button>
-
         <button class="sidebar-nav-item sidebar-nav-link sidebar-indicacoes-link" id="navIndicacoes" data-href="https://vault3d.com.br/indicacoes" type="button" title="Filamentos, bicos e acessórios indicados (abre no navegador)">
           <span class="nav-icon indicacoes-icon" aria-hidden="true">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path><line x1="3" y1="6" x2="21" y2="6"></line><path d="M16 10a4 4 0 0 1-8 0"></path></svg>
@@ -232,6 +225,13 @@
           <span class="nav-external" aria-hidden="true">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7M8 7h9v9"></path></svg>
           </span>
+        </button>
+
+        <button class="sidebar-nav-item sidebar-nav-settings slicer-only" id="navSettings" data-section="settings" type="button" title="Configurações do Vault3D">
+          <span class="nav-icon settings-icon" aria-hidden="true">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+          </span>
+          <span class="nav-label">Configurações</span>
         </button>
       </div>
 
@@ -532,6 +532,25 @@
               </div>
             </div>
             <div class="trending-grid" id="trendingUnifiedGrid"></div>
+          </section>
+        </div>
+
+        <!-- Página Configurações: cada assunto configurável é um cartão (novos entram aqui) -->
+        <div id="settingsContainer" class="settings-view" style="display: none;">
+          <section class="settings-card" id="settingsSlicers" aria-labelledby="settingsSlicersTitle">
+            <div class="settings-card-head">
+              <span class="settings-card-icon" aria-hidden="true">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
+              </span>
+              <div class="settings-card-text">
+                <h3 class="settings-card-title" id="settingsSlicersTitle">Fatiadores</h3>
+                <p class="settings-card-sub">Fatiador padrão do botão Abrir no Fatiador. A setinha ao lado do botão abre um arquivo em outro fatiador, e o card passa a lembrar dele.</p>
+              </div>
+            </div>
+            <ul class="slicer-list" id="slicerSettingsList" role="radiogroup" aria-label="Fatiador padrão"></ul>
+            <div class="settings-card-foot">
+              <button type="button" class="btn-move-new" id="btnAddCustomSlicer">+ Adicionar outro fatiador</button>
+            </div>
           </section>
         </div>
 
