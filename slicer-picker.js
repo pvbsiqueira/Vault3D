@@ -2,7 +2,7 @@
  * Vault3D · Escolha do fatiador (renderer)
  * - Lista os fatiadores detectados pelo processo principal (slicers.js)
  * - Setinha ▾ ao lado do "Abrir no Fatiador" com um menu para abrir em outro fatiador
- * - Modal "Fatiadores": fatiador padrão, abrir 3MF no fatiador que criou o arquivo e fatiadores extras
+ * - Modal "Fatiadores": fatiador padrão e fatiadores extras
  * Só existe no app Desktop; na Web o botão continua copiando o caminho.
  */
 
@@ -14,7 +14,6 @@ const slicerState = {
   loaded: false,
   slicers: [],
   defaultId: 'system',
-  matchCreator: true,
   systemName: 'Padrão do Windows'
 };
 
@@ -108,7 +107,6 @@ function applyState(res) {
   if (!res) return;
   slicerState.slicers = Array.isArray(res.slicers) ? res.slicers : [];
   slicerState.defaultId = res.defaultId || 'system';
-  slicerState.matchCreator = res.matchCreator !== false;
   if (res.systemName) slicerState.systemName = res.systemName;
   slicerState.loaded = true;
   // A setinha só aparece quando há mais de um fatiador para escolher
@@ -161,10 +159,9 @@ function closeSlicerMenu() {
  * Abre o menu de fatiadores ao lado da setinha.
  * @param {HTMLElement} anchor   a setinha clicada
  * @param {object} opts
- *   getFullPath: () => Promise<string|null>  caminho do arquivo (para marcar quem criou o 3MF)
  *   onPick: (slicerId) => void               abre o arquivo no fatiador escolhido
  */
-export function openSlicerMenu(anchor, { getFullPath, onPick } = {}) {
+export function openSlicerMenu(anchor, { onPick } = {}) {
   if (menuEl && menuEl.dataset.anchorId === anchor.dataset.slicerMenuId) {
     closeSlicerMenu();
     return;
@@ -236,19 +233,6 @@ export function openSlicerMenu(anchor, { getFullPath, onPick } = {}) {
     document.removeEventListener('scroll', onScroll, true);
   };
 
-  // Marca o fatiador que criou o 3MF (quando instalado)
-  const a = api();
-  const currentMenu = menuEl;
-  if (a && typeof a.get3mfCreator === 'function' && typeof getFullPath === 'function') {
-    Promise.resolve(getFullPath()).then((fullPath) => {
-      if (!fullPath || !/\.3mf$/i.test(fullPath)) return null;
-      return a.get3mfCreator(fullPath);
-    }).then((res) => {
-      if (!res || !res.slicerId || menuEl !== currentMenu) return;
-      const tag = currentMenu.querySelector(`[data-tag-for="${CSS.escape(res.slicerId)}"]`);
-      if (tag) tag.textContent = tag.textContent ? `${tag.textContent} · criou o arquivo` : 'criou o arquivo';
-    }).catch(() => {});
-  }
 }
 
 /* ---------------------- Modal "Fatiadores" ---------------------- */
@@ -273,14 +257,6 @@ function buildModal() {
         <p class="move-card-sub">Escolha qual fatiador o botão Abrir no Fatiador usa</p>
       </div>
       <ul class="slicer-list" id="slicerSettingsList" role="radiogroup" aria-label="Fatiador padrão"></ul>
-      <label class="slicer-toggle">
-        <input type="checkbox" id="slicerMatchCreator">
-        <span class="slicer-toggle-track" aria-hidden="true"></span>
-        <span class="slicer-toggle-text">
-          <strong>Abrir 3MF no fatiador que criou o arquivo</strong>
-          <small>Um 3MF do Bambu Studio abre no Bambu Studio, mesmo com outro padrão. STL usa o padrão.</small>
-        </span>
-      </label>
       <div class="move-card-footer">
         <button type="button" class="btn-move-new" id="btnAddCustomSlicer">+ Adicionar outro fatiador</button>
         <div class="move-card-footer-right">
@@ -309,10 +285,6 @@ function buildModal() {
       applyState(await api().setSlicerPrefs({ defaultId: row.dataset.id }));
       renderModalList();
     }
-  });
-
-  modal.querySelector('#slicerMatchCreator').addEventListener('change', async (e) => {
-    applyState(await api().setSlicerPrefs({ matchCreator: e.target.checked }));
   });
 
   modal.querySelector('#btnAddCustomSlicer').addEventListener('click', async () => {
@@ -355,8 +327,6 @@ function renderModalList() {
   if (!slicerState.slicers.length) {
     list.insertAdjacentHTML('afterbegin', '<li class="slicer-empty">Nenhum fatiador encontrado automaticamente. Use "Adicionar outro fatiador" para escolher o programa.</li>');
   }
-  const toggle = document.getElementById('slicerMatchCreator');
-  if (toggle) toggle.checked = slicerState.matchCreator;
 }
 
 export async function openSlicerSettings() {

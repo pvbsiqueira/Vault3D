@@ -4641,12 +4641,8 @@ function getSlicerButtonConfig(model = null) {
     const fileKey = model ? getSlicerFileKey(model) : '';
     // Último fatiador escolhido para este arquivo: o botão passa a mostrar o nome e o ícone dele
     const last = fileKey ? getSlicerNames(getLastSlicer(fileKey)) : null;
-    // Sem histórico, mostra o padrão quando já se sabe que é ele que abre
-    // (um 3MF pode ir para o fatiador que o criou, então nele o padrão não é garantido)
-    const slicerPrefs = getSlicerState();
-    const opensWithDefault = !last && fileKey && slicerPrefs.defaultId !== 'system'
-      && (!/\.3mf$/i.test(fileKey) || !slicerPrefs.matchCreator);
-    const known = last || (opensWithDefault ? getSlicerNames(slicerPrefs.defaultId) : null);
+    // Sem histórico, o arquivo abre no padrão escolhido em "Fatiadores"
+    const known = last || (fileKey ? getSlicerNames(getSlicerState().defaultId) : null);
     return {
       text: known ? `Abrir no ${known.short}` : 'Abrir no Fatiador',
       // No card o espaço é curto: ícone + nome do fatiador já dizem o que o botão faz
@@ -4654,7 +4650,7 @@ function getSlicerButtonConfig(model = null) {
       title: last
         ? `Abrir no ${last.full} (último usado neste arquivo; a setinha troca o fatiador)`
         : defaultName
-        ? `Abrir no ${defaultName}${slicerPrefs.matchCreator ? ' (arquivos 3MF abrem no fatiador que os criou)' : ''}`
+        ? `Abrir no ${defaultName}`
         : 'Abrir arquivo diretamente no seu Fatiador 3D padrão (Bambu Studio, OrcaSlicer, etc.)',
       icon: known ? slicerIconHtml(known.iconUrl, 16) : `
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -4782,11 +4778,6 @@ function wireSlicerCaret(caretEl, getModel, mainBtn) {
     e.stopPropagation();
     e.preventDefault();
     openSlicerMenu(caretEl, {
-      getFullPath: async () => {
-        const m = getModel();
-        if (!m || !getAuthenticatedUser()) return null;
-        return (await resolveSlicerTarget(m)).fullPath;
-      },
       onPick: (slicerId) => {
         const m = getModel();
         if (m) openModelInSlicer(m, mainBtn, slicerId);

@@ -1,29 +1,26 @@
 /**
  * Vault3D · Fatiadores instalados (processo principal do Electron)
- * Detecta os fatiadores do Windows, guarda o fatiador padrão escolhido pelo usuário
- * e descobre qual fatiador criou um 3MF (metadado "Application" do 3D/3dmodel.model).
+ * Detecta os fatiadores do Windows e guarda o fatiador padrão escolhido pelo usuário.
  */
 const path = require('path');
 const fs = require('fs');
-const zlib = require('zlib');
 const { execFile } = require('child_process');
 
-// Fatiadores conhecidos. "dir" casa com o nome da pasta de instalação, "exe" com o executável
-// e "creator" com o metadado Application gravado no 3MF (ex.: "BambuStudio-01.09.07.52").
+// Fatiadores conhecidos. "dir" casa com o nome da pasta de instalação e "exe" com o executável.
 const KNOWN_SLICERS = [
-  { id: 'bambu', name: 'Bambu Studio', dir: /^bambu ?studio/i, exe: ['bambu-studio.exe'], creator: /bambu ?studio/i },
-  { id: 'orca', name: 'OrcaSlicer', dir: /^orca ?slicer/i, exe: ['orca-slicer.exe', 'OrcaSlicer.exe'], creator: /^orca ?slicer/i },
-  { id: 'prusa', name: 'PrusaSlicer', dir: /^(prusa3d|prusaslicer)/i, exe: ['prusa-slicer.exe'], creator: /prusa ?slicer|slic3r/i },
-  { id: 'cura', name: 'UltiMaker Cura', dir: /^(ulti ?maker )?cura/i, exe: ['UltiMaker-Cura.exe', 'Ultimaker-Cura.exe', 'Cura.exe'], creator: /cura/i },
-  { id: 'creality', name: 'Creality Print', dir: /^creality/i, exe: ['CrealityPrint.exe', 'Creality Print.exe'], creator: /creality/i },
+  { id: 'bambu', name: 'Bambu Studio', dir: /^bambu ?studio/i, exe: ['bambu-studio.exe'] },
+  { id: 'orca', name: 'OrcaSlicer', dir: /^orca ?slicer/i, exe: ['orca-slicer.exe', 'OrcaSlicer.exe'] },
+  { id: 'prusa', name: 'PrusaSlicer', dir: /^(prusa3d|prusaslicer)/i, exe: ['prusa-slicer.exe'] },
+  { id: 'cura', name: 'UltiMaker Cura', dir: /^(ulti ?maker )?cura/i, exe: ['UltiMaker-Cura.exe', 'Ultimaker-Cura.exe', 'Cura.exe'] },
+  { id: 'creality', name: 'Creality Print', dir: /^creality/i, exe: ['CrealityPrint.exe', 'Creality Print.exe'] },
   // O AnycubicSlicerNext.exe é só um lançador sem ícone próprio: o logo fica nas imagens do programa
-  { id: 'anycubic', name: 'Anycubic Slicer Next', dir: /^anycubic ?slicer/i, exe: ['AnycubicSlicerNext.exe', 'anycubicslicernext.exe', 'AnycubicSlicer.exe'], creator: /anycubic/i,
+  { id: 'anycubic', name: 'Anycubic Slicer Next', dir: /^anycubic ?slicer/i, exe: ['AnycubicSlicerNext.exe', 'anycubicslicernext.exe', 'AnycubicSlicer.exe'],
     icons: ['resources/images/AnycubicSlicerNext_256px.png', 'resources/images/AnycubicSlicer_64.png', 'resources/images/AnycubicSlicer.ico'] },
-  { id: 'elegoo', name: 'ElegooSlicer', dir: /^elegoo ?slicer/i, exe: ['elegoo-slicer.exe', 'ElegooSlicer.exe'], creator: /elegoo/i },
-  { id: 'flashforge', name: 'Orca-Flashforge', dir: /^orca-flashforge/i, exe: ['orca-flashforge.exe', 'Orca-Flashforge.exe'], creator: /flashforge/i },
-  { id: 'snapmaker', name: 'Snapmaker Orca', dir: /^snapmaker ?orca/i, exe: ['snapmaker-orca.exe', 'Snapmaker_Orca.exe', 'Snapmaker Orca.exe'], creator: /snapmaker/i },
-  { id: 'qidi', name: 'QIDIStudio', dir: /^qidi ?studio/i, exe: ['qidi-studio.exe', 'QIDIStudio.exe'], creator: /qidi/i },
-  { id: 'superslicer', name: 'SuperSlicer', dir: /^superslicer/i, exe: ['superslicer.exe'], creator: /superslicer/i }
+  { id: 'elegoo', name: 'ElegooSlicer', dir: /^elegoo ?slicer/i, exe: ['elegoo-slicer.exe', 'ElegooSlicer.exe'] },
+  { id: 'flashforge', name: 'Orca-Flashforge', dir: /^orca-flashforge/i, exe: ['orca-flashforge.exe', 'Orca-Flashforge.exe'] },
+  { id: 'snapmaker', name: 'Snapmaker Orca', dir: /^snapmaker ?orca/i, exe: ['snapmaker-orca.exe', 'Snapmaker_Orca.exe', 'Snapmaker Orca.exe'] },
+  { id: 'qidi', name: 'QIDIStudio', dir: /^qidi ?studio/i, exe: ['qidi-studio.exe', 'QIDIStudio.exe'] },
+  { id: 'superslicer', name: 'SuperSlicer', dir: /^superslicer/i, exe: ['superslicer.exe'] }
 ];
 
 const SYSTEM_ID = 'system';
@@ -37,13 +34,12 @@ function init(userDataDir) {
 }
 
 function readPrefs() {
-  const base = { defaultId: SYSTEM_ID, matchCreator: true, custom: [] };
+  const base = { defaultId: SYSTEM_ID, custom: [] };
   try {
     if (prefsFile && fs.existsSync(prefsFile)) {
       const saved = JSON.parse(fs.readFileSync(prefsFile, 'utf8'));
       return {
         defaultId: typeof saved.defaultId === 'string' ? saved.defaultId : base.defaultId,
-        matchCreator: saved.matchCreator !== false,
         custom: Array.isArray(saved.custom) ? saved.custom.filter((c) => c && c.id && c.exePath) : []
       };
     }
@@ -211,13 +207,12 @@ async function listSlicers(force = false) {
     .map((c) => ({ id: c.id, name: c.name, exePath: c.exePath, custom: true }));
   const slicers = [...detected, ...custom];
   const defaultId = slicers.some((s) => s.id === prefs.defaultId) ? prefs.defaultId : SYSTEM_ID;
-  return { slicers, defaultId, matchCreator: prefs.matchCreator, systemName: SYSTEM_ENTRY.name };
+  return { slicers, defaultId, systemName: SYSTEM_ENTRY.name };
 }
 
-function setPrefs({ defaultId, matchCreator } = {}) {
+function setPrefs({ defaultId } = {}) {
   const prefs = readPrefs();
   if (typeof defaultId === 'string') prefs.defaultId = defaultId;
-  if (typeof matchCreator === 'boolean') prefs.matchCreator = matchCreator;
   writePrefs(prefs);
   return prefs;
 }
@@ -244,129 +239,15 @@ function removeCustom(id) {
 }
 
 /**
- * Lê o metadado "Application" do 3MF sem descompactar o arquivo inteiro:
- * acha 3D/3dmodel.model no diretório central do ZIP e infla só o começo dele.
- */
-function readCreatorApplication(filePath) {
-  let fd = null;
-  try {
-    fd = fs.openSync(filePath, 'r');
-    const size = fs.fstatSync(fd).size;
-    const tailLen = Math.min(size, 65557 + 22);
-    const tail = Buffer.alloc(tailLen);
-    fs.readSync(fd, tail, 0, tailLen, size - tailLen);
-    const eocd = tail.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]));
-    if (eocd < 0) return null;
-
-    let cdSize = tail.readUInt32LE(eocd + 12);
-    let cdOffset = tail.readUInt32LE(eocd + 16);
-    if (cdOffset === 0xffffffff || cdSize === 0xffffffff) {
-      // ZIP64: o localizador fica 20 bytes antes do EOCD
-      const loc = eocd - 20;
-      if (loc < 0 || tail.readUInt32LE(loc) !== 0x07064b50) return null;
-      const z64Offset = Number(tail.readBigUInt64LE(loc + 8));
-      const z64 = Buffer.alloc(56);
-      fs.readSync(fd, z64, 0, 56, z64Offset);
-      cdSize = Number(z64.readBigUInt64LE(40));
-      cdOffset = Number(z64.readBigUInt64LE(48));
-    }
-    if (cdSize > 64 * 1024 * 1024) return null;
-
-    const cd = Buffer.alloc(cdSize);
-    fs.readSync(fd, cd, 0, cdSize, cdOffset);
-
-    const entries = {};
-    let p = 0;
-    while (p + 46 <= cd.length && cd.readUInt32LE(p) === 0x02014b50) {
-      const method = cd.readUInt16LE(p + 10);
-      let compSize = cd.readUInt32LE(p + 20);
-      const nameLen = cd.readUInt16LE(p + 28);
-      const extraLen = cd.readUInt16LE(p + 30);
-      const commentLen = cd.readUInt16LE(p + 32);
-      let localOffset = cd.readUInt32LE(p + 42);
-      const name = cd.toString('utf8', p + 46, p + 46 + nameLen);
-      if (compSize === 0xffffffff || localOffset === 0xffffffff) {
-        const extra = cd.subarray(p + 46 + nameLen, p + 46 + nameLen + extraLen);
-        let e = 0;
-        while (e + 4 <= extra.length) {
-          const tag = extra.readUInt16LE(e);
-          const len = extra.readUInt16LE(e + 2);
-          if (tag === 0x0001) {
-            let q = e + 4;
-            if (cd.readUInt32LE(p + 24) === 0xffffffff) q += 8;
-            if (compSize === 0xffffffff) { compSize = Number(extra.readBigUInt64LE(q)); q += 8; }
-            if (localOffset === 0xffffffff) { localOffset = Number(extra.readBigUInt64LE(q)); }
-            break;
-          }
-          e += 4 + len;
-        }
-      }
-      entries[name.replace(/\\/g, '/').toLowerCase()] = { name, method, compSize, localOffset };
-      p += 46 + nameLen + extraLen + commentLen;
-    }
-
-    const readEntryHead = (entry, maxComp) => {
-      const lh = Buffer.alloc(30);
-      fs.readSync(fd, lh, 0, 30, entry.localOffset);
-      if (lh.readUInt32LE(0) !== 0x04034b50) return '';
-      const dataStart = entry.localOffset + 30 + lh.readUInt16LE(26) + lh.readUInt16LE(28);
-      const len = Math.min(entry.compSize, maxComp);
-      const raw = Buffer.alloc(len);
-      fs.readSync(fd, raw, 0, len, dataStart);
-      if (entry.method === 0) return raw.toString('utf8');
-      if (entry.method !== 8) return '';
-      return zlib.inflateRawSync(raw, { finishFlush: zlib.constants.Z_SYNC_FLUSH }).toString('utf8');
-    };
-
-    const modelEntry = entries['3d/3dmodel.model'];
-    if (modelEntry) {
-      const head = readEntryHead(modelEntry, 256 * 1024);
-      const m = head.match(/<metadata[^>]*name\s*=\s*["']Application["'][^>]*>([^<]+)<\/metadata>/i);
-      if (m) return m[1].trim();
-    }
-    // Sem o metadado: pistas pelos arquivos de configuração de cada fatiador
-    if (entries['metadata/slic3r_pe.config']) return 'PrusaSlicer';
-    if (Object.keys(entries).some((n) => n.startsWith('cura/'))) return 'Cura';
-    return null;
-  } catch (e) {
-    console.warn('Erro ao ler o fatiador de origem do 3MF:', e.message);
-    return null;
-  } finally {
-    if (fd !== null) {
-      try { fs.closeSync(fd); } catch (_) {}
-    }
-  }
-}
-
-/** Fatiador instalado que corresponde ao texto "Application" do 3MF */
-function matchCreator(application, slicers) {
-  if (!application) return null;
-  // Do mais específico para o mais genérico (Orca-Flashforge antes de OrcaSlicer)
-  const order = ['flashforge', 'snapmaker', 'anycubic', 'elegoo', 'creality', 'qidi', 'superslicer', 'bambu', 'orca', 'prusa', 'cura'];
-  for (const id of order) {
-    const def = KNOWN_SLICERS.find((d) => d.id === id);
-    if (def && def.creator.test(application)) {
-      const s = slicers.find((x) => x.id === id);
-      return s || null;
-    }
-  }
-  return null;
-}
-
-/**
- * Decide em qual fatiador abrir: escolha explícita > fatiador que criou o 3MF > padrão do usuário.
- * Retorna null para usar o programa padrão do Windows.
+ * Decide em qual fatiador abrir: escolha explícita (menu da setinha) > padrão do usuário.
+ * Retorna slicer null para usar o programa padrão do Windows.
  */
 async function resolveSlicerFor(filePath, slicerId) {
-  const { slicers, defaultId, matchCreator: useCreator } = await listSlicers();
+  const { slicers, defaultId } = await listSlicers();
   if (slicerId === SYSTEM_ID) return { slicer: null, reason: 'explicit' };
   if (slicerId) {
     const chosen = slicers.find((s) => s.id === slicerId);
     if (chosen) return { slicer: chosen, reason: 'explicit' };
-  }
-  if (useCreator && /\.3mf$/i.test(filePath)) {
-    const creator = matchCreator(readCreatorApplication(filePath), slicers);
-    if (creator) return { slicer: creator, reason: 'creator' };
   }
   return { slicer: slicers.find((s) => s.id === defaultId) || null, reason: 'default' };
 }
@@ -378,7 +259,5 @@ module.exports = {
   setPrefs,
   addCustom,
   removeCustom,
-  resolveSlicerFor,
-  readCreatorApplication,
-  matchCreator
+  resolveSlicerFor
 };

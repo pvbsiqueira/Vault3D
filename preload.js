@@ -34,7 +34,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setSlicerPrefs: (prefs) => ipcRenderer.invoke('set-slicer-prefs', prefs),
   addCustomSlicer: () => ipcRenderer.invoke('add-custom-slicer'),
   removeCustomSlicer: (id) => ipcRenderer.invoke('remove-custom-slicer', id),
-  get3mfCreator: (filePath) => ipcRenderer.invoke('get-3mf-creator', filePath),
 
   // Renomear arquivo diretamente no disco (Windows)
   renameFile: (oldPath, newName) => ipcRenderer.invoke('rename-file', { oldPath, newName }),
