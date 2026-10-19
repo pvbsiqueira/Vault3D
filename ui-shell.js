@@ -12,7 +12,8 @@
   const search = document.getElementById('searchInput');
 
   function syncTitle() {
-    const active = nav && nav.querySelector('.sidebar-nav-item.active .nav-label');
+    // Inclui itens fora da lista principal (ex.: Configurações, no rodapé da barra lateral)
+    const active = document.querySelector('.sidebar-nav-item.active .nav-label');
     const label = active ? active.textContent.trim() : 'Todos os modelos';
     if (title && title.textContent !== label) title.textContent = label;
     if (crumb && crumb.textContent !== label) crumb.textContent = label;
@@ -20,6 +21,8 @@
 
   if (nav) {
     new MutationObserver(syncTitle).observe(nav, { subtree: true, attributes: true, attributeFilter: ['class'] });
+    const navSettings = document.getElementById('navSettings');
+    if (navSettings) new MutationObserver(syncTitle).observe(navSettings, { attributes: true, attributeFilter: ['class'] });
     syncTitle();
   }
 
