@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap">
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="theme.css">
+  <link rel="stylesheet" href="filaments.css">
   <link rel="icon" type="image/png" href="build/icon.png">
 </head>
 <body class="dashboard-body">
@@ -173,6 +174,20 @@
               </span>
               <span class="nav-label">Duplicados</span>
               <span class="nav-badge badge-warning" id="sidebarDuplicatesCountBadge">0</span>
+            </button>
+          </nav>
+        </div>
+
+        <!-- Seção: Impressão -->
+        <div class="sidebar-section">
+          <div class="sidebar-section-title">Impressão</div>
+          <nav class="sidebar-nav">
+            <button class="sidebar-nav-item" id="navFilaments" data-section="filaments" type="button" title="Seus carretéis de filamento">
+              <span class="nav-icon filaments-nav-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><circle cx="12" cy="12" r="5"></circle><circle cx="12" cy="12" r="1.5"></circle></svg>
+              </span>
+              <span class="nav-label">Filamentos</span>
+              <span class="nav-badge badge-warning" id="sidebarFilamentsLowBadge" hidden>0</span>
             </button>
           </nav>
         </div>
@@ -553,6 +568,9 @@
             </div>
           </section>
         </div>
+
+        <!-- Página Filamentos: estoque de carretéis (filament-stock.js) -->
+        <div id="filamentsContainer" class="filaments-view" style="display: none;"></div>
 
       </main>
     </div>

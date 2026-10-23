@@ -8,6 +8,7 @@ import { initAuth, getAuthenticatedUser } from './auth.js';
 import { startUsageTracking } from './usage-tracker.js';
 import { openFoldersDB, getModelCacheKey, getCachedThumbnail, saveCachedThumbnail, clearThumbnailCache, pruneThumbnailCache, saveFolderToDB, removeFolderFromDB, clearAllFoldersFromDB, getAllFoldersFromDB } from './library-db.js';
 import { loadFavorites, saveFavorites, applyFavorites, addFileFavorite, removeFileFavorite, favoriteKeyOf } from './favorites.js';
+import { initFilamentStock, renderFilamentPage, setFilamentSearch, filamentStatusHtml, hasSpools } from './filament-stock.js';
 import { initSlicerPicker, isSlicerChoiceSupported, slicerSplitHtml, openSlicerMenu, getDefaultSlicerName, getSlicerState, onSlicersChanged, getSlicerNames, getLastSlicer, setLastSlicer, slicerIconHtml, refreshSlicerSettings } from './slicer-picker.js';
 
 // Estado global da aplicação
@@ -88,6 +89,8 @@ const navTrending = document.getElementById('navTrending');
 const navDuplicates = document.getElementById('navDuplicates');
 const navSettings = document.getElementById('navSettings');
 const settingsContainer = document.getElementById('settingsContainer');
+const navFilaments = document.getElementById('navFilaments');
+const filamentsContainer = document.getElementById('filamentsContainer');
 const sidebarAllCountBadge = document.getElementById('sidebarAllCountBadge');
 const sidebarProjectsCountBadge = document.getElementById('sidebarProjectsCountBadge');
 const sidebarFavoritesCountBadge = document.getElementById('sidebarFavoritesCountBadge');
@@ -344,8 +347,8 @@ function init() {
     }
   });
 
-  // Navegação da Barra Lateral (Todos / Projetos / Favoritos / Em Alta / Duplicados / Configurações)
-  [navAllModels, navProjects, navFavorites, navTrending, navDuplicates, navSettings].forEach(navBtn => {
+  // Navegação da Barra Lateral (Todos / Projetos / Favoritos / Em Alta / Duplicados / Filamentos / Configurações)
+  [navAllModels, navProjects, navFavorites, navTrending, navDuplicates, navFilaments, navSettings].forEach(navBtn => {
     if (!navBtn) return;
     navBtn.addEventListener('click', () => {
       const section = navBtn.dataset.section || 'all';
@@ -376,6 +379,11 @@ function init() {
     searchInput.addEventListener('input', (e) => {
       state.searchQuery = e.target.value.toLowerCase().trim();
       state.currentPage = 1;
+      if (state.activeSection === 'filaments') {
+        setFilamentSearch(state.searchQuery);
+        renderFilamentPage();
+        return;
+      }
       renderGallery();
     });
   }
@@ -540,11 +548,28 @@ function init() {
     }
   }
   initSlicerPicker();
+  initFilamentStock({
+    container: filamentsContainer,
+    navBadge: document.getElementById('sidebarFilamentsLowBadge'),
+    openExternal: (url) => {
+      if (window.electronAPI && typeof window.electronAPI.openExternalUrl === 'function') window.electronAPI.openExternalUrl(url);
+      else window.open(url, '_blank', 'noopener');
+    }
+  });
   // "Configurar fatiadores…" no menu da setinha abre a página Configurações
   document.addEventListener('vault3d:open-settings', () => {
     if (typeof closeViewerModal === 'function' && viewerModal && viewerModal.classList.contains('active')) closeViewerModal();
     setNavSection('settings');
   });
+  // Dica no modal do 3MF leva para a página Filamentos
+  const modalFilamentList = document.getElementById('modalFilamentList');
+  if (modalFilamentList) {
+    modalFilamentList.addEventListener('click', (e) => {
+      if (!e.target.closest('[data-open-filaments]')) return;
+      if (typeof closeViewerModal === 'function' && viewerModal && viewerModal.classList.contains('active')) closeViewerModal();
+      setNavSection('filaments');
+    });
+  }
   // Os botões mostram o último fatiador usado em cada arquivo (ou o padrão escolhido)
   onSlicersChanged(() => refreshSlicerLabels());
   if (modalPlateImg) {
@@ -721,9 +746,9 @@ function copyModalFullPath() {
   }
 }
 
-/** Em Alta e Configurações ocupam a área da biblioteca: a galeria fica escondida */
+/** Em Alta, Filamentos e Configurações ocupam a área da biblioteca: a galeria fica escondida */
 function isOffLibrarySection() {
-  return state.activeSection === 'trending' || state.activeSection === 'settings';
+  return state.activeSection === 'trending' || state.activeSection === 'settings' || state.activeSection === 'filaments';
 }
 
 /**
@@ -733,15 +758,22 @@ function setNavSection(section) {
   state.activeSection = section;
   state.currentPage = 1;
 
-  [navAllModels, navProjects, navFavorites, navTrending, navDuplicates, navSettings].forEach(btn => {
+  [navAllModels, navProjects, navFavorites, navTrending, navDuplicates, navFilaments, navSettings].forEach(btn => {
     if (btn) btn.classList.toggle('active', btn.dataset.section === section);
   });
 
-  // Página Configurações: esconde a biblioteca e mostra os cartões de configuração
+  // Páginas Configurações e Filamentos: escondem a biblioteca
   const isSettings = section === 'settings';
+  const isFilaments = section === 'filaments';
   if (settingsContainer) settingsContainer.style.display = isSettings ? 'flex' : 'none';
+  if (filamentsContainer) filamentsContainer.style.display = isFilaments ? 'flex' : 'none';
   document.body.classList.toggle('is-settings-page', isSettings);
-  if (isSettings) {
+  document.body.classList.toggle('is-filaments-page', isFilaments);
+  if (searchInput) {
+    if (!searchInput.dataset.libraryPlaceholder) searchInput.dataset.libraryPlaceholder = searchInput.placeholder;
+    searchInput.placeholder = isFilaments ? 'Buscar carretel por marca, material ou cor' : searchInput.dataset.libraryPlaceholder;
+  }
+  if (isSettings || isFilaments) {
     if (dropZone) dropZone.style.display = 'none';
     if (galleryContainer) galleryContainer.style.display = 'none';
     if (trendingContainer) trendingContainer.style.display = 'none';
@@ -752,6 +784,13 @@ function setNavSection(section) {
     if (topPageSizeWrap) topPageSizeWrap.style.display = 'none';
     if (btnRefreshFolders) btnRefreshFolders.style.display = 'none';
     if (selectionActionBar) selectionActionBar.style.display = 'none';
+    if (isFilaments) {
+      if (currentViewTitle) currentViewTitle.textContent = 'Filamentos';
+      if (shellSubtitle) shellSubtitle.textContent = 'Seus carretéis: marca, material, cor e quanto resta.';
+      setFilamentSearch(searchInput ? searchInput.value : '');
+      renderFilamentPage();
+      return;
+    }
     if (currentViewTitle) currentViewTitle.textContent = 'Configurações';
     if (shellSubtitle) shellSubtitle.textContent = 'Ajustes do Vault3D neste computador.';
     refreshSlicerSettings();
@@ -5780,7 +5819,7 @@ function updatePaginationUI(total, totalPages, startIdx, endIdx) {
  * e carregamento estritamente sob demanda para cards em tela
  */
 function renderGallery() {
-  if (state.activeSection === 'settings') return;
+  if (state.activeSection === 'settings' || state.activeSection === 'filaments') return;
   if (state.activeSection === 'trending') {
     if (trendingState.data) {
       renderTrendingSection(trendingState.data);
@@ -6669,17 +6708,20 @@ function fillModalExtras(model) {
   if (list && filaments.length) {
     const totalGrams = filaments.reduce((sum, f) => sum + (f.grams || 0), 0);
     list.classList.toggle('is-compact', filaments.length > 4);
+    // Com carretéis cadastrados, cada filamento mostra se a pessoa tem o material e a cor
+    const withStock = hasSpools();
     list.innerHTML = filaments.map(f => {
       const title = f.name || f.type || 'Filamento';
       const sub = f.name && f.type && !f.name.toUpperCase().includes(f.type.toUpperCase()) ? f.type : '';
-      return `<div class="modal-fil">
+      return `<div class="modal-fil${withStock ? ' has-stock' : ''}">
         <span class="modal-fil-swatch" style="background:${escapeHtml(f.color || '#5b6878')}" title="${escapeHtml(f.color || '')}"></span>
         <div class="modal-fil-name"><b>${escapeHtml(title)}</b>${sub ? `<small>${escapeHtml(sub)}</small>` : ''}</div>
         <span class="modal-fil-grams">${f.grams ? `${f.grams.toLocaleString('pt-BR')} g` : ''}</span>
+        ${withStock ? filamentStatusHtml(f) : ''}
       </div>`;
     }).join('') + (totalGrams > 0 && filaments.length > 1
       ? `<div class="modal-fil-bar">${filaments.map(f => `<i style="width:${(100 * (f.grams || 0) / totalGrams).toFixed(1)}%;background:${escapeHtml(f.color || '#5b6878')}"></i>`).join('')}</div>`
-      : '');
+      : '') + (withStock ? '' : '<button type="button" class="modal-fil-stock-hint" data-open-filaments>Cadastre seus carretéis em <b>Filamentos</b> para ver se você tem essas cores.</button>');
     const slicer = ref && ref.slicerData;
     const parts = [];
     if (slicer && slicer.printTimeFormatted) parts.push(slicer.printTimeFormatted);
