@@ -1,5 +1,5 @@
-import * as THREE from 'https://esm.sh/three@0.160.0';
-import JSZip from 'https://esm.sh/jszip@3.10.1';
+import * as THREE from './vendor/three.module.js';
+import JSZip from './vendor/jszip.js';
 import { parseSTL } from './stl-parser.js';
 import { extract3MFExtras, enrichFromMakerOnline } from './threemf-extras.js';
 

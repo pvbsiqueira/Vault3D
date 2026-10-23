@@ -4,6 +4,7 @@ const fs = require('fs');
 const { spawn } = require('child_process');
 const { autoUpdater } = require('electron-updater');
 const slicers = require('./slicers');
+const guards = require('./file-guards');
 
 app.name = 'Vault3D';
 slicers.init(app.getPath('userData'));
@@ -49,16 +50,18 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
       contextIsolation: true,
-      webSecurity: false // Permite carregar recursos remotos (Three.js via CDN) e blobs locais
+      sandbox: true,
+      webSecurity: true
     }
   });
 
   // Ocultar barra de menu padrão do Windows para visual limpo estilo app moderno
   mainWindow.setMenuBarVisibility(false);
 
-  // Auto-conceder permissões para operações locais no Electron (sistema de arquivos, clipboard, etc.)
-  session.defaultSession.setPermissionCheckHandler(() => true);
-  session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => callback(true));
+  // Só as permissões que o app usa (copiar texto, tela cheia do visualizador e pastas no modo web)
+  const ALLOWED_PERMISSIONS = new Set(['clipboard-sanitized-write', 'clipboard-read', 'fullscreen', 'fileSystem']);
+  session.defaultSession.setPermissionCheckHandler((webContents, permission) => ALLOWED_PERMISSIONS.has(permission));
+  session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => callback(ALLOWED_PERMISSIONS.has(permission)));
 
   // Escutar logs do console da janela para diagnóstico
   mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
@@ -100,13 +103,30 @@ function createWindow() {
     }
   }, 1200);
 
-  // Interceptar cliques em links externos para abrir no navegador padrão do sistema
+  // Links externos abrem no navegador padrão do sistema. Dentro do app só abre janela para
+  // PDFs anexados ao 3MF (endereços blob: gerados pelo próprio app), sem acesso às funções do app.
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith('http://') || url.startsWith('https://')) {
+    if (guards.isHttpUrl(url)) {
       shell.openExternal(url);
       return { action: 'deny' };
     }
-    return { action: 'allow' };
+    if (url.startsWith('blob:file://') || url.startsWith('blob:null/')) {
+      return {
+        action: 'allow',
+        overrideBrowserWindowOptions: {
+          autoHideMenuBar: true,
+          webPreferences: { preload: undefined, nodeIntegration: false, contextIsolation: true, sandbox: true }
+        }
+      };
+    }
+    return { action: 'deny' };
+  });
+
+  // A janela principal nunca sai do app: links http(s) vão para o navegador, o resto é bloqueado
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    if (url === mainWindow.webContents.getURL()) return;
+    event.preventDefault();
+    if (guards.isHttpUrl(url)) shell.openExternal(url);
   });
 
   mainWindow.on('closed', () => {
@@ -191,7 +211,7 @@ ipcMain.handle('restart-and-install-update', () => {
 
 // 4. Abrir no Windows Explorer
 ipcMain.handle('open-in-explorer', async (event, targetPath) => {
-  if (!targetPath) return false;
+  if (typeof targetPath !== 'string' || !path.isAbsolute(targetPath)) return false;
   try {
     if (fs.existsSync(targetPath)) {
       const stat = fs.statSync(targetPath);
@@ -222,38 +242,30 @@ function resolveDiskPathInternal(folderName, relPath = '') {
     path.join(home, 'Documents', folderName),
     path.join(home, '3D Objects', folderName),
     path.join(home, folderName),
-    path.join(process.cwd(), folderName)
+    ...['C', 'D', 'E', 'F', 'G'].map(letter => `${letter}:\\${folderName}`)
   ];
 
-  // Testar primeiro as candidatas diretas
-  for (const root of candidateRoots) {
-    if (fs.existsSync(root)) {
-      const fullPath = cleanRel ? path.join(root, cleanRel) : root;
-      return {
-        success: true,
-        rootFolder: root,
-        folderPath: path.dirname(fullPath) + path.sep,
-        fullPath: fullPath
-      };
+  // Só aceita o palpite quando existe exatamente uma pasta com esse nome (e o arquivo está nela):
+  // com duas pastas iguais em lugares diferentes não dá para saber qual é a certa.
+  const matches = candidateRoots.filter(root => {
+    try {
+      if (!fs.statSync(root).isDirectory()) return false;
+      return !cleanRel || fs.existsSync(path.join(root, cleanRel));
+    } catch (_) {
+      return false;
     }
-  }
+  });
+  if (matches.length !== 1) return { success: false, ambiguous: matches.length > 1 };
 
-  // Tentar raízes de unidades comuns (C:\, D:\, E:\, etc.)
-  const letters = ['C', 'D', 'E', 'F', 'G'];
-  for (const letter of letters) {
-    const rootDrive = `${letter}:\\${folderName}`;
-    if (fs.existsSync(rootDrive)) {
-      const fullPath = cleanRel ? path.join(rootDrive, cleanRel) : rootDrive;
-      return {
-        success: true,
-        rootFolder: rootDrive,
-        folderPath: path.dirname(fullPath) + path.sep,
-        fullPath: fullPath
-      };
-    }
-  }
-
-  return { success: false };
+  const root = matches[0];
+  const fullPath = cleanRel ? path.join(root, cleanRel) : root;
+  return {
+    success: true,
+    rootFolder: root,
+    folderPath: path.dirname(fullPath) + path.sep,
+    fullPath,
+    fileName: path.basename(fullPath)
+  };
 }
 
 // Varredura recursiva nativa ultrarrápida com Node.js fs
@@ -326,15 +338,21 @@ ipcMain.handle('scan-folder-disk', async (event, targetPathOrName) => {
 
 // 5.2. Leitura nativa de arquivo no disco
 ipcMain.handle('read-file', async (event, filePath) => {
-  if (!filePath || !fs.existsSync(filePath)) {
+  if (!guards.isModelFilePath(filePath)) {
+    throw new Error('Apenas arquivos STL e 3MF podem ser lidos');
+  }
+  if (!fs.existsSync(filePath)) {
     throw new Error('Arquivo não encontrado: ' + filePath);
   }
   return await fs.promises.readFile(filePath);
 });
 
 // 5.3. Leitura nativa de fatia/chunk de arquivo no disco
-ipcMain.handle('read-file-chunk', async (event, { filePath, start, length }) => {
-  if (!filePath || !fs.existsSync(filePath)) {
+ipcMain.handle('read-file-chunk', async (event, { filePath, start, length } = {}) => {
+  if (!guards.isModelFilePath(filePath) || !guards.isValidChunkRequest(start, length)) {
+    throw new Error('Leitura de arquivo inválida');
+  }
+  if (!fs.existsSync(filePath)) {
     throw new Error('Arquivo não encontrado: ' + filePath);
   }
   let fileHandle = null;
@@ -369,7 +387,8 @@ ipcMain.handle('select-folder-dialog', async (event, defaultPath) => {
 // 6. Abrir arquivo 3D no Fatiador: o escolhido no menu do card ou o padrão do usuário.
 // Sem fatiador escolhido, usa o programa associado pelo Windows (comportamento original).
 ipcMain.handle('open-in-slicer', async (event, targetPath, slicerId) => {
-  if (!targetPath) return { success: false, message: 'Caminho não fornecido' };
+  // Só arquivos 3D: assim o "abrir com o programa padrão" nunca executa outro tipo de arquivo
+  if (!guards.isModelFilePath(targetPath)) return { success: false, message: 'Apenas arquivos STL e 3MF podem ser abertos no fatiador' };
   try {
     if (!fs.existsSync(targetPath)) {
       return { success: false, message: 'Arquivo não encontrado no disco local' };
@@ -465,14 +484,18 @@ ipcMain.handle('remove-custom-slicer', async (event, id) => {
 });
 
 // 7. Renomear arquivo diretamente no disco (Windows)
-ipcMain.handle('rename-file', async (event, { oldPath, newName }) => {
-  if (!oldPath || !fs.existsSync(oldPath)) {
+ipcMain.handle('rename-file', async (event, { oldPath, newName } = {}) => {
+  if (!guards.isModelFilePath(oldPath) || !guards.isValidModelFileName(newName)) {
+    return { success: false, message: 'Nome inválido: use só letras, números e a extensão .stl ou .3mf' };
+  }
+  if (!fs.existsSync(oldPath)) {
     return { success: false, message: 'Arquivo original não encontrado no disco' };
   }
   try {
     const dir = path.dirname(oldPath);
     const newPath = path.join(dir, newName);
-    if (fs.existsSync(newPath)) {
+    // Mudar só maiúsculas/minúsculas é permitido (no Windows o "existe" seria o próprio arquivo)
+    if (fs.existsSync(newPath) && newPath.toLowerCase() !== oldPath.toLowerCase()) {
       return { success: false, message: 'Já existe um arquivo com esse nome nesta pasta' };
     }
     await fs.promises.rename(oldPath, newPath);
@@ -484,7 +507,7 @@ ipcMain.handle('rename-file', async (event, { oldPath, newName }) => {
 
 // 7.0 Hash SHA-256 do arquivo inteiro (confirma cópias idênticas antes de excluir duplicados)
 ipcMain.handle('hash-file', async (event, filePath) => {
-  if (typeof filePath !== 'string' || !fs.existsSync(filePath)) return null;
+  if (!guards.isModelFilePath(filePath) || !fs.existsSync(filePath)) return null;
   return new Promise((resolve) => {
     const hash = require('crypto').createHash('sha256');
     fs.createReadStream(filePath)
@@ -499,7 +522,7 @@ ipcMain.handle('trash-files', async (event, filePaths) => {
   const list = Array.isArray(filePaths) ? filePaths : [];
   const results = [];
   for (const filePath of list) {
-    if (typeof filePath !== 'string' || !/\.(stl|3mf)$/i.test(filePath)) {
+    if (!guards.isModelFilePath(filePath)) {
       results.push({ path: filePath, success: false, message: 'Apenas arquivos STL e 3MF podem ser excluídos' });
       continue;
     }
@@ -552,7 +575,7 @@ ipcMain.handle('move-files', async (event, { items, onConflict } = {}) => {
     const result = { from: item && item.from, success: false };
     results.push(result);
 
-    if (!/\.(stl|3mf)$/i.test(from) || !/\.(stl|3mf)$/i.test(wanted) || /[\\/]/.test(wanted)) {
+    if (!guards.isModelFilePath(from) || !guards.isValidModelFileName(wanted)) {
       result.message = 'Apenas arquivos STL e 3MF podem ser movidos';
       continue;
     }
@@ -613,6 +636,30 @@ ipcMain.handle('copy-to-clipboard', (event, text) => {
     return true;
   }
   return false;
+});
+
+// 8.1 Consulta à API pública do MakerOnline para os detalhes do 3MF (autor, licença, fotos).
+// Feita aqui porque a janela não pode chamar outros sites direto (bloqueio de CORS).
+ipcMain.handle('fetch-makeronline-json', async (event, url, options = {}) => {
+  if (!guards.isAllowedMakerOnlineUrl(url)) return null;
+  const method = options && options.method === 'POST' ? 'POST' : 'GET';
+  const body = method === 'POST' && typeof options.body === 'string' ? options.body : undefined;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8000);
+  try {
+    const res = await fetch(url, {
+      method,
+      body,
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      signal: controller.signal
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (_) {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
 });
 
 // 9. Busca dos modelos Em Alta (Top 5 em 48h, 7 dias e 15 dias) no MakerWorld e MakerOnline

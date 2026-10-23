@@ -48,6 +48,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Cópia nativa direta para a Área de Transferência do Windows
   copyToClipboard: (text) => ipcRenderer.invoke('copy-to-clipboard', text),
 
+  // Consulta à API pública do MakerOnline (detalhes do 3MF) feita pelo processo principal
+  fetchMakerOnlineJson: (url, options) => ipcRenderer.invoke('fetch-makeronline-json', url, options),
+
   // Busca nativa dos modelos Em Alta (MakerWorld + MakerOnline)
   fetchTrendingModels: (options) => ipcRenderer.invoke('fetch-trending-models', options),
 

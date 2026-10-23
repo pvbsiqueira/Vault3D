@@ -1,11 +1,13 @@
-import * as THREE from 'https://esm.sh/three@0.160.0';
-import { OrbitControls } from 'https://esm.sh/three@0.160.0/examples/jsm/controls/OrbitControls.js';
+import * as THREE from './vendor/three.module.js';
+import { OrbitControls } from './vendor/OrbitControls.js';
 import { generateSTLThumbnail, extract3MFThumbnail, extract3MFCoverOptions, parse3MFGeometry } from './thumbnail-generator.js';
 import { enrichFromMakerOnline } from './threemf-extras.js';
-import JSZip from 'https://esm.sh/jszip@3.10.1';
+import JSZip from './vendor/jszip.js';
 import { parseSTL } from './stl-parser.js';
 import { initAuth, getAuthenticatedUser } from './auth.js';
 import { startUsageTracking } from './usage-tracker.js';
+import { openFoldersDB, getModelCacheKey, getCachedThumbnail, saveCachedThumbnail, clearThumbnailCache, pruneThumbnailCache, saveFolderToDB, removeFolderFromDB, clearAllFoldersFromDB, getAllFoldersFromDB } from './library-db.js';
+import { loadFavorites, saveFavorites, applyFavorites, addFileFavorite, removeFileFavorite, favoriteKeyOf } from './favorites.js';
 import { initSlicerPicker, isSlicerChoiceSupported, slicerSplitHtml, openSlicerMenu, getDefaultSlicerName, getSlicerState, onSlicersChanged, getSlicerNames, getLastSlicer, setLastSlicer, slicerIconHtml, refreshSlicerSettings } from './slicer-picker.js';
 
 // Estado global da aplicação
@@ -1198,32 +1200,6 @@ function sortModels(items, sortOrder = state.sortOrder) {
   });
 }
 
-const FAVORITES_STORAGE_KEY = 'antigravity_3d_library_favorites';
-
-/**
- * Carrega a lista de nomes/identificadores de favoritos do localStorage
- */
-function loadFavorites() {
-  try {
-    const raw = localStorage.getItem(FAVORITES_STORAGE_KEY);
-    return raw ? new Set(JSON.parse(raw)) : new Set();
-  } catch (e) {
-    console.warn('Erro ao carregar favoritos do localStorage:', e);
-    return new Set();
-  }
-}
-
-/**
- * Salva a lista de favoritos no localStorage
- */
-function saveFavorites(favSet) {
-  try {
-    localStorage.setItem(FAVORITES_STORAGE_KEY, JSON.stringify(Array.from(favSet)));
-  } catch (e) {
-    console.warn('Erro ao salvar favoritos no localStorage:', e);
-  }
-}
-
 /**
  * Salva o mapa de caminhos de pastas do disco no localStorage
  */
@@ -1247,24 +1223,24 @@ function toggleFavorite(model) {
       favs.delete(key);
       model.isFavorite = false;
       if (model.parts) {
-        model.parts.forEach(p => { favs.delete(p.name); p.isFavorite = false; });
+        model.parts.forEach(p => { removeFileFavorite(favs, p); p.isFavorite = false; });
       }
       showToast(`Projeto "${model.name}" removido dos favoritos.`);
     } else {
       favs.add(key);
       model.isFavorite = true;
       if (model.parts) {
-        model.parts.forEach(p => { favs.add(p.name); p.isFavorite = true; });
+        model.parts.forEach(p => { addFileFavorite(favs, p); p.isFavorite = true; });
       }
       showToast(`Projeto "${model.name}" adicionado aos favoritos! ⭐`, 'success');
     }
   } else {
-    if (favs.has(key)) {
-      favs.delete(key);
+    if (model.isFavorite) {
+      removeFileFavorite(favs, model);
       model.isFavorite = false;
       showToast(`"${model.name}" removido dos favoritos.`);
     } else {
-      favs.add(key);
+      addFileFavorite(favs, model);
       model.isFavorite = true;
       showToast(`"${model.name}" adicionado aos favoritos! ⭐`, 'success');
     }
@@ -1378,207 +1354,17 @@ function updateDuplicatesFilterButton(duplicatesCount) {
   updateStatsBadge();
 }
 
-// ==========================================
-// Persistência de Pastas e Cache de Thumbnails com IndexedDB
-// ==========================================
-const DB_NAME = 'antigravity_3d_db';
-const DB_VERSION = 2;
-const STORE_FOLDERS = 'folders';
-const STORE_THUMBS = 'thumbnails_cache';
-
-function openFoldersDB() {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
-    request.onupgradeneeded = (e) => {
-      const db = e.target.result;
-      if (!db.objectStoreNames.contains(STORE_FOLDERS)) {
-        db.createObjectStore(STORE_FOLDERS, { keyPath: 'id' });
-      }
-      if (!db.objectStoreNames.contains(STORE_THUMBS)) {
-        db.createObjectStore(STORE_THUMBS, { keyPath: 'key' });
-      }
-    };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-}
-
 /**
- * Gera uma chave única e determinística para o arquivo no cache do IndexedDB
+ * Depois de carregar ou atualizar a biblioteca, apaga do cache as miniaturas de arquivos que não existem mais
  */
-function getModelCacheKey(model) {
-  const lastMod = model.file?.lastModified || 0;
-  // 3MF ganhou leitura de tempo/filamento, autor, impressora e anexos: prefixo força uma nova leitura uma única vez
-  const version = model.type === '3mf' ? 's4:' : '';
-  return `${version}${model.folderName || ''}:${model.path || model.name}:${model.size}:${lastMod}`;
-}
-
-/**
- * Recupera miniatura e metadados persistidos do IndexedDB
- */
-async function getCachedThumbnail(key) {
-  if (!key) return null;
-  try {
-    const db = await openFoldersDB();
-    if (!db.objectStoreNames.contains(STORE_THUMBS)) return null;
-    const tx = db.transaction(STORE_THUMBS, 'readonly');
-    const store = tx.objectStore(STORE_THUMBS);
-    const req = store.get(key);
-    return new Promise((resolve) => {
-      req.onsuccess = () => resolve(req.result || null);
-      req.onerror = () => resolve(null);
-    });
-  } catch (err) {
-    console.warn('Erro ao ler thumbnail do cache IndexedDB:', err);
-    return null;
-  }
-}
-
-/**
- * Salva miniatura e metadados no cache persistente do IndexedDB
- */
-async function saveCachedThumbnail(key, data) {
-  if (!key || !data || !data.thumbnailUrl) return false;
-  try {
-    const db = await openFoldersDB();
-    if (!db.objectStoreNames.contains(STORE_THUMBS)) return false;
-    const tx = db.transaction(STORE_THUMBS, 'readwrite');
-    const store = tx.objectStore(STORE_THUMBS);
-    store.put({
-      key,
-      thumbnailUrl: data.thumbnailUrl,
-      defaultThumbnailUrl: data.defaultThumbnailUrl || data.thumbnailUrl || null,
-      coverSource: data.coverSource || 'auto',
-      customCoverUrl: data.customCoverUrl || null,
-      metadata: data.metadata || null,
-      slicerData: data.slicerData || null,
-      plates: data.plates || [],
-      extras: data.extras || null,
-      cachedAt: Date.now()
-    });
-    return new Promise((resolve) => {
-      tx.oncomplete = () => resolve(true);
-      tx.onerror = () => resolve(false);
-    });
-  } catch (err) {
-    console.warn('Erro ao salvar thumbnail no cache IndexedDB:', err);
-    return false;
-  }
-}
-
-/**
- * Limpa todo o cache de miniaturas do IndexedDB
- */
-async function clearThumbnailCache() {
-  try {
-    const db = await openFoldersDB();
-    if (!db.objectStoreNames.contains(STORE_THUMBS)) return true;
-    const tx = db.transaction(STORE_THUMBS, 'readwrite');
-    tx.objectStore(STORE_THUMBS).clear();
-    return new Promise((resolve) => {
-      tx.oncomplete = () => resolve(true);
-      tx.onerror = () => resolve(false);
-    });
-  } catch (err) {
-    console.warn('Erro ao limpar cache de thumbnails:', err);
-    return false;
-  }
-}
-
-async function saveFolderToDB(folderData) {
-  try {
-    const db = await openFoldersDB();
-    const tx = db.transaction(STORE_FOLDERS, 'readwrite');
-    const store = tx.objectStore(STORE_FOLDERS);
-
-    // Evitar duplicar registros para o mesmo nome de pasta
-    const getAllReq = store.getAll();
-    getAllReq.onsuccess = () => {
-      const all = getAllReq.result || [];
-      for (const item of all) {
-        if (item.name && folderData.name && item.name.toLowerCase() === folderData.name.toLowerCase() && item.id !== folderData.id) {
-          store.delete(item.id);
-        }
-      }
-      store.put({
-        id: folderData.id,
-        name: folderData.name,
-        handle: folderData.handle || null,
-        count: folderData.count || 0,
-        isSample: !!folderData.isSample,
-        diskPath: folderData.diskPath || (state.folderDiskPaths && state.folderDiskPaths[folderData.name]) || null,
-        savedAt: Date.now()
-      });
-    };
-
-    return new Promise((resolve) => {
-      tx.oncomplete = () => resolve(true);
-      tx.onerror = () => resolve(false);
-    });
-  } catch (err) {
-    console.warn('Erro ao salvar pasta no IndexedDB:', err);
-    return false;
-  }
-}
-
-async function removeFolderFromDB(folderId) {
-  try {
-    const db = await openFoldersDB();
-    const tx = db.transaction(STORE_FOLDERS, 'readwrite');
-    const store = tx.objectStore(STORE_FOLDERS);
-    store.delete(folderId);
-    return new Promise((resolve) => {
-      tx.oncomplete = () => resolve(true);
-      tx.onerror = () => resolve(false);
-    });
-  } catch (err) {
-    console.warn('Erro ao remover pasta do IndexedDB:', err);
-    return false;
-  }
-}
-
-async function clearAllFoldersFromDB() {
-  try {
-    const db = await openFoldersDB();
-    const tx = db.transaction(STORE_FOLDERS, 'readwrite');
-    tx.objectStore(STORE_FOLDERS).clear();
-    return new Promise((resolve) => {
-      tx.oncomplete = () => resolve(true);
-      tx.onerror = () => resolve(false);
-    });
-  } catch (err) {
-    console.warn('Erro ao limpar pastas no IndexedDB:', err);
-    return false;
-  }
-}
-
-async function getAllFoldersFromDB() {
-  try {
-    const db = await openFoldersDB();
-    const tx = db.transaction(STORE_FOLDERS, 'readonly');
-    const store = tx.objectStore(STORE_FOLDERS);
-    const req = store.getAll();
-    return new Promise((resolve) => {
-      req.onsuccess = () => {
-        const raw = req.result || [];
-        // Deduplicar pastas salvas por nome
-        const unique = [];
-        const seenNames = new Set();
-        for (const item of raw) {
-          const key = (item.name || '').trim().toLowerCase();
-          if (key && !seenNames.has(key)) {
-            seenNames.add(key);
-            unique.push(item);
-          }
-        }
-        resolve(unique);
-      };
-      req.onerror = () => resolve([]);
-    });
-  } catch (err) {
-    console.warn('Erro ao ler pastas do IndexedDB:', err);
-    return [];
-  }
+let thumbnailPruneTimer = null;
+function scheduleThumbnailCachePrune() {
+  clearTimeout(thumbnailPruneTimer);
+  thumbnailPruneTimer = setTimeout(async () => {
+    const keys = state.models.filter(m => !m.isProject).map(getModelCacheKey);
+    const removed = await pruneThumbnailCache(keys, state.folders.map(f => f.name));
+    if (removed > 0) console.log(`Cache de miniaturas: ${removed} entrada(s) antiga(s) removida(s).`);
+  }, 8000);
 }
 
 /**
@@ -1715,6 +1501,7 @@ async function checkAndRestoreSavedFolders() {
       if (restoredCount > 0 || state.folders.length > 0) {
         if (savedFoldersCard) savedFoldersCard.style.display = 'none';
         showToast(`Biblioteca restaurada com ${state.folders.length} pasta(s) salva(s)! 📂`, 'success');
+        scheduleThumbnailCachePrune();
         return;
       }
     }
@@ -1897,7 +1684,7 @@ async function addFilesToLibrary(files, folderName, dirHandle = null, persistToD
     path: item.path,
     handle: item.handle || null,
     parentHandle: item.parentHandle || null,
-    isFavorite: savedFavs.has(item.name) || (item.path && savedFavs.has(item.path)),
+    isFavorite: false,
     thumbnailUrl: null,
     metadata: null,
     slicerData: null,
@@ -1908,27 +1695,22 @@ async function addFilesToLibrary(files, folderName, dirHandle = null, persistToD
     duplicatesCount: 0,
     duplicateOrigins: ''
   }));
+  if (applyFavorites(savedFavs, newModels)) saveFavorites(savedFavs);
 
-  // Pré-determinar o caminho base da pasta no disco
-  const rootBase = (state.folderDiskPaths && state.folderDiskPaths[folderName]) || (
-    folderName.includes('sample_models')
-      ? 'C:\\Users\\eustudio\\Desktop\\Projeto\\sample_models'
-      : `C:\\Users\\eustudio\\Downloads\\${folderName}`
-  );
-
-  if (!state.folderDiskPaths[folderName]) {
-    state.folderDiskPaths[folderName] = rootBase;
-    saveFolderDiskPaths();
-  }
-
-  // Pré-calcular o caminho completo em disco para cada modelo
-  newModels.forEach(m => {
-    let sub = (m.path || m.name).replace(/\//g, '\\');
-    if (sub.toLowerCase().startsWith(folderName.toLowerCase() + '\\')) {
-      sub = sub.substring(folderName.length + 1);
+  // Caminho completo de cada arquivo no disco: o da varredura nativa ou, sem ele, a partir da pasta conhecida
+  const rootBase = (state.folderDiskPaths && state.folderDiskPaths[folderName]) || null;
+  newModels.forEach((m, i) => {
+    const scanned = files[i] && files[i].fullDiskPath;
+    if (scanned) {
+      m.fullDiskPath = scanned;
+    } else if (rootBase) {
+      let sub = (m.path || m.name).replace(/\//g, '\\');
+      if (sub.toLowerCase().startsWith(folderName.toLowerCase() + '\\')) {
+        sub = sub.substring(folderName.length + 1);
+      }
+      m.fullDiskPath = `${rootBase}\\${sub}`.replace(/\\\\+/g, '\\');
     }
-    m.fullFolderDirectory = rootBase + '\\';
-    m.fullDiskPath = `${rootBase}\\${sub}`.replace(/\\\\+/g, '\\');
+    if (m.fullDiskPath) m.fullFolderDirectory = dirOfDiskPath(m.fullDiskPath);
   });
 
   // Evitar duplicar pasta se já existir com o mesmo nome ou ID
@@ -1952,28 +1734,18 @@ async function addFilesToLibrary(files, folderName, dirHandle = null, persistToD
     count: newModels.length
   });
 
-  // Pré-resolver caminho no disco iniciando em C:\ para agilizar a exibição e tooltips
-  if (files[0]) {
-    const handleResolvedPath = (data) => {
-      if (data && data.rootFolder) {
-        state.folderDiskPaths[folderName] = data.rootFolder;
-        saveFolderDiskPaths();
-        updateFolderTooltip(folderName, data.rootFolder);
-      }
-    };
-
-    if (window.electronAPI && typeof window.electronAPI.resolveDiskPath === 'function') {
-      window.electronAPI.resolveDiskPath(folderName, files[0].path || files[0].name)
-        .then(handleResolvedPath)
-        .catch(() => {});
-    } else {
-      const isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
-      const localBase = isLocalHost ? '' : 'http://127.0.0.1:3000';
-      fetch(`${localBase}/api/resolve-path?folder=${encodeURIComponent(folderName)}&path=${encodeURIComponent(files[0].path || files[0].name)}`)
-        .then(res => res.ok ? res.json() : null)
-        .then(handleResolvedPath)
-        .catch(() => {});
-    }
+  // Pasta sem caminho conhecido (biblioteca antiga): tenta localizar no disco.
+  // Quando o caminho já é conhecido (escolhido no diálogo), nunca é trocado por um palpite pelo nome.
+  if (files[0] && !rootBase && window.electronAPI && typeof window.electronAPI.resolveDiskPath === 'function') {
+    window.electronAPI.resolveDiskPath(folderName, files[0].path || files[0].name)
+      .then((data) => {
+        if (data && data.rootFolder && !state.folderDiskPaths[folderName]) {
+          state.folderDiskPaths[folderName] = data.rootFolder;
+          saveFolderDiskPaths();
+          updateFolderTooltip(folderName, data.rootFolder);
+        }
+      })
+      .catch(() => {});
   }
 
   // Salvar no IndexedDB se solicitado
@@ -2120,7 +1892,7 @@ async function refreshConnectedFolders() {
       const rootBase = resolvedRootPath
         || getFolderRootPath(folder)
         || (state.folderDiskPaths && state.folderDiskPaths[folder.name])
-        || `C:\\Users\\eustudio\\Downloads\\${folder.name}`;
+        || null;
 
       scannedFiles.forEach((item, index) => {
         const key = normRelKey(item.path || item.name, folder.name);
@@ -2162,7 +1934,7 @@ async function refreshConnectedFolders() {
             path: item.path,
             handle: item.handle || null,
             parentHandle: item.parentHandle || null,
-            isFavorite: savedFavs.has(item.name) || Boolean(item.path && savedFavs.has(item.path)),
+            isFavorite: false,
             thumbnailUrl: null,
             metadata: null,
             slicerData: null,
@@ -2172,9 +1944,10 @@ async function refreshConnectedFolders() {
             isDuplicate: false,
             duplicatesCount: 0,
             duplicateOrigins: '',
-            fullFolderDirectory: rootBase + '\\',
-            fullDiskPath: item.fullDiskPath || `${rootBase}\\${sub}`.replace(/\\\\+/g, '\\')
+            fullDiskPath: item.fullDiskPath || (rootBase ? `${rootBase}\\${sub}`.replace(/\\\\+/g, '\\') : null)
           };
+          newModel.fullFolderDirectory = newModel.fullDiskPath ? dirOfDiskPath(newModel.fullDiskPath) : null;
+          if (applyFavorites(savedFavs, [newModel])) saveFavorites(savedFavs);
           state.models.push(newModel);
           totalAdded++;
         }
@@ -2239,6 +2012,7 @@ async function refreshConnectedFolders() {
       updateStatsBadge();
       showToast('Tudo em dia! Nenhum arquivo novo encontrado nas pastas.', 'info');
     }
+    scheduleThumbnailCachePrune();
   } catch (err) {
     console.error('Erro ao atualizar pastas conectadas:', err);
     showToast('Erro ao atualizar pastas: ' + err.message, 'error');
@@ -2773,14 +2547,21 @@ async function renameModelFile(model, newBaseName) {
 
   const newFullName = `${cleanBase}${ext}`;
 
-  // Verificar duplicidade no diretório atual
-  const exists = state.models.some(m => m.id !== model.id && m.name.toLowerCase() === newFullName.toLowerCase());
+  // Verificar duplicidade só na mesma pasta do arquivo (outras pastas podem ter o mesmo nome)
+  const modelDir = getModelRelativeDir(model).toLowerCase();
+  const exists = state.models.some(m =>
+    m.id !== model.id &&
+    m.folderId === model.folderId &&
+    getModelRelativeDir(m).toLowerCase() === modelDir &&
+    m.name.toLowerCase() === newFullName.toLowerCase()
+  );
   if (exists) {
     showToast(`Já existe um arquivo chamado "${newFullName}" nesta pasta.`, 'error');
     return false;
   }
 
   // 1. MODO DESKTOP (ELECTRON): Renomear nativamente no disco do Windows
+  let renamedDiskPath = null;
   if (window.electronAPI && typeof window.electronAPI.renameFile === 'function' && model.fullDiskPath) {
     try {
       const res = await window.electronAPI.renameFile(model.fullDiskPath, newFullName);
@@ -2788,11 +2569,9 @@ async function renameModelFile(model, newBaseName) {
         showToast(`Erro ao renomear arquivo: ${res.message}`, 'error');
         return false;
       }
-      model.fullDiskPath = res.newPath;
-      if (model.file) {
-        model.file.name = newFullName;
-        if (model.file.fullDiskPath) model.file.fullDiskPath = res.newPath;
-      }
+      renamedDiskPath = res.newPath;
+      // O leitor do arquivo guarda o caminho antigo: trocar pelo novo
+      model.file = createDesktopFileProxy(res.newPath, newFullName, model.size, model.lastModified);
       showToast(`Arquivo renomeado para "${newFullName}" no disco! ✏️`, 'success');
     } catch (e) {
       showToast(`Erro ao renomear arquivo: ${e.message}`, 'error');
@@ -2854,14 +2633,7 @@ async function renameModelFile(model, newBaseName) {
   }
 
   const oldName = model.name;
-
-  // Se o modelo era favorito, atualizar o nome nos favoritos
-  const favs = loadFavorites();
-  if (favs.has(oldName)) {
-    favs.delete(oldName);
-    favs.add(newFullName);
-    saveFavorites(favs);
-  }
+  const oldFavRef = { folderName: model.folderName, path: model.path, name: model.name };
 
   // Se o modelo fazia parte de algum projeto customizado, atualizar a referência
   let projectsChanged = false;
@@ -2887,8 +2659,19 @@ async function renameModelFile(model, newBaseName) {
       ? model.path.substring(0, model.path.lastIndexOf('/') + 1) + newFullName
       : newFullName;
   }
-  if (model.fullFolderDirectory) {
+  if (renamedDiskPath) {
+    model.fullDiskPath = renamedDiskPath;
+    model.fullFolderDirectory = dirOfDiskPath(renamedDiskPath);
+  } else if (model.fullFolderDirectory) {
     model.fullDiskPath = `${model.fullFolderDirectory}${newFullName}`;
+  }
+
+  // Se o modelo era favorito, o favorito acompanha o novo nome
+  if (model.isFavorite) {
+    const favs = loadFavorites();
+    removeFileFavorite(favs, oldFavRef);
+    addFileFavorite(favs, model);
+    saveFavorites(favs);
   }
 
   // Migrar miniatura e capa escolhida para a nova chave no IndexedDB
@@ -3690,6 +3473,11 @@ async function removeModelsFromLibrary(removed) {
   const favs = loadFavorites();
   let favsChanged = false;
   removed.forEach(m => {
+    if (m.isFavorite) {
+      // A chave do próprio arquivo sai; as antigas (só o nome) só se ninguém mais usa
+      favs.delete(favoriteKeyOf(m));
+      favsChanged = true;
+    }
     [m.name, m.path].forEach(key => {
       if (key && favs.has(key) && !stillMatches(key)) {
         favs.delete(key);
@@ -3857,6 +3645,15 @@ function getModelRelativeDir(model) {
   return i === -1 ? '' : rel.substring(0, i);
 }
 
+/**
+ * Pasta (com a barra no fim) de um caminho completo do Windows
+ */
+function dirOfDiskPath(fullPath) {
+  const p = String(fullPath || '');
+  const i = Math.max(p.lastIndexOf('\\'), p.lastIndexOf('/'));
+  return i === -1 ? '' : fullPath.substring(0, i + 1);
+}
+
 function joinDiskPath(root, subPath) {
   const base = root.replace(/[\\/]+$/, '');
   return subPath ? `${base}\\${subPath.replace(/\//g, '\\')}` : base;
@@ -3899,6 +3696,7 @@ function resolveMoveModels(items) {
  */
 function applyModelMove(model, folder, subPath, res) {
   const oldName = model.name;
+  const oldFavRef = { folderName: model.folderName, path: model.path, name: model.name };
   const newName = res.newName || model.name;
 
   model.folderId = folder.id;
@@ -3914,13 +3712,16 @@ function applyModelMove(model, folder, subPath, res) {
   model.handle = null;
   model.parentHandle = null;
 
+  // O favorito acompanha o arquivo na pasta nova
+  if (model.isFavorite) {
+    const favs = loadFavorites();
+    removeFileFavorite(favs, oldFavRef);
+    addFileFavorite(favs, model);
+    saveFavorites(favs);
+  }
+
   if (newName !== oldName) {
-    // Nome ganhou um número para não sobrescrever: favorito e projeto acompanham o arquivo
-    if (model.isFavorite) {
-      const favs = loadFavorites();
-      favs.add(newName);
-      saveFavorites(favs);
-    }
+    // Nome ganhou um número para não sobrescrever: projeto acompanha o arquivo
     let projectsChanged = false;
     (state.customProjects || []).forEach(project => {
       if (project.fileKeys.includes(oldName) && !project.fileKeys.includes(newName)) {
@@ -4783,12 +4584,9 @@ async function resolveSlicerTarget(model) {
     }
   }
 
-  if (!fullPath) {
-    const rootBase = (state.folderDiskPaths && state.folderDiskPaths[folderName]) || (
-      folderName.includes('sample_models') || relPath.includes('sample_models')
-        ? 'C:\\Users\\eustudio\\Desktop\\Projeto\\sample_models'
-        : `C:\\Users\\eustudio\\Downloads\\${folderName}`
-    );
+  const knownRoot = state.folderDiskPaths && state.folderDiskPaths[folderName];
+  if (!fullPath && knownRoot) {
+    const rootBase = knownRoot;
     let sub = relPath;
     if (sub.toLowerCase().startsWith(folderName.toLowerCase() + '\\')) {
       sub = sub.substring(folderName.length + 1);
@@ -6821,7 +6619,8 @@ function fillModalExtras(model) {
       const nc = /\bNC\b|non.?commercial|não.?comercial/i.test(extras.license);
       pillHtml.push(`<span class="modal-pill${nc ? ' warn' : ''}" title="${nc ? 'Uso não comercial' : 'Licença'}">${escapeHtml(extras.license)}</span>`);
     }
-    if (extras.copyright && extras.copyright !== extras.designer) {
+    // Miniaturas antigas no cache podem ter o JSON do MakerWorld no lugar do texto
+    if (extras.copyright && extras.copyright !== extras.designer && !/^\s*[\[{]/.test(extras.copyright)) {
       pillHtml.push(`<span class="modal-pill" title="Direitos autorais">© ${escapeHtml(extras.copyright)}</span>`);
     }
     pills.innerHTML = pillHtml.join('');
@@ -7331,53 +7130,24 @@ async function updateModalFilePath(model) {
     return;
   }
 
-  // 3. Exibição imediata estimada iniciando em C:\ enquanto consulta o backend
-  let estimatedDir = '';
-  if (folderName.includes('sample_models') || relPath.includes('sample_models')) {
-    estimatedDir = 'C:\\Users\\eustudio\\Desktop\\Projeto\\sample_models\\';
-  } else {
-    estimatedDir = `C:\\Users\\eustudio\\Downloads\\${folderName}\\`;
-  }
+  // 3. Pasta sem caminho conhecido: mostra o caminho dentro da biblioteca e tenta localizar no disco
   let sub = relPath;
   if (sub.toLowerCase().startsWith(folderName.toLowerCase() + '\\')) {
     sub = sub.substring(folderName.length + 1);
   }
   const lastSlash = sub.lastIndexOf('\\');
-  if (lastSlash !== -1) {
-    estimatedDir += sub.substring(0, lastSlash + 1);
-  }
-  model.fullFolderDirectory = estimatedDir;
-  model.fullDiskPath = `${estimatedDir}${model.name}`;
-
-  if (modalPathFolder) modalPathFolder.textContent = estimatedDir;
+  const libraryDir = `${folderName}\\${lastSlash !== -1 ? sub.substring(0, lastSlash + 1) : ''}`;
+  if (modalPathFolder) modalPathFolder.textContent = libraryDir;
   if (modalPathName) modalPathName.textContent = model.name;
-  if (modalFileName) modalFileName.title = `${estimatedDir}${model.name}`;
+  if (modalFileName) modalFileName.title = `${libraryDir}${model.name}`;
 
-  // 4. Consulta para obter o caminho 100% real do Windows (Nativo no Electron ou via servidor companion na Web)
+  if (!window.electronAPI || typeof window.electronAPI.resolveDiskPath !== 'function') return;
   try {
-    let data = null;
-    if (window.electronAPI && typeof window.electronAPI.resolveDiskPath === 'function') {
-      data = await window.electronAPI.resolveDiskPath(folderName, model.path || model.name);
-    } else {
-      const isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
-      const localBase = isLocalHost ? '' : 'http://127.0.0.1:3000';
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 1000);
-
-      const res = await fetch(`${localBase}/api/resolve-path?folder=${encodeURIComponent(folderName)}&path=${encodeURIComponent(model.path || model.name)}`, {
-        signal: controller.signal
-      });
-      clearTimeout(timeoutId);
-
-      if (res.ok) {
-        data = await res.json();
-      }
-    }
-
+    const data = await window.electronAPI.resolveDiskPath(folderName, model.path || model.name);
     if (data && data.fullPath) {
       model.fullDiskPath = data.fullPath;
       model.fullFolderDirectory = data.folderPath;
-      if (data.rootFolder && folderName) {
+      if (data.rootFolder && folderName && !state.folderDiskPaths[folderName]) {
         state.folderDiskPaths[folderName] = data.rootFolder;
         saveFolderDiskPaths();
         updateFolderTooltip(folderName, data.rootFolder);
@@ -7390,7 +7160,7 @@ async function updateModalFilePath(model) {
       }
     }
   } catch (err) {
-    // Silencioso - já estamos com estimatedDir aplicado com sucesso
+    // Silencioso: o caminho dentro da biblioteca já está na tela
   }
 }
 
