@@ -65,10 +65,6 @@ export function colorDistance(a, b) {
   return Math.hypot(la[0] - lb[0], la[1] - lb[1], la[2] - lb[2]);
 }
 
-export function isLowSpool(spool) {
-  return Number(spool.remainingG) <= Number(spool.lowAlertG || 0);
-}
-
 export function isEmptySpool(spool) {
   return !(Number(spool.remainingG) > 0);
 }
@@ -98,16 +94,15 @@ export function matchFilament(filament, spools) {
     : { status: 'no-color', material: wanted, spool: null };
 }
 
-/** Números do topo da página: carretéis, gramas, valor guardado e quantos estão acabando */
+/** Números do topo da página: carretéis, gramas e valor guardado */
 export function summarizeStock(spools) {
   const list = spools || [];
-  let grams = 0, value = 0, low = 0;
+  let grams = 0, value = 0;
   list.forEach(s => {
     const remaining = Math.max(0, Number(s.remainingG) || 0);
     const total = Math.max(0, Number(s.totalG) || 0);
     grams += remaining;
     if (s.price > 0 && total > 0) value += s.price * Math.min(1, remaining / total);
-    if (isLowSpool(s)) low += 1;
   });
-  return { count: list.length, grams, value, low };
+  return { count: list.length, grams, value };
 }

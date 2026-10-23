@@ -29,7 +29,7 @@ test('Cores: hex com transparência e distância', () => {
   assert.ok(colorDistance('#e53935', '#1e88e5') > 25);
 });
 
-const spool = (material, colorHex, remainingG = 500) => ({ id: material + colorHex, brand: 'X', material, colorHex, totalG: 1000, remainingG, lowAlertG: 150 });
+const spool = (material, colorHex, remainingG = 500) => ({ id: material + colorHex, brand: 'X', material, colorHex, totalG: 1000, remainingG });
 
 test('Tem, sem a cor e sem o material', () => {
   const spools = [spool('PLA', '#1f1f1f'), spool('PETG', '#f4f4f4')];
@@ -50,7 +50,6 @@ test('Resumo do estoque', () => {
   assert.equal(s.count, 2);
   assert.equal(s.grams, 600);
   assert.equal(s.value, 50);
-  assert.equal(s.low, 1);
 });
 
 test('Marcas: lista sem repetição e marcas do usuário', () => {

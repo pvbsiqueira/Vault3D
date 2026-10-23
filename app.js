@@ -550,7 +550,7 @@ function init() {
   initSlicerPicker();
   initFilamentStock({
     container: filamentsContainer,
-    navBadge: document.getElementById('sidebarFilamentsLowBadge'),
+    navBadge: document.getElementById('sidebarFilamentsCountBadge'),
     openExternal: (url) => {
       if (window.electronAPI && typeof window.electronAPI.openExternalUrl === 'function') window.electronAPI.openExternalUrl(url);
       else window.open(url, '_blank', 'noopener');
@@ -771,7 +771,7 @@ function setNavSection(section) {
   document.body.classList.toggle('is-filaments-page', isFilaments);
   if (searchInput) {
     if (!searchInput.dataset.libraryPlaceholder) searchInput.dataset.libraryPlaceholder = searchInput.placeholder;
-    searchInput.placeholder = isFilaments ? 'Buscar carretel por marca, material ou cor' : searchInput.dataset.libraryPlaceholder;
+    searchInput.placeholder = isFilaments ? 'Buscar carretel' : searchInput.dataset.libraryPlaceholder;
   }
   if (isSettings || isFilaments) {
     if (dropZone) dropZone.style.display = 'none';

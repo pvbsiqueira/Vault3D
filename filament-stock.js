@@ -3,11 +3,10 @@
  * Também diz, no modal do 3MF, se a pessoa tem o material e a cor de cada filamento.
  */
 import { brandSuggestions, isKnownBrand, FILAMENT_MATERIALS, FILAMENT_LINES, FILAMENT_COLORS } from './filament-brands.js';
-import { normalizeMaterial, normalizeHex, matchFilament, summarizeStock, isLowSpool, isEmptySpool } from './filament-match.js';
+import { normalizeMaterial, normalizeHex, matchFilament, summarizeStock, isEmptySpool } from './filament-match.js';
 
 const STORAGE_KEY = 'vault3d_filament_stock';
 const BUY_URL = 'https://vault3d.com.br/indicacoes';
-const DEFAULT_LOW_ALERT_G = 150;
 const QUICK_WEIGHTS = [250, 500, 1000, 2000];
 
 let stock = loadStock();
@@ -94,10 +93,9 @@ export function filamentStatusHtml(filament) {
 
 function updateNavBadge() {
   if (!ui.navBadge) return;
-  const low = summarizeStock(stock.spools).low;
-  ui.navBadge.textContent = String(low);
-  ui.navBadge.hidden = low === 0;
-  ui.navBadge.title = low ? `${low} carretel(is) acabando` : '';
+  const count = stock.spools.length;
+  ui.navBadge.textContent = String(count);
+  ui.navBadge.hidden = count === 0;
 }
 
 export function initFilamentStock({ container, navBadge, openExternal }) {
@@ -127,12 +125,11 @@ export function setFilamentSearch(query) {
 function visibleSpools() {
   return stock.spools
     .filter(s => {
-      if (filter === 'low') return isLowSpool(s);
       if (filter !== 'all') return (normalizeMaterial(s.material) || s.material) === filter;
       return true;
     })
     .filter(s => !searchQuery || spoolLabel(s).toLowerCase().includes(searchQuery))
-    .sort((a, b) => (isLowSpool(b) - isLowSpool(a))
+    .sort((a, b) => (isEmptySpool(a) - isEmptySpool(b))
       || String(a.material).localeCompare(String(b.material), 'pt-BR')
       || String(a.brand).localeCompare(String(b.brand), 'pt-BR')
       || String(a.colorName).localeCompare(String(b.colorName), 'pt-BR'));
@@ -141,13 +138,12 @@ function visibleSpools() {
 function cardHtml(s) {
   const pct = s.totalG > 0 ? Math.max(0, Math.min(100, Math.round(100 * s.remainingG / s.totalG))) : 0;
   const color = normalizeHex(s.colorHex) || '#5b6878';
-  const low = isLowSpool(s);
-  const sealed = !low && s.remainingG >= s.totalG;
-  const badge = isEmptySpool(s) ? '<span class="fil-badge is-low">Acabou</span>'
-    : low ? '<span class="fil-badge is-low">Acabando</span>'
+  const empty = isEmptySpool(s);
+  const sealed = !empty && s.remainingG >= s.totalG;
+  const badge = empty ? '<span class="fil-badge is-empty">Acabou</span>'
     : sealed ? '<span class="fil-badge">Lacrado</span>' : '';
   const sub = [s.material, s.line].filter(Boolean).join(' · ');
-  return `<article class="fil-card${low ? ' is-low' : ''}" data-id="${esc(s.id)}">
+  return `<article class="fil-card${empty ? ' is-empty' : ''}" data-id="${esc(s.id)}">
     <div class="fil-card-top">
       <span class="fil-ring" style="--p:${pct};--c:${esc(color)}" title="${pct}% restante"><span style="background:${esc(color)}"></span></span>
       <div class="fil-card-text">
@@ -184,8 +180,7 @@ export function renderFilamentPage() {
 
   const sum = summarizeStock(all);
   const materials = Array.from(new Set(all.map(s => normalizeMaterial(s.material) || s.material))).sort();
-  if (filter !== 'all' && filter !== 'low' && !materials.includes(filter)) filter = 'all';
-  if (filter === 'low' && !sum.low) filter = 'all';
+  if (filter !== 'all' && !materials.includes(filter)) filter = 'all';
   const countOf = (m) => all.filter(s => (normalizeMaterial(s.material) || s.material) === m).length;
   const chip = (key, label, count, extra = '') =>
     `<button type="button" class="fil-chip${filter === key ? ' active' : ''}${extra}" data-fil-filter="${esc(key)}">${esc(label)} <span>${count}</span></button>`;
@@ -196,13 +191,11 @@ export function renderFilamentPage() {
       <div class="fil-stat"><span>Carretéis</span><b>${sum.count}</b></div>
       <div class="fil-stat"><span>Em estoque</span><b>${(sum.grams / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} kg</b></div>
       <div class="fil-stat"><span>Valor guardado</span><b>${sum.value > 0 ? formatMoney(sum.value) : '—'}</b></div>
-      <div class="fil-stat${sum.low ? ' is-low' : ''}"><span>Acabando</span><b>${sum.low}</b></div>
     </div>
     <div class="fil-toolbar">
       <div class="fil-chips">
         ${chip('all', 'Todos', all.length)}
         ${materials.map(m => chip(m, m, countOf(m))).join('')}
-        ${sum.low ? chip('low', 'Acabando', sum.low, ' is-low') : ''}
       </div>
       <button type="button" class="btn-move-confirm fil-add" data-fil-add>+ Adicionar carretel</button>
     </div>
@@ -240,14 +233,14 @@ function buildDialog() {
           <span>Material</span>
           <select name="material">${FILAMENT_MATERIALS.map(m => `<option value="${esc(m)}">${esc(m)}</option>`).join('')}</select>
         </label>
-        <label class="fil-field" data-line-field>
+        <label class="fil-field">
           <span>Linha <em>(opcional)</em></span>
           <input name="line" list="filLineList" autocomplete="off" maxlength="40" placeholder="Ex.: Matte, Silk, Basic">
           <datalist id="filLineList">${FILAMENT_LINES.map(l => `<option value="${esc(l)}">`).join('')}</datalist>
         </label>
-        <label class="fil-field" data-qty-field>
-          <span>Quantidade</span>
-          <input name="qty" type="number" min="1" max="50" step="1" value="1">
+        <label class="fil-field">
+          <span>Preço pago <em>(opcional)</em></span>
+          <div class="fil-input-unit is-prefix"><i>R$</i><input name="price" type="number" min="0" step="0.01" placeholder="0,00"></div>
         </label>
         <div class="fil-field fil-span-2">
           <span>Cor</span>
@@ -267,13 +260,9 @@ function buildDialog() {
           <div class="fil-input-unit"><input name="remainingG" type="number" min="0" step="1" value="1000"><i>g</i></div>
           <div class="fil-quick"><button type="button" data-full>Lacrado (cheio)</button><button type="button" data-empty>Acabou</button></div>
         </label>
-        <label class="fil-field">
-          <span>Preço pago <em>(opcional)</em></span>
-          <div class="fil-input-unit is-prefix"><i>R$</i><input name="price" type="number" min="0" step="0.01" placeholder="0,00"></div>
-        </label>
-        <label class="fil-field">
-          <span>Avisar quando ficar abaixo de</span>
-          <div class="fil-input-unit"><input name="lowAlertG" type="number" min="0" step="10" value="${DEFAULT_LOW_ALERT_G}"><i>g</i></div>
+        <label class="fil-field" data-qty-field>
+          <span>Quantidade <em>(carretéis iguais)</em></span>
+          <input name="qty" type="number" min="1" max="50" step="1" value="1">
         </label>
       </div>
       <p class="fil-error" data-error hidden></p>
@@ -366,7 +355,6 @@ function buildDialog() {
       totalG,
       remainingG,
       price: f.price.value === '' ? null : Math.max(0, Number(f.price.value) || 0),
-      lowAlertG: Math.max(0, Math.round(Number(f.lowAlertG.value) || 0)),
       updatedAt: Date.now()
     };
     if (el._editing) {
@@ -390,7 +378,6 @@ function openSpoolDialog(spool, focus) {
   el._editing = spool;
   el.querySelector('#filDialogTitle').textContent = spool ? 'Editar carretel' : 'Adicionar carretel';
   el.querySelector('[data-qty-field]').hidden = !!spool;
-  el.classList.toggle('is-editing', !!spool);
   const delBtn = el.querySelector('[data-delete]');
   delBtn.hidden = !spool;
   delBtn.classList.remove('is-confirm');
@@ -399,7 +386,7 @@ function openSpoolDialog(spool, focus) {
   el.querySelector('#filBrandList').innerHTML = brandSuggestions(stock.customBrands).map(b => `<option value="${esc(b)}">`).join('');
 
   const last = stock.spools[stock.spools.length - 1];
-  const src = spool || { brand: last ? last.brand : '', material: last ? last.material : 'PLA', line: '', totalG: 1000, remainingG: 1000, price: null, lowAlertG: last ? last.lowAlertG : DEFAULT_LOW_ALERT_G, colorHex: FILAMENT_COLORS[0].hex, colorName: FILAMENT_COLORS[0].name };
+  const src = spool || { brand: last ? last.brand : '', material: last ? last.material : 'PLA', line: '', totalG: 1000, remainingG: 1000, price: null, colorHex: FILAMENT_COLORS[0].hex, colorName: FILAMENT_COLORS[0].name };
   f.brand.value = src.brand || '';
   f.brand.dispatchEvent(new Event('input'));
   f.material.value = FILAMENT_MATERIALS.includes(src.material) ? src.material : 'Outro';
@@ -408,7 +395,6 @@ function openSpoolDialog(spool, focus) {
   f.totalG.value = src.totalG;
   f.remainingG.value = src.remainingG;
   f.price.value = src.price == null ? '' : src.price;
-  f.lowAlertG.value = src.lowAlertG == null ? DEFAULT_LOW_ALERT_G : src.lowAlertG;
   el._selectColor(normalizeHex(src.colorHex) || FILAMENT_COLORS[0].hex, src.colorName || '');
 
   el.showModal();
