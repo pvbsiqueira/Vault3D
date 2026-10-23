@@ -6619,7 +6619,8 @@ function fillModalExtras(model) {
       const nc = /\bNC\b|non.?commercial|não.?comercial/i.test(extras.license);
       pillHtml.push(`<span class="modal-pill${nc ? ' warn' : ''}" title="${nc ? 'Uso não comercial' : 'Licença'}">${escapeHtml(extras.license)}</span>`);
     }
-    if (extras.copyright && extras.copyright !== extras.designer) {
+    // Miniaturas antigas no cache podem ter o JSON do MakerWorld no lugar do texto
+    if (extras.copyright && extras.copyright !== extras.designer && !/^\s*[\[{]/.test(extras.copyright)) {
       pillHtml.push(`<span class="modal-pill" title="Direitos autorais">© ${escapeHtml(extras.copyright)}</span>`);
     }
     pills.innerHTML = pillHtml.join('');

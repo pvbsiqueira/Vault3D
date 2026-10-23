@@ -391,7 +391,9 @@ export async function extract3MFExtras(zip, plates = [], sliceInfo = new Map()) 
     const desc = pickMeta(meta, 'Description', 'ProfileDescription');
     extras.description = desc ? htmlToText(desc).slice(0, 1200) : null;
     extras.license = pickMeta(meta, 'License');
-    extras.copyright = pickMeta(meta, 'Copyright');
+    // O MakerWorld às vezes grava aqui a lista de modelos de origem em JSON: isso não é um texto de direitos autorais
+    const copyright = pickMeta(meta, 'Copyright');
+    extras.copyright = copyright && !/^\s*[\[{]/.test(copyright) ? copyright : null;
     extras.created = pickMeta(meta, 'CreationDate');
     extras.application = pickMeta(meta, 'Application');
     extras.source = detectSource(meta);
