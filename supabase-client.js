@@ -2,7 +2,7 @@
  * Cliente Supabase com suporte a ESM e autenticação via Magic Link
  */
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.48.1';
+import { createClient } from './vendor/supabase.js';
 import { getSupabaseConfig } from './supabase-config.js';
 
 let supabaseInstance = null;

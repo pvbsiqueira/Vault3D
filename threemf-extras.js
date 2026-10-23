@@ -534,6 +534,14 @@ function buildMakerOnlineKeywords(fileName, extras) {
 }
 
 async function fetchJsonWithTimeout(url, options = {}, timeoutMs = 4500) {
+  // No app Desktop a consulta passa pelo processo principal (a janela não chama outros sites direto)
+  if (typeof window !== 'undefined' && window.electronAPI && typeof window.electronAPI.fetchMakerOnlineJson === 'function') {
+    try {
+      return await window.electronAPI.fetchMakerOnlineJson(url, { method: options.method, body: options.body });
+    } catch (_) {
+      return null;
+    }
+  }
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {

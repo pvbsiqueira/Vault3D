@@ -1,47 +1,48 @@
-# 🧊 Vault3D - Viewer & Gerenciador (STL & 3MF)
+# 🧊 Vault3D - Gerenciador de arquivos 3D (STL e 3MF)
 
-Uma plataforma web moderna, rápida e 100% client-side para organizar, inspecionar e visualizar arquivos de impressão 3D (**STL** e **3MF**) diretamente do computador, sem a necessidade de abrir softwares fatiadores pesados.
-
----
-
-## ✨ Principais Funcionalidades
-
-- **100% Local & Privada (Zero Upload)**:
-  - Seus arquivos 3D nunca saem do seu computador.
-  - Leitura direta via **File System Access API** nativa do navegador.
-- **Suporte Avançado a Arquivos 3MF Multi-mesa**:
-  - Detecção automática de múltiplas mesas de impressão (*build plates*).
-  - Exibição de miniaturas de cada mesa lado a lado (3 quadrados por linha).
-  - Suporte a pacotes monolíticos e multi-arquivo (*Production Extension*).
-  - Extração de métricas de fatiamento: tempo estimado de impressão e gramas de filamento.
-- **Visualizador 3D Integrado (Three.js & WebGL)**:
-  - Botão flutuante **Visualizar 3D** para carregar estritamente as peças da mesa ativa.
-  - Rotação 3D com órbita, zoom, enquadramento automático e modo aramado (*wireframe*).
-- **Renomeação Direta nos Cards**:
-  - Botão de lápis e atalhos rápidos (Enter para salvar, Esc para cancelar).
-  - **Extensão protegida**: o usuário só altera o nome base, garantindo a integridade do formato.
-  - Gravação física direta no disco rígido/SSD via FileSystemHandle.move().
-- **Sistema de Favoritos**:
-  - Marque modelos favoritos com a estrela ⭐.
-  - Divisão dinâmica da tela em seções: **⭐ Favoritos** e **📁 Todos**.
-  - Persistência no navegador via localStorage.
-- **Ordenação Alfabética Inteligente**:
-  - Organização natural A-Z e numerais no início.
-  - Agrupamento automático de modelos com caracteres orientais/asiáticos (Kanjis, ideogramas) no final da lista.
+Aplicativo para Windows que organiza, inspeciona e visualiza arquivos de impressão 3D (**STL** e **3MF**) direto do computador, sem abrir o fatiador.
 
 ---
 
-## 🚀 Como Executar Localmente
+## ✨ Principais funcionalidades
 
-1. Dê um duplo clique no arquivo **iniciar.bat** (ou execute o comando powershell -ExecutionPolicy Bypass -File server.ps1).
-2. Acesse **http://127.0.0.1:3000** no seu navegador Google Chrome, Microsoft Edge, Brave ou Opera.
-3. Clique em **Selecionar Pasta** e aponte para a pasta com seus arquivos .stl e .3mf.
+- **100% local**: os arquivos 3D nunca saem do computador. O app lê as pastas que o usuário conecta.
+- **3MF com várias mesas**: miniatura de cada mesa, tempo e gramas de filamento, cores, autor, licença e origem (MakerWorld e MakerOnline).
+- **Visualizador 3D** (Three.js) com órbita, zoom e várias peças ao mesmo tempo.
+- **Abrir no fatiador**: detecta os fatiadores instalados, lembra o último usado em cada arquivo.
+- **Organização**: favoritos, projetos, renomear, mover entre pastas, duplicados e Lixeira do Windows.
+- **Em Alta**: modelos mais baixados do MakerWorld e do MakerOnline.
+- **Atualização automática** pelo GitHub Releases.
 
 ---
 
-## 🛠️ Tecnologias Utilizadas
+## 🚀 Como executar em desenvolvimento
 
-- **Three.js** (WebGL / Renderização 3D)
-- **JSZip** (Extração e parsing de pacotes 3MF)
-- **File System Access API** (Acesso local ao sistema de arquivos do usuário)
-- **HTML5, CSS3 Moderno e Vanilla JavaScript** (Sem frameworks pesados ou dependências de build)
+1. `npm install`
+2. `npm start` (ou dê um duplo clique em **iniciar-desktop.bat**)
+
+Mudanças em `main.js` ou `preload.js` pedem fechar e abrir o app de novo. Mudanças só na tela atualizam com `Ctrl+R`.
+
+### Testes
+
+`npm test` roda os testes automáticos (leitor de STL, favoritos e regras de arquivos do processo principal).
+
+### Bibliotecas (pasta `vendor/`)
+
+Three.js, JSZip e o cliente do Supabase ficam empacotados em `vendor/`, para o app abrir sem depender de CDN e funcionar sem internet (menos o login). Para atualizar uma versão: mude a versão em `devDependencies` no `package.json`, rode `npm install` e depois `npm run vendor`.
+
+---
+
+## 📦 Versões
+
+Um tag `vX.Y.Z` na `main` dispara o workflow **Build & Release Desktop App**, que gera o instalador `Vault3D-Setup-X.Y.Z.exe` e o `latest.yml` usados pela atualização automática.
+
+---
+
+## 🛠️ Tecnologias
+
+- **Electron** (app Desktop para Windows)
+- **Three.js** (renderização 3D)
+- **JSZip** (leitura dos pacotes 3MF)
+- **Supabase** (login por e-mail)
+- **HTML, CSS e JavaScript puro** (sem framework)
