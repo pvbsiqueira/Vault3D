@@ -8,6 +8,7 @@ import { initAuth, getAuthenticatedUser } from './auth.js';
 import { startUsageTracking } from './usage-tracker.js';
 import { openFoldersDB, getModelCacheKey, getCachedThumbnail, saveCachedThumbnail, clearThumbnailCache, pruneThumbnailCache, saveFolderToDB, removeFolderFromDB, clearAllFoldersFromDB, getAllFoldersFromDB } from './library-db.js';
 import { loadFavorites, saveFavorites, applyFavorites, addFileFavorite, removeFileFavorite, favoriteKeyOf } from './favorites.js';
+import { initWhatsNew } from './whats-new.js';
 import { initFilamentStock, renderFilamentPage, setFilamentSearch, filamentStatusHtml, hasSpools } from './filament-stock.js';
 import { initSlicerPicker, isSlicerChoiceSupported, slicerSplitHtml, openSlicerMenu, getDefaultSlicerName, getSlicerState, onSlicersChanged, getSlicerNames, getLastSlicer, setLastSlicer, slicerIconHtml, refreshSlicerSettings } from './slicer-picker.js';
 
@@ -561,6 +562,19 @@ function init() {
     if (typeof closeViewerModal === 'function' && viewerModal && viewerModal.classList.contains('active')) closeViewerModal();
     setNavSection('settings');
   });
+  // Novidades da versão: botão ao lado de Cards e abertura automática depois de atualizar
+  initWhatsNew({
+    button: document.getElementById('btnWhatsNew'),
+    isAppVisible: () => {
+      const dash = document.getElementById('dashboardLayout');
+      return !!dash && dash.style.display !== 'none' && dash.offsetParent !== null;
+    }
+  });
+  document.addEventListener('vault3d:navigate', (e) => {
+    const section = e.detail && e.detail.section;
+    if (section) setNavSection(section);
+  });
+
   // Dica no modal do 3MF leva para a página Filamentos
   const modalFilamentList = document.getElementById('modalFilamentList');
   if (modalFilamentList) {
@@ -769,6 +783,7 @@ function setNavSection(section) {
   if (filamentsContainer) filamentsContainer.style.display = isFilaments ? 'flex' : 'none';
   document.body.classList.toggle('is-settings-page', isSettings);
   document.body.classList.toggle('is-filaments-page', isFilaments);
+  document.body.classList.toggle('is-trending-page', section === 'trending');
   if (searchInput) {
     if (!searchInput.dataset.libraryPlaceholder) searchInput.dataset.libraryPlaceholder = searchInput.placeholder;
     searchInput.placeholder = isFilaments ? 'Buscar carretel' : searchInput.dataset.libraryPlaceholder;
