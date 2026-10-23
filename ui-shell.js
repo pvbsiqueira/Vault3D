@@ -21,8 +21,10 @@
 
   if (nav) {
     new MutationObserver(syncTitle).observe(nav, { subtree: true, attributes: true, attributeFilter: ['class'] });
-    const navSettings = document.getElementById('navSettings');
-    if (navSettings) new MutationObserver(syncTitle).observe(navSettings, { attributes: true, attributeFilter: ['class'] });
+    ['navSettings', 'navFilaments'].forEach((id) => {
+      const btn = document.getElementById(id);
+      if (btn) new MutationObserver(syncTitle).observe(btn, { attributes: true, attributeFilter: ['class'] });
+    });
     syncTitle();
   }
 

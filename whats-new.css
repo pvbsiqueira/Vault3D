@@ -1,0 +1,57 @@
+/* ---------- Botão Novidades (ao lado de Cards) ---------- */
+.btn-whats-new {
+  position: relative; flex: none; width: 32px; height: 32px; padding: 0; display: grid; place-items: center;
+  border-radius: var(--radius-md); border: 1px solid var(--line-strong); background: transparent;
+  color: var(--text-secondary); cursor: pointer;
+}
+.btn-whats-new:hover { color: var(--text-primary); background: var(--bg-card-hover); }
+.btn-whats-new.has-news { color: var(--accent); border-color: var(--accent-line); }
+.btn-whats-new.has-news::after {
+  content: ''; position: absolute; top: -3px; right: -3px; width: 9px; height: 9px; border-radius: 50%;
+  background: var(--accent); box-shadow: 0 0 0 2px var(--bg-main);
+}
+body.is-settings-page .btn-whats-new,
+body.is-filaments-page .btn-whats-new,
+body.is-trending-page .btn-whats-new { display: none; }
+
+/* ---------- Janela Novidades (cabe na tela, sem rolagem) ---------- */
+.wn-dialog {
+  position: fixed; inset: 0; margin: auto; height: fit-content;
+  width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 32px); padding: 0; overflow: hidden;
+  border-radius: 12px; border: 1px solid var(--line-strong); background: var(--bg-panel);
+  color: var(--text-primary); font-family: var(--font-ui);
+}
+.wn-dialog::backdrop { background: rgba(3, 6, 10, 0.72); backdrop-filter: blur(3px); }
+.wn-head { display: flex; align-items: center; gap: 12px; padding: 18px 18px 14px; border-bottom: 1px solid var(--line); }
+.wn-head-icon { flex: none; width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); }
+.wn-head-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.wn-eyebrow { font: 500 11.5px var(--font-mono); color: var(--accent); }
+.wn-head h3 { margin: 0; font-size: 17px; font-weight: 700; }
+.wn-x { align-self: flex-start; width: 28px; height: 28px; border: 0; border-radius: 6px; background: none; color: var(--text-secondary); font-size: 20px; cursor: pointer; }
+.wn-x:hover { background: var(--bg-card-hover); color: var(--text-primary); }
+
+.wn-items { list-style: none; margin: 0; padding: 8px 18px; display: flex; flex-direction: column; }
+.wn-item { display: flex; align-items: flex-start; gap: 12px; padding: 11px 0; }
+.wn-item + .wn-item { border-top: 1px solid var(--line); }
+.wn-item-icon { flex: none; width: 32px; height: 32px; border-radius: 8px; display: grid; place-items: center; background: var(--bg-card); border: 1px solid var(--line); color: var(--text-secondary); }
+.wn-item-text { flex: 1; min-width: 0; }
+.wn-item-text b { display: block; font-size: 13.5px; font-weight: 700; }
+.wn-item-text p { margin: 2px 0 0; font-size: 12.5px; line-height: 1.5; color: var(--text-secondary); }
+.wn-item-go {
+  flex: none; align-self: center; height: 28px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--accent-line);
+  background: var(--accent-soft); color: var(--accent); font: 600 12px var(--font-ui); cursor: pointer; white-space: nowrap;
+}
+.wn-item-go:hover { background: rgba(34, 211, 238, 0.2); }
+
+.wn-foot { display: flex; align-items: center; gap: 12px; padding: 14px 18px; border-top: 1px solid var(--line); }
+.wn-check { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-secondary); cursor: pointer; }
+.wn-check input { width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; flex: none; }
+.wn-nav { display: flex; align-items: center; gap: 6px; font: 500 12px var(--font-mono); color: var(--text-muted); }
+.wn-nav[hidden] { display: none; }
+.wn-arrow {
+  width: 28px; height: 28px; padding: 0; border-radius: 6px; border: 1px solid var(--line-strong); background: transparent;
+  color: var(--text-primary); font-size: 16px; line-height: 1; cursor: pointer;
+}
+.wn-arrow:hover:not(:disabled) { background: var(--bg-card-hover); }
+.wn-arrow:disabled { opacity: .3; cursor: default; }
+.wn-ok { flex: none; width: auto; min-width: 100px; font-family: var(--font-ui); }
