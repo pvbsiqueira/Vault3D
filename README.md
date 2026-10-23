@@ -11,6 +11,8 @@ Aplicativo para Windows que organiza, inspeciona e visualiza arquivos de impress
 - **Visualizador 3D** (Three.js) com órbita, zoom e várias peças ao mesmo tempo.
 - **Abrir no fatiador**: detecta os fatiadores instalados, lembra o último usado em cada arquivo.
 - **Organização**: favoritos, projetos, renomear, mover entre pastas, duplicados e Lixeira do Windows.
+- **Filamentos**: cadastro dos carretéis (marca, material, cor e quanto resta) e aviso no 3MF se você tem o material e a cor.
+- **Novidades**: janela com o que mudou em cada versão (textos em `changelog.js`).
 - **Em Alta**: modelos mais baixados do MakerWorld e do MakerOnline.
 - **Atualização automática** pelo GitHub Releases.
 
