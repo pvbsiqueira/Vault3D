@@ -6,6 +6,15 @@
  */
 export const CHANGELOG = [
   {
+    version: '1.6.0',
+    date: '2026-11-04',
+    title: 'Biblioteca mais simples',
+    items: [
+      { icon: 'layers', title: 'Projetos removidos', text: 'A função de juntar vários arquivos em um Projeto saiu do app, porque quase ninguém usava.' },
+      { icon: 'shield', title: 'Seus arquivos continuam lá', text: 'Nenhum arquivo foi movido nem apagado. Os que estavam em um Projeto voltam a aparecer soltos na Biblioteca.' }
+    ]
+  },
+  {
     version: '1.5.0',
     date: '2026-10-23',
     title: 'Estoque de filamentos',

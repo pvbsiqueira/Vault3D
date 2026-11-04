@@ -20,7 +20,7 @@ const state = {
   activeSubfolderPath: null, // Caminho relativo da subpasta ativa ou null (toda a pasta)
   collapsedFolders: new Set(), // Set com chaves de pastas/subpastas recolhidas
   activeFilter: 'all', // 'all', 'stl', '3mf', 'duplicates'
-  activeSection: 'all', // 'all', 'projects', 'favorites', 'duplicates'
+  activeSection: 'all', // 'all', 'favorites', 'duplicates', 'trending', 'filaments', 'settings'
   searchQuery: '',
   modalScene: null,
   modalCamera: null,
@@ -33,7 +33,6 @@ const state = {
   activeModel: null,
   activePlateId: 1,
   activePlate: null,
-  activeProject: null,
   currentViewerMode: '3d',
   isMeshLoaded: false,
   pageSize: (function() {
@@ -57,8 +56,6 @@ const state = {
   })(),
   isSelectionMode: false,
   selectedModelIds: new Set(),
-  selectedCoverKey: null,
-  selectedCustomCoverUrl: null,
   sortOrder: (function() {
     try {
       const saved = localStorage.getItem('antigravity_sort_order');
@@ -67,16 +64,16 @@ const state = {
     } catch (e) {
       return 'date_desc';
     }
-  })(),
-  customProjects: (() => {
-    try {
-      const saved = localStorage.getItem('antigravity_custom_projects');
-      return saved ? JSON.parse(saved) : [];
-    } catch (e) {
-      return [];
-    }
   })()
 };
+
+// Os Projetos (agrupar vários Modelos num card) foram removidos (docs/adr/0001-remover-projetos.md).
+// Quem tinha Projetos salvos perde só o agrupamento: os arquivos no disco nunca foram tocados.
+try {
+  localStorage.removeItem('antigravity_custom_projects');
+} catch (_) {
+  // localStorage indisponível: não há o que apagar
+}
 
 // Elementos DOM da Sidebar & Dashboard
 const appSidebar = document.getElementById('appSidebar');
@@ -84,7 +81,6 @@ const btnSidebarToggle = document.getElementById('btnSidebarToggle');
 const btnSelectFolder = document.getElementById('btnSelectFolder');
 const folderInputFallback = document.getElementById('folderInputFallback');
 const navAllModels = document.getElementById('navAllModels');
-const navProjects = document.getElementById('navProjects');
 const navFavorites = document.getElementById('navFavorites');
 const navTrending = document.getElementById('navTrending');
 const navDuplicates = document.getElementById('navDuplicates');
@@ -93,7 +89,6 @@ const settingsContainer = document.getElementById('settingsContainer');
 const navFilaments = document.getElementById('navFilaments');
 const filamentsContainer = document.getElementById('filamentsContainer');
 const sidebarAllCountBadge = document.getElementById('sidebarAllCountBadge');
-const sidebarProjectsCountBadge = document.getElementById('sidebarProjectsCountBadge');
 const sidebarFavoritesCountBadge = document.getElementById('sidebarFavoritesCountBadge');
 const sidebarDuplicatesCountBadge = document.getElementById('sidebarDuplicatesCountBadge');
 const sidebarFoldersList = document.getElementById('sidebarFoldersList');
@@ -135,8 +130,6 @@ const paginationNumbers = document.getElementById('paginationNumbers');
 const topPageSizeWrap = document.getElementById('topPageSizeWrap');
 const topPageSizeButtons = document.getElementById('topPageSizeButtons');
 const bottomPageSizeButtons = document.getElementById('bottomPageSizeButtons');
-const btnModeProjects = document.getElementById('btnModeProjects');
-const btnModeFiles = document.getElementById('btnModeFiles');
 
 // Elementos DOM da Galeria & Área Principal
 const dropZone = document.getElementById('dropZone');
@@ -215,26 +208,13 @@ const modalNavCounter = document.getElementById('modalNavCounter');
 const btnCopyModalPath = document.getElementById('btnCopyModalPath');
 const btnOpenModalSlicer = document.getElementById('btnOpenModalSlicer');
 
-// Seleção Múltipla & Projetos Manuais DOM
+// Seleção Múltipla DOM
 const btnToggleSelect = document.getElementById('btnToggleSelect');
 const selectionActionBar = document.getElementById('selectionActionBar');
 const selectionCountBadge = document.getElementById('selectionCountBadge');
 const selectionCountText = document.getElementById('selectionCountText');
 const btnSelectAllVisible = document.getElementById('btnSelectAllVisible');
-const btnOpenCreateProjectModal = document.getElementById('btnOpenCreateProjectModal');
 const btnCancelSelection = document.getElementById('btnCancelSelection');
-const createProjectModal = document.getElementById('createProjectModal');
-const createProjectBackdrop = document.getElementById('createProjectBackdrop');
-const btnCloseCreateProjectModal = document.getElementById('btnCloseCreateProjectModal');
-const inputProjectName = document.getElementById('inputProjectName');
-const projectModalCount = document.getElementById('projectModalCount');
-const projectModalSize = document.getElementById('projectModalSize');
-const projectModalPartsList = document.getElementById('projectModalPartsList');
-const projectCoverSection = document.getElementById('projectCoverSection');
-const projectCoverHint = document.getElementById('projectCoverHint');
-const projectCoverGrid = document.getElementById('projectCoverGrid');
-const btnCancelProjectCreation = document.getElementById('btnCancelProjectCreation');
-const btnConfirmProjectCreation = document.getElementById('btnConfirmProjectCreation');
 
 /**
  * Configuração de atualizações automáticas em segundo plano para o app Desktop (Electron)
@@ -312,7 +292,7 @@ function init() {
   // Mover arquivos entre as pastas conectadas no modo Desktop
   setupMoveFeature();
 
-  // Edição de nome e foto de capa de arquivos e projetos
+  // Edição de nome e foto de capa dos arquivos
   setupEditCardFeature();
 
   if (btnSelectFolder) btnSelectFolder.addEventListener('click', handleChooseFolder);
@@ -348,8 +328,8 @@ function init() {
     }
   });
 
-  // Navegação da Barra Lateral (Todos / Projetos / Favoritos / Em Alta / Duplicados / Filamentos / Configurações)
-  [navAllModels, navProjects, navFavorites, navTrending, navDuplicates, navFilaments, navSettings].forEach(navBtn => {
+  // Navegação da Barra Lateral (Todos / Favoritos / Em Alta / Duplicados / Filamentos / Configurações)
+  [navAllModels, navFavorites, navTrending, navDuplicates, navFilaments, navSettings].forEach(navBtn => {
     if (!navBtn) return;
     navBtn.addEventListener('click', () => {
       const section = navBtn.dataset.section || 'all';
@@ -425,60 +405,8 @@ function init() {
     btnSelectAllVisible.addEventListener('click', toggleSelectAllVisible);
   }
 
-  const btnUploadProjectCover = document.getElementById('btnUploadProjectCover');
-  const inputCustomCoverFile = document.getElementById('inputCustomCoverFile');
-  if (btnUploadProjectCover && inputCustomCoverFile) {
-    btnUploadProjectCover.addEventListener('click', () => {
-      inputCustomCoverFile.click();
-    });
-    inputCustomCoverFile.addEventListener('change', (e) => {
-      const file = e.target.files && e.target.files[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        const customUrl = ev.target.result;
-        state.selectedCustomCoverUrl = customUrl;
-        state.selectedCoverKey = '__custom__';
-        addCustomCoverCardToPicker(customUrl, file.name);
-        showToast(`Foto "${file.name}" carregada para a capa do projeto! 🖼️`, 'success');
-      };
-      reader.readAsDataURL(file);
-    });
-  }
-
-  if (btnOpenCreateProjectModal) {
-    btnOpenCreateProjectModal.addEventListener('click', openCreateProjectModal);
-  }
-
   if (btnCancelSelection) {
     btnCancelSelection.addEventListener('click', clearSelection);
-  }
-
-  if (btnCloseCreateProjectModal) {
-    btnCloseCreateProjectModal.addEventListener('click', closeCreateProjectModal);
-  }
-
-  if (btnCancelProjectCreation) {
-    btnCancelProjectCreation.addEventListener('click', closeCreateProjectModal);
-  }
-
-  if (createProjectBackdrop) {
-    createProjectBackdrop.addEventListener('click', closeCreateProjectModal);
-  }
-
-  if (btnConfirmProjectCreation) {
-    btnConfirmProjectCreation.addEventListener('click', confirmCreateProject);
-  }
-
-  if (inputProjectName) {
-    inputProjectName.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        confirmCreateProject();
-      } else if (e.key === 'Escape') {
-        closeCreateProjectModal();
-      }
-    });
   }
 
   // Navegação de Páginas
@@ -523,16 +451,10 @@ function init() {
     btnModalOpenSlicer.title = footerCfg.title;
     btnModalOpenSlicer.innerHTML = `${footerCfg.icon}<span>${escapeHtml(footerCfg.text)}</span>`;
 
-    setupModelDraggable(btnModalOpenSlicer, () => {
-      return (state.activePlate && state.activePlate.model && !state.activePlate.isCustomCover ? state.activePlate.model : null)
-        || (state.activeProject ? (state.activeProject.primaryPart || (state.activeProject.parts && state.activeProject.parts[0])) : null)
-        || state.activeModel;
-    });
+    setupModelDraggable(btnModalOpenSlicer, getModalSlicerTarget);
 
     btnModalOpenSlicer.addEventListener('click', () => {
-      const modelToOpen = (state.activePlate && state.activePlate.model && !state.activePlate.isCustomCover ? state.activePlate.model : null)
-        || (state.activeProject ? (state.activeProject.primaryPart || (state.activeProject.parts && state.activeProject.parts[0])) : null)
-        || state.activeModel;
+      const modelToOpen = getModalSlicerTarget();
       if (modelToOpen) {
         openModelInSlicer(modelToOpen, btnModalOpenSlicer);
       }
@@ -587,10 +509,7 @@ function init() {
   // Os botões mostram o último fatiador usado em cada arquivo (ou o padrão escolhido)
   onSlicersChanged(() => refreshSlicerLabels());
   if (modalPlateImg) {
-    setupModelDraggable(modalPlateImg, () => {
-      return (state.activePlate && state.activePlate.model && !state.activePlate.isCustomCover ? state.activePlate.model : null)
-        || state.activeModel;
-    });
+    setupModelDraggable(modalPlateImg, getModalSlicerTarget);
   }
   viewerModal.addEventListener('click', (e) => {
     if (e.target === viewerModal) closeViewerModal();
@@ -699,7 +618,7 @@ function init() {
     }
     btnOpenModalSlicer.addEventListener('click', (e) => {
       e.stopPropagation();
-      const currentModel = (state.activePlate && state.activePlate.model) || state.activeModel;
+      const currentModel = state.activeModel;
       if (currentModel) {
         openModelInSlicer(currentModel, btnOpenModalSlicer);
       }
@@ -769,13 +688,13 @@ function isOffLibrarySection() {
 }
 
 /**
- * Alterna a seção ativa da biblioteca (Todos os Modelos, Projetos, Favoritos, Em Alta, Duplicados)
+ * Alterna a seção ativa da biblioteca (Todos os Modelos, Favoritos, Em Alta, Duplicados)
  */
 function setNavSection(section) {
   state.activeSection = section;
   state.currentPage = 1;
 
-  [navAllModels, navProjects, navFavorites, navTrending, navDuplicates, navFilaments, navSettings].forEach(btn => {
+  [navAllModels, navFavorites, navTrending, navDuplicates, navFilaments, navSettings].forEach(btn => {
     if (btn) btn.classList.toggle('active', btn.dataset.section === section);
   });
 
@@ -850,10 +769,7 @@ function setNavSection(section) {
   }
 
   if (currentViewTitle) {
-    if (section === 'projects') {
-      currentViewTitle.textContent = 'Projetos Multi-mesas';
-      if (currentViewSub) currentViewSub.textContent = 'Modelos organizados em projetos com múltiplas peças e mesas';
-    } else if (section === 'favorites') {
+    if (section === 'favorites') {
       currentViewTitle.textContent = 'Favoritos';
       if (currentViewSub) currentViewSub.textContent = 'Modelos marcados com estrela';
     } else if (section === 'duplicates') {
@@ -1273,34 +1189,14 @@ function saveFolderDiskPaths() {
  */
 function toggleFavorite(model) {
   const favs = loadFavorites();
-  const key = model.name;
-  if (model.isProject) {
-    const isFav = favs.has(key);
-    if (isFav) {
-      favs.delete(key);
-      model.isFavorite = false;
-      if (model.parts) {
-        model.parts.forEach(p => { removeFileFavorite(favs, p); p.isFavorite = false; });
-      }
-      showToast(`Projeto "${model.name}" removido dos favoritos.`);
-    } else {
-      favs.add(key);
-      model.isFavorite = true;
-      if (model.parts) {
-        model.parts.forEach(p => { addFileFavorite(favs, p); p.isFavorite = true; });
-      }
-      showToast(`Projeto "${model.name}" adicionado aos favoritos! ⭐`, 'success');
-    }
+  if (model.isFavorite) {
+    removeFileFavorite(favs, model);
+    model.isFavorite = false;
+    showToast(`"${model.name}" removido dos favoritos.`);
   } else {
-    if (model.isFavorite) {
-      removeFileFavorite(favs, model);
-      model.isFavorite = false;
-      showToast(`"${model.name}" removido dos favoritos.`);
-    } else {
-      addFileFavorite(favs, model);
-      model.isFavorite = true;
-      showToast(`"${model.name}" adicionado aos favoritos! ⭐`, 'success');
-    }
+    addFileFavorite(favs, model);
+    model.isFavorite = true;
+    showToast(`"${model.name}" adicionado aos favoritos! ⭐`, 'success');
   }
   saveFavorites(favs);
   renderGallery();
@@ -1418,7 +1314,7 @@ let thumbnailPruneTimer = null;
 function scheduleThumbnailCachePrune() {
   clearTimeout(thumbnailPruneTimer);
   thumbnailPruneTimer = setTimeout(async () => {
-    const keys = state.models.filter(m => !m.isProject).map(getModelCacheKey);
+    const keys = state.models.map(getModelCacheKey);
     const removed = await pruneThumbnailCache(keys, state.folders.map(f => f.name));
     if (removed > 0) console.log(`Cache de miniaturas: ${removed} entrada(s) antiga(s) removida(s).`);
   }, 8000);
@@ -2448,16 +2344,12 @@ function renderFolderChips() {
  * Atualiza todos os contadores e estatísticas da barra lateral e rodapé
  */
 function updateStatsBadge() {
-  const displayItems = applyCustomProjects(state.models);
-  const totalItems = displayItems.length;
-  const projectCount = displayItems.filter(m => m.isProject).length;
-  const totalFiles = state.models.length;
-  const favCount = displayItems.filter(m => m.isFavorite).length;
+  const totalItems = state.models.length;
+  const favCount = state.models.filter(m => m.isFavorite).length;
   const dupCount = state.models.filter(m => m.isDuplicate).length;
   const foldersCount = state.folders.length;
 
   if (sidebarAllCountBadge) sidebarAllCountBadge.textContent = totalItems;
-  if (sidebarProjectsCountBadge) sidebarProjectsCountBadge.textContent = projectCount;
   if (sidebarFavoritesCountBadge) sidebarFavoritesCountBadge.textContent = favCount;
   if (sidebarDuplicatesCountBadge) sidebarDuplicatesCountBadge.textContent = dupCount;
 
@@ -2470,12 +2362,6 @@ function updateStatsBadge() {
   const scopedModels = hasFolderScope
     ? state.models.filter(m => isModelInFolderFilter(m, state.activeFolderId, state.activeSubfolderPath))
     : state.models;
-  const scopedItems = hasFolderScope
-    ? displayItems.filter(item => item.isProject
-        ? item.parts && item.parts.some(p => isModelInFolderFilter(p, state.activeFolderId, state.activeSubfolderPath))
-        : isModelInFolderFilter(item, state.activeFolderId, state.activeSubfolderPath))
-    : displayItems;
-  const scopedProjectCount = scopedItems.filter(m => m.isProject).length;
   const scopedFiles = scopedModels.length;
 
   if (statsScopeLabel) {
@@ -2495,11 +2381,7 @@ function updateStatsBadge() {
   }
 
   if (fileCountBadge) {
-    if (scopedProjectCount > 0) {
-      fileCountBadge.textContent = `${scopedItems.length} itens (${scopedProjectCount} projeto${scopedProjectCount === 1 ? '' : 's'}, ${scopedFiles} arquivos)`;
-    } else {
-      fileCountBadge.textContent = `${scopedFiles} modelo${scopedFiles === 1 ? '' : 's'}`;
-    }
+    fileCountBadge.textContent = `${scopedFiles} modelo${scopedFiles === 1 ? '' : 's'}`;
   }
 
   if (sidebarStlCountBadge) {
@@ -2517,7 +2399,7 @@ function updateStatsBadge() {
     sidebarFoldersCountBadge.textContent = foldersCount;
   }
   if (allFoldersBadge) {
-    allFoldersBadge.textContent = foldersCount > 0 ? `(${totalFiles})` : '';
+    allFoldersBadge.textContent = foldersCount > 0 ? `(${totalItems})` : '';
   }
   if (sidebarAllFoldersWrap) {
     sidebarAllFoldersWrap.style.display = foldersCount > 0 ? 'block' : 'none';
@@ -2689,25 +2571,7 @@ async function renameModelFile(model, newBaseName) {
     showToast(`Nome atualizado para "${newFullName}".`, 'info');
   }
 
-  const oldName = model.name;
   const oldFavRef = { folderName: model.folderName, path: model.path, name: model.name };
-
-  // Se o modelo fazia parte de algum projeto customizado, atualizar a referência
-  let projectsChanged = false;
-  (state.customProjects || []).forEach(project => {
-    if (Array.isArray(project.fileKeys)) {
-      const idx = project.fileKeys.indexOf(oldName);
-      if (idx !== -1) {
-        project.fileKeys[idx] = newFullName;
-        projectsChanged = true;
-      }
-    }
-    if (project.coverKey === oldName) {
-      project.coverKey = newFullName;
-      projectsChanged = true;
-    }
-  });
-  if (projectsChanged) saveCustomProjects();
 
   // Atualizar dados em memória
   model.name = newFullName;
@@ -2816,11 +2680,6 @@ function compactCoverDataUrl(rawDataUrl, maxSide = 720, quality = 0.86) {
   });
 }
 
-function getFileBaseName(filename) {
-  const dot = (filename || '').lastIndexOf('.');
-  return dot !== -1 ? filename.substring(0, dot) : (filename || '');
-}
-
 /**
  * Renderiza a grade de opções de foto de capa dentro do modal #editCardModal
  */
@@ -2898,7 +2757,7 @@ function renderEditCardCoverGrid() {
 }
 
 /**
- * Abre o modal de edição de card (para um arquivo .3MF/.STL ou para um Projeto Multi-peças)
+ * Abre o modal de edição de card de um arquivo .3MF/.STL (nome e foto de capa)
  */
 async function openEditCardModal(item) {
   if (!item) return;
@@ -2917,97 +2776,7 @@ async function openEditCardModal(item) {
   if (btnConfirm) btnConfirm.disabled = false;
 
   const token = Date.now() + Math.random();
-  const isProject = !!item.isProject;
 
-  if (isProject) {
-    const projectRecord = (state.customProjects || []).find(
-      p => p.id === (item.customProjectId || item.id)
-    );
-    const currentCustomUrl = (projectRecord && projectRecord.customCoverUrl) || item.customCoverUrl || null;
-    const parts = item.parts || [];
-
-    const options = [];
-    if (currentCustomUrl) {
-      options.push({
-        id: '__custom__',
-        kind: 'custom',
-        label: 'Foto enviada',
-        sublabel: 'Computador',
-        dataUrl: currentCustomUrl
-      });
-    }
-
-    parts.forEach((part, idx) => {
-      if (part.thumbnailUrl) {
-        options.push({
-          id: part.name,
-          kind: 'plate',
-          label: getFileBaseName(part.name),
-          sublabel: `Peça ${idx + 1} (${part.type.toUpperCase()})`,
-          dataUrl: part.thumbnailUrl
-        });
-      }
-    });
-
-    let selectedSource = (projectRecord && projectRecord.coverKey) || null;
-    if (!selectedSource || (!options.some(o => o.id === selectedSource) && selectedSource !== '__custom__')) {
-      selectedSource = currentCustomUrl
-        ? '__custom__'
-        : (options[0] ? options[0].id : (parts[0] ? parts[0].name : null));
-    }
-
-    editCardState = {
-      token,
-      item,
-      isProject: true,
-      projectRecord,
-      initialBaseName: item.name,
-      ext: '',
-      options,
-      selectedSource,
-      initialSource: selectedSource,
-      customCoverUrl: currentCustomUrl,
-      initialCustomCoverUrl: currentCustomUrl,
-      loadingOptions: parts.some(p => !p.thumbnailUrl),
-      saving: false
-    };
-
-    if (titleEl) titleEl.textContent = 'Editar projeto';
-    if (subEl) subEl.textContent = 'Altere o nome do projeto ou escolha qual foto representa a capa';
-    if (nameLabel) nameLabel.textContent = 'Nome do projeto';
-    if (extBadge) extBadge.hidden = true;
-    nameInput.value = item.name || '';
-
-    renderEditCardCoverGrid();
-    modal.style.display = 'flex';
-    requestAnimationFrame(() => {
-      nameInput.focus();
-      nameInput.select();
-    });
-
-    // Se alguma peça do projeto ainda não tiver miniatura gerada, carregar sob demanda
-    parts.forEach((part, idx) => {
-      if (!part.thumbnailUrl) {
-        loadModelOnDemand(part).then((loaded) => {
-          if (!editCardState || editCardState.token !== token) return;
-          if (loaded && loaded.thumbnailUrl && !editCardState.options.some(o => o.id === part.name)) {
-            editCardState.options.push({
-              id: part.name,
-              kind: 'plate',
-              label: getFileBaseName(part.name),
-              sublabel: `Peça ${idx + 1} (${part.type.toUpperCase()})`,
-              dataUrl: loaded.thumbnailUrl
-            });
-          }
-          editCardState.loadingOptions = parts.some(p => !p.thumbnailUrl);
-          renderEditCardCoverGrid();
-        });
-      }
-    });
-    return;
-  }
-
-  // Card de arquivo individual (.3MF ou .STL)
   const dotIdx = item.name.lastIndexOf('.');
   const ext = dotIdx !== -1 ? item.name.substring(dotIdx) : `.${item.type}`;
   const baseName = dotIdx !== -1 ? item.name.substring(0, dotIdx) : item.name;
@@ -3052,7 +2821,6 @@ async function openEditCardModal(item) {
   editCardState = {
     token,
     item,
-    isProject: false,
     initialBaseName: baseName,
     ext,
     options: initialOptions,
@@ -3161,10 +2929,10 @@ async function confirmEditCardModal() {
   const btnConfirm = document.getElementById('btnConfirmEditCard');
   const rawName = nameInput ? nameInput.value.trim() : '';
 
-  const { item, isProject } = editCardState;
+  const { item } = editCardState;
 
   if (!rawName) {
-    showToast(isProject ? 'O nome do projeto não pode ficar vazio.' : 'O nome do arquivo não pode ficar vazio.', 'error');
+    showToast('O nome do arquivo não pode ficar vazio.', 'error');
     if (nameInput) nameInput.focus();
     return;
   }
@@ -3173,61 +2941,6 @@ async function confirmEditCardModal() {
   if (btnConfirm) btnConfirm.disabled = true;
 
   try {
-    if (isProject) {
-      const projRecord = editCardState.projectRecord || (state.customProjects || []).find(
-        p => p.id === (item.customProjectId || item.id)
-      );
-      const selectedOpt = (editCardState.options || []).find(o => o.id === editCardState.selectedSource);
-
-      const nameChanged = rawName !== editCardState.initialBaseName;
-      const coverChanged = editCardState.selectedSource !== editCardState.initialSource
-        || editCardState.customCoverUrl !== editCardState.initialCustomCoverUrl;
-
-      if (projRecord) {
-        projRecord.name = rawName;
-        if (editCardState.selectedSource === '__custom__' && editCardState.customCoverUrl) {
-          projRecord.coverKey = '__custom__';
-          projRecord.customCoverUrl = editCardState.customCoverUrl;
-        } else if (editCardState.selectedSource) {
-          projRecord.coverKey = editCardState.selectedSource;
-          projRecord.customCoverUrl = null;
-        }
-        saveCustomProjects();
-      }
-
-      // Atualizar favoritos se o projeto era favorito e mudou de nome
-      if (nameChanged && item.isFavorite) {
-        const favs = loadFavorites();
-        if (favs.has(item.name)) {
-          favs.delete(item.name);
-          favs.add(rawName);
-          saveFavorites(favs);
-        }
-      }
-
-      item.name = rawName;
-      if (selectedOpt && selectedOpt.dataUrl) {
-        item.thumbnailUrl = selectedOpt.dataUrl;
-      }
-
-      // Se o visualizador 3D estiver aberto neste projeto, atualizar cabeçalho
-      if (state.activeProject && state.activeProject.id === item.id) {
-        state.activeProject.name = rawName;
-        if (modalPathName) modalPathName.textContent = rawName;
-        else if (modalFileName) modalFileName.textContent = rawName;
-      }
-
-      closeEditCardModal();
-      renderGallery();
-      updateStatsBadge();
-
-      if (nameChanged || coverChanged) {
-        showToast('Projeto atualizado com sucesso!', 'success');
-      }
-      return;
-    }
-
-    // Arquivo individual (.3MF ou .STL)
     let cleanBase = rawName;
     if (editCardState.ext && cleanBase.toLowerCase().endsWith(editCardState.ext.toLowerCase())) {
       cleanBase = cleanBase.substring(0, cleanBase.length - editCardState.ext.length).trim();
@@ -3293,11 +3006,6 @@ async function confirmEditCardModal() {
       renderGallery();
       updateStatsBadge();
     } else if (coverChanged) {
-      // Se este arquivo for a capa de algum projeto, re-renderizar a galeria para atualizar o projeto
-      const isUsedInProject = (state.customProjects || []).some(p => p.coverKey === item.name || (p.fileKeys && p.fileKeys.includes(item.name)));
-      if (isUsedInProject) {
-        renderGallery();
-      }
       showToast('Foto de capa atualizada!', 'success');
     }
   } finally {
@@ -3317,7 +3025,7 @@ function setupEditCardFeature() {
   on('btnCancelEditCard', closeEditCardModal);
   on('btnConfirmEditCard', confirmEditCardModal);
   on('btnModalEdit', () => {
-    const target = state.modalItem || state.activeProject || state.activeModel;
+    const target = state.modalItem || state.activeModel;
     if (target) openEditCardModal(target);
   });
 
@@ -3336,7 +3044,7 @@ function setupEditCardFeature() {
         const compactUrl = await compactCoverDataUrl(rawUrl);
         if (!editCardState || editCardState.token !== token) return;
 
-        const customId = editCardState.isProject ? '__custom__' : 'custom';
+        const customId = 'custom';
         editCardState.customCoverUrl = compactUrl;
         editCardState.selectedSource = customId;
 
@@ -3452,7 +3160,7 @@ function isTrashConfirmOpen() {
  * os que saíram do disco. Retorna a lista de modelos excluídos.
  */
 async function trashModels(models, confirmOptions = {}) {
-  const list = (models || []).filter(m => m && !m.isProject);
+  const list = (models || []).filter(Boolean);
   if (list.length === 0) return [];
 
   if (!isTrashSupported()) {
@@ -3499,7 +3207,7 @@ async function trashModels(models, confirmOptions = {}) {
 
 /**
  * Tira da biblioteca os modelos que saíram do disco: galeria, seleção,
- * favoritos, projetos, contadores das pastas e duplicados.
+ * favoritos, contadores das pastas e duplicados.
  */
 async function removeModelsFromLibrary(removed) {
   const removedIds = new Set(removed.map(m => m.id));
@@ -3523,7 +3231,7 @@ async function removeModelsFromLibrary(removed) {
   });
   state.models = state.models.filter(m => !removedIds.has(m.id));
 
-  // Favoritos e projetos são guardados pelo nome: só limpar se nenhum outro arquivo usa o mesmo nome
+  // Favoritos antigos são guardados pelo nome: só limpar se nenhum outro arquivo usa o mesmo nome
   const stillMatches = (key) => state.models.some(m =>
     m.name === key || m.path === key || (m.path && m.path.endsWith('/' + key))
   );
@@ -3544,24 +3252,6 @@ async function removeModelsFromLibrary(removed) {
   });
   if (favsChanged) saveFavorites(favs);
 
-  let projectsChanged = false;
-  const dissolved = [];
-  state.customProjects = state.customProjects.filter(project => {
-    const before = project.fileKeys.length;
-    project.fileKeys = project.fileKeys.filter(stillMatches);
-    if (project.fileKeys.length !== before) projectsChanged = true;
-    if (project.fileKeys.length < 2) {
-      // Um projeto com um arquivo só deixa de fazer sentido: o arquivo volta a ficar avulso
-      if (before >= 2) dissolved.push(project.name);
-      return false;
-    }
-    if (project.coverKey && project.coverKey !== '__custom__' && !project.fileKeys.includes(project.coverKey)) {
-      project.coverKey = null;
-    }
-    return true;
-  });
-  if (projectsChanged || dissolved.length) saveCustomProjects();
-
   // Contadores das pastas conectadas
   state.folders.forEach(folder => {
     folder.count = state.models.filter(m => m.folderId === folder.id).length;
@@ -3579,12 +3269,6 @@ async function removeModelsFromLibrary(removed) {
     const next = nextModalId && (state.currentDisplayItems || []).find(it => it.id === nextModalId);
     if (next) openViewerModal(next);
     else closeViewerModal();
-  }
-
-  if (dissolved.length === 1) {
-    showToast(`O projeto "${dissolved[0]}" ficou com um arquivo só e foi desagrupado.`, 'info');
-  } else if (dissolved.length > 1) {
-    showToast(`${dissolved.length} projetos ficaram com um arquivo só e foram desagrupados.`, 'info');
   }
 }
 
@@ -3626,7 +3310,7 @@ async function keepOnlyThisCopy(model) {
  */
 function trashModalItem() {
   const item = state.modalItem;
-  if (!item || item.isProject) return;
+  if (!item) return;
   trashModels([item]);
 }
 
@@ -3728,22 +3412,16 @@ function isModelInMoveTarget(model, folderId, subPath) {
 }
 
 /**
- * Converte os itens da galeria em arquivos: um projeto leva todas as suas peças
+ * Itens da galeria que vão ser movidos, sem repetir o mesmo arquivo
  */
 function resolveMoveModels(items) {
   const seen = new Set();
   const out = [];
-  (items || []).forEach(item => {
-    if (!item) return;
-    const parts = item.isProject
-      ? ((item.parts && item.parts.length) ? item.parts : [item.primaryPart])
-      : [item];
-    parts.forEach(m => {
-      if (m && !m.isProject && !seen.has(m.id)) {
-        seen.add(m.id);
-        out.push(m);
-      }
-    });
+  (items || []).forEach(m => {
+    if (m && !seen.has(m.id)) {
+      seen.add(m.id);
+      out.push(m);
+    }
   });
   return out;
 }
@@ -3752,7 +3430,6 @@ function resolveMoveModels(items) {
  * Atualiza o modelo em memória depois que o arquivo mudou de lugar no disco
  */
 function applyModelMove(model, folder, subPath, res) {
-  const oldName = model.name;
   const oldFavRef = { folderName: model.folderName, path: model.path, name: model.name };
   const newName = res.newName || model.name;
 
@@ -3775,22 +3452,6 @@ function applyModelMove(model, folder, subPath, res) {
     removeFileFavorite(favs, oldFavRef);
     addFileFavorite(favs, model);
     saveFavorites(favs);
-  }
-
-  if (newName !== oldName) {
-    // Nome ganhou um número para não sobrescrever: projeto acompanha o arquivo
-    let projectsChanged = false;
-    (state.customProjects || []).forEach(project => {
-      if (project.fileKeys.includes(oldName) && !project.fileKeys.includes(newName)) {
-        project.fileKeys.push(newName);
-        projectsChanged = true;
-      }
-      if (project.coverKey === oldName) {
-        project.coverKey = newName;
-        projectsChanged = true;
-      }
-    });
-    if (projectsChanged) saveCustomProjects();
   }
 
   if (model.thumbnailUrl) {
@@ -3874,7 +3535,7 @@ function reportMoveFailures(skipped, failed) {
 }
 
 /**
- * Move os itens (arquivos ou projetos) para uma pasta conectada ou subpasta dela.
+ * Move os arquivos para uma pasta conectada ou subpasta dela.
  * Nada é sobrescrito: com nome repetido, a pessoa escolhe entre manter os dois ou pular.
  */
 async function moveModels(items, folderId, subPath = '') {
@@ -4104,18 +3765,13 @@ function openMovePicker(items) {
 
   movePicker = { items, models, expanded: new Set(), selectedKey: null, currentKey, query: '', creating: false };
 
-  const project = items.length === 1 && items[0] && items[0].isProject ? items[0] : null;
   const titleEl = document.getElementById('moveModalTitle');
   const subEl = document.getElementById('moveModalSub');
   if (titleEl) {
-    titleEl.textContent = project
-      ? `Mover o projeto para…`
-      : (models.length === 1 ? 'Mover arquivo para…' : `Mover ${models.length} arquivos para…`);
+    titleEl.textContent = models.length === 1 ? 'Mover arquivo para…' : `Mover ${models.length} arquivos para…`;
   }
   if (subEl) {
-    subEl.textContent = project
-      ? `${project.name} (${models.length} arquivo${models.length === 1 ? '' : 's'})`
-      : (models.length === 1 ? models[0].name : `${models[0].name} e mais ${models.length - 1}`);
+    subEl.textContent = models.length === 1 ? models[0].name : `${models[0].name} e mais ${models.length - 1}`;
   }
 
   const search = document.getElementById('moveSearchInput');
@@ -4421,15 +4077,9 @@ function setupModelDraggable(element, getModelFn) {
   element.addEventListener('pointerdown', async () => {
     const model = typeof getModelFn === 'function' ? getModelFn() : getModelFn;
     if (!model) return;
-    let target = model;
-    if (model.isProject && (model.primaryPart || (model.parts && model.parts.length > 0))) {
-      target = (state.activePlate && state.activePlate.model && !state.activePlate.isCustomCover)
-        ? state.activePlate.model
-        : (model.primaryPart || model.parts[0]);
-    }
-    if (target && !target.file && target.handle && typeof target.handle.getFile === 'function') {
+    if (!model.file && model.handle && typeof model.handle.getFile === 'function') {
       try {
-        target.file = await target.handle.getFile();
+        model.file = await model.handle.getFile();
       } catch (_) {}
     }
   });
@@ -4438,30 +4088,23 @@ function setupModelDraggable(element, getModelFn) {
     const model = typeof getModelFn === 'function' ? getModelFn() : getModelFn;
     if (!model) return;
 
-    let target = model;
-    if (model.isProject && (model.primaryPart || (model.parts && model.parts.length > 0))) {
-      target = (state.activePlate && state.activePlate.model && !state.activePlate.isCustomCover)
-        ? state.activePlate.model
-        : (model.primaryPart || model.parts[0]);
-    }
-
-    const file = target ? target.file : null;
-    const fileName = (target && target.name) || (file && file.name) || 'modelo_3d.3mf';
-    const fullPath = (target && target.fullDiskPath) || (target && target.fullFolderDirectory ? `${target.fullFolderDirectory}${target.name}` : '');
+    const file = model.file || null;
+    const fileName = model.name || (file && file.name) || 'modelo_3d.3mf';
+    const fullPath = model.fullDiskPath || (model.fullFolderDirectory ? `${model.fullFolderDirectory}${model.name}` : '');
 
     element.classList.add('is-dragging');
     e.dataTransfer.effectAllowed = 'copyMove';
 
-    // Soltar numa pasta da barra lateral move o arquivo (ou projeto) para ela
+    // Soltar numa pasta da barra lateral move o arquivo para ela
     startMoveDrag(model);
 
     if (file) {
-      if (!target._blobUrl) {
+      if (!model._blobUrl) {
         if (file instanceof Blob) {
-          target._blobUrl = URL.createObjectURL(file);
+          model._blobUrl = URL.createObjectURL(file);
         }
       }
-      const blobUrl = target._blobUrl;
+      const blobUrl = model._blobUrl;
 
       // 1. DownloadURL nativo do Chromium para arrastar para a janela do fatiador ou Windows Explorer
       if (blobUrl) {
@@ -4564,27 +4207,16 @@ function getSlicerButtonConfig(model = null) {
   };
 }
 
-/**
- * Arquivo que o botão do fatiador abre (peça principal no caso de projeto)
- */
-function getSlicerTargetModel(model) {
-  if (!model) return null;
-  if (model.isProject) return model.primaryPart || (model.parts && model.parts[0]) || null;
-  return model;
-}
-
 /** Chave estável do arquivo para lembrar o último fatiador usado nele */
 function getSlicerFileKey(model) {
-  if (model && model.slicerKey) return model.slicerKey;
-  const target = getSlicerTargetModel(model);
-  if (!target) return '';
-  return `${target.folderName || ''}/${(target.path || target.name || '').replace(/\\/g, '/')}`.toLowerCase();
+  if (!model) return '';
+  if (model.slicerKey) return model.slicerKey;
+  return `${model.folderName || ''}/${(model.path || model.name || '').replace(/\\/g, '/')}`.toLowerCase();
 }
 
+/** Arquivo que está aberto no visualizador */
 function getModalSlicerTarget() {
-  return (state.activePlate && state.activePlate.model && !state.activePlate.isCustomCover ? state.activePlate.model : null)
-    || (state.activeProject ? (state.activeProject.primaryPart || (state.activeProject.parts && state.activeProject.parts[0])) : null)
-    || state.activeModel;
+  return state.activeModel;
 }
 
 /** Atualiza o nome do fatiador nos botões dos cards e do visualizador */
@@ -4605,25 +4237,11 @@ function refreshSlicerLabels() {
 }
 
 /**
- * Resolve o arquivo real (peça principal de um projeto) e o caminho completo dele no disco
+ * Resolve o caminho completo do arquivo no disco
  */
-async function resolveSlicerTarget(model) {
-  if (!model) return { targetModel: null, fullPath: null };
-
-  // 1. Resolver o modelo real caso seja um Projeto consolidado
-  let targetModel = model;
-  if (model.isProject) {
-    if (state.activePlate && state.activePlate.model && !state.activePlate.isCustomCover) {
-      targetModel = state.activePlate.model;
-    } else if (model.primaryPart) {
-      targetModel = model.primaryPart;
-    } else if (model.parts && model.parts.length > 0) {
-      targetModel = model.parts[0];
-    }
-  }
+async function resolveSlicerTarget(targetModel) {
   if (!targetModel) return { targetModel: null, fullPath: null };
 
-  // 2. Resolver o caminho completo do arquivo no disco
   const folderName = targetModel.folderName || '';
   const relPath = (targetModel.path || targetModel.name).replace(/\//g, '\\');
 
@@ -4769,61 +4387,6 @@ async function openModelInSlicer(model, buttonEl, slicerId) {
 }
 
 /**
- * Salva os projetos customizados definidos pelo usuário no localStorage
- */
-function saveCustomProjects() {
-  try {
-    localStorage.setItem('antigravity_custom_projects', JSON.stringify(state.customProjects));
-  } catch (e) {
-    console.warn('Erro ao salvar projetos customizados:', e);
-  }
-}
-
-/**
- * Aplica os projetos manuais criados pelo usuário sobre a lista de modelos.
- * ZERO Falsos Positivos:
- * - Apenas os arquivos que o usuário agrupou explicitamente são combinados em projetos.
- * - Todos os demais modelos permanecem 100% individuais e intactos.
- */
-function applyCustomProjects(rawModels) {
-  if (!state.customProjects || state.customProjects.length === 0) {
-    return rawModels;
-  }
-
-  const assignedModelIds = new Set();
-  const resultItems = [];
-
-  for (const project of state.customProjects) {
-    const projectParts = rawModels.filter(m => {
-      if (assignedModelIds.has(m.id)) return false;
-      const isMatch = project.fileKeys.some(key => 
-        m.name === key || m.path === key || (m.path && m.path.endsWith('/' + key))
-      );
-      return isMatch;
-    });
-
-    if (projectParts.length > 0) {
-      projectParts.forEach(p => assignedModelIds.add(p.id));
-      const projEntity = createProjectEntity(project.name, projectParts, project.id, project.coverKey, project.customCoverUrl);
-      projEntity.customProjectId = project.id;
-      if (project.createdAt && project.createdAt > (projEntity.lastModified || 0)) {
-        projEntity.lastModified = project.createdAt;
-      }
-      resultItems.push(projEntity);
-    }
-  }
-
-  // Manter todos os modelos não associados a nenhum projeto como itens avulsos normais
-  for (const model of rawModels) {
-    if (!assignedModelIds.has(model.id)) {
-      resultItems.push(model);
-    }
-  }
-
-  return resultItems;
-}
-
-/**
  * Ativa ou desativa o modo de seleção múltipla na galeria
  */
 function setSelectionMode(active) {
@@ -4879,13 +4442,11 @@ function toggleModelSelection(modelId) {
 }
 
 /**
- * Verifica se todos os modelos visíveis que podem ser selecionados já estão selecionados
+ * Verifica se todos os modelos visíveis já estão selecionados
  */
 function areAllVisibleSelected() {
   if (!state.currentDisplayItems || state.currentDisplayItems.length === 0) return false;
-  const selectable = state.currentDisplayItems.filter(item => !item.isProject);
-  if (selectable.length === 0) return false;
-  return selectable.every(item => state.selectedModelIds.has(item.id));
+  return state.currentDisplayItems.every(item => state.selectedModelIds.has(item.id));
 }
 
 /**
@@ -4893,15 +4454,9 @@ function areAllVisibleSelected() {
  */
 function toggleSelectAllVisible() {
   if (!state.currentDisplayItems || state.currentDisplayItems.length === 0) return;
-  const selectable = state.currentDisplayItems.filter(item => !item.isProject);
-  if (selectable.length === 0) {
-    showToast('Nenhum arquivo avulso disponível para seleção.', 'info');
-    return;
-  }
+  const selectable = state.currentDisplayItems;
 
-  const allSelected = selectable.every(item => state.selectedModelIds.has(item.id));
-
-  if (allSelected) {
+  if (areAllVisibleSelected()) {
     // Desselecionar todos os visíveis
     selectable.forEach(item => {
       state.selectedModelIds.delete(item.id);
@@ -4982,407 +4537,10 @@ function updateSelectionBarUI() {
 }
 
 /**
- * Abre o modal para definir o nome e confirmar a criação do projeto
- */
-function openCreateProjectModal() {
-  if (state.selectedModelIds.size < 2) {
-    showToast('Selecione pelo menos 2 arquivos para criar um projeto.', 'warning');
-    return;
-  }
-
-  const selectedModels = state.models.filter(m => state.selectedModelIds.has(m.id));
-  if (selectedModels.length === 0) return;
-
-  // Sugerir nome baseado na busca ativa ou prefixo comum
-  let suggestedName = '';
-  if (state.searchQuery && state.searchQuery.length >= 2) {
-    suggestedName = state.searchQuery.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-  } else {
-    const first = selectedModels[0].name;
-    const match = first.match(/^([A-Za-z0-9\s]{4,})[_-]/);
-    if (match) {
-      suggestedName = match[1].replace(/_/g, ' ').trim();
-    } else {
-      const dot = first.lastIndexOf('.');
-      suggestedName = dot !== -1 ? first.substring(0, dot) : first;
-    }
-  }
-
-  if (inputProjectName) {
-    inputProjectName.value = suggestedName;
-  }
-  if (projectModalCount) {
-    projectModalCount.textContent = `${selectedModels.length} arquivos`;
-  }
-  const totalSize = selectedModels.reduce((acc, m) => acc + (m.size || 0), 0);
-  if (projectModalSize) {
-    projectModalSize.textContent = formatBytes(totalSize);
-  }
-
-  if (projectModalPartsList) {
-    projectModalPartsList.innerHTML = '';
-    selectedModels.forEach(m => {
-      const row = document.createElement('div');
-      row.className = 'project-part-item';
-      row.innerHTML = `
-        <span>📄 ${escapeHtml(m.name)}</span>
-        <span style="color: var(--text-muted); font-size: 0.75rem;">${formatBytes(m.size)}</span>
-      `;
-      projectModalPartsList.appendChild(row);
-    });
-  }
-
-  // Inicializar e renderizar o seletor de capa do projeto
-  state.selectedCoverKey = null;
-  state.selectedCustomCoverUrl = null;
-  const fileInput = document.getElementById('inputCustomCoverFile');
-  if (fileInput) fileInput.value = '';
-
-  renderProjectCoverPicker(selectedModels);
-
-  if (createProjectModal) {
-    createProjectModal.style.removeProperty('display');
-    createProjectModal.classList.add('active');
-    setTimeout(() => {
-      if (inputProjectName) {
-        inputProjectName.focus();
-        inputProjectName.select();
-      }
-    }, 60);
-  }
-}
-
-/**
- * Adiciona e seleciona imediatamente uma foto personalizada para a capa do projeto
- */
-function addCustomCoverCardToPicker(customUrl, fileName) {
-  state.selectedCustomCoverUrl = customUrl;
-  state.selectedCoverKey = '__custom__';
-  const selectedModels = state.models.filter(m => state.selectedModelIds.has(m.id));
-  renderProjectCoverPicker(selectedModels);
-  if (projectCoverHint) {
-    projectCoverHint.textContent = `Capa selecionada: ${fileName || 'Foto personalizada'} 🖼️`;
-  }
-}
-
-/**
- * Renderiza o seletor interativo de miniaturas para a capa do projeto
- */
-function renderProjectCoverPicker(selectedModels) {
-  if (!projectCoverGrid) return;
-  projectCoverGrid.innerHTML = '';
-
-  const modelsWithThumbs = selectedModels.filter(m => m.thumbnailUrl);
-
-  // Se ainda não definiu a capa e não há foto própria carregada, adota a primeira peça com miniatura
-  if (!state.selectedCoverKey) {
-    state.selectedCoverKey = modelsWithThumbs.length > 0 ? modelsWithThumbs[0].name : selectedModels[0].name;
-  }
-
-  if (projectCoverHint) {
-    if (state.selectedCoverKey === '__custom__' && state.selectedCustomCoverUrl) {
-      projectCoverHint.textContent = 'Capa selecionada: Foto personalizada 🖼️';
-    } else {
-      const count = modelsWithThumbs.length;
-      if (count > 0) {
-        projectCoverHint.textContent = `${count} miniatura${count === 1 ? '' : 's'} pronta${count === 1 ? '' : 's'}`;
-      } else {
-        projectCoverHint.textContent = 'Verificando miniaturas dos arquivos...';
-      }
-    }
-  }
-
-  // 1. Se o usuário enviou uma foto personalizada, exibe como primeiro card de capa
-  if (state.selectedCustomCoverUrl) {
-    const isCustomSel = state.selectedCoverKey === '__custom__';
-    const customCard = document.createElement('div');
-    customCard.className = `project-cover-card ${isCustomSel ? 'selected' : ''}`;
-    customCard.dataset.modelName = '__custom__';
-    customCard.title = 'Foto própria carregada para a capa';
-    customCard.innerHTML = `
-      <img class="project-cover-img" src="${state.selectedCustomCoverUrl}" alt="Foto Própria" loading="lazy">
-      <span class="project-cover-badge">✓ Própria</span>
-      <span class="project-cover-name">Foto Própria</span>
-    `;
-    customCard.addEventListener('click', () => {
-      state.selectedCoverKey = '__custom__';
-      projectCoverGrid.querySelectorAll('.project-cover-card').forEach(c => {
-        c.classList.toggle('selected', c.dataset.modelName === '__custom__');
-      });
-      if (projectCoverHint) {
-        projectCoverHint.textContent = 'Capa selecionada: Foto personalizada 🖼️';
-      }
-    });
-    projectCoverGrid.appendChild(customCard);
-  }
-
-  if (modelsWithThumbs.length === 0 && !state.selectedCustomCoverUrl) {
-    projectCoverGrid.innerHTML = `
-      <div class="project-cover-empty">
-        <span>🔍 Verificando miniaturas nos 3MFs selecionados...</span>
-      </div>
-    `;
-  }
-
-  // Verificar e carregar sob demanda miniaturas de 3MFs que ainda não foram extraídas
-  selectedModels.forEach(m => {
-    if (!m.thumbnailUrl && (m.type === '3mf' || m.type === 'stl')) {
-      loadModelOnDemand(m).then(loaded => {
-        if (loaded && loaded.thumbnailUrl) {
-          renderProjectCoverPicker(selectedModels);
-        }
-      });
-    }
-
-    if (!m.thumbnailUrl) return;
-
-    let cleanName = m.name;
-    const dot = cleanName.lastIndexOf('.');
-    if (dot !== -1) cleanName = cleanName.substring(0, dot);
-    const sep = Math.max(cleanName.lastIndexOf('_'), cleanName.lastIndexOf('-'), cleanName.lastIndexOf(' '));
-    if (sep !== -1 && sep < cleanName.length - 2) {
-      cleanName = cleanName.substring(sep + 1);
-    }
-
-    const card = document.createElement('div');
-    const isSelected = state.selectedCoverKey === m.name;
-    card.className = `project-cover-card ${isSelected ? 'selected' : ''}`;
-    card.dataset.modelName = m.name;
-    card.title = `Usar "${m.name}" como capa do projeto`;
-
-    card.innerHTML = `
-      <img class="project-cover-img" src="${m.thumbnailUrl}" alt="${escapeHtml(m.name)}" loading="lazy">
-      <span class="project-cover-badge">✓ Capa</span>
-      <span class="project-cover-name">${escapeHtml(cleanName)}</span>
-    `;
-
-    card.addEventListener('click', () => {
-      state.selectedCoverKey = m.name;
-      projectCoverGrid.querySelectorAll('.project-cover-card').forEach(c => {
-        c.classList.toggle('selected', c.dataset.modelName === m.name);
-      });
-      if (projectCoverHint) {
-        projectCoverHint.textContent = `Capa selecionada: ${escapeHtml(m.name)}`;
-      }
-    });
-
-    projectCoverGrid.appendChild(card);
-  });
-
-  const emptyMsg = projectCoverGrid.querySelector('.project-cover-empty');
-  if (emptyMsg && projectCoverGrid.querySelectorAll('.project-cover-card').length > 0) {
-    emptyMsg.remove();
-  }
-}
-
-function closeCreateProjectModal() {
-  if (createProjectModal) {
-    createProjectModal.classList.remove('active');
-    createProjectModal.style.removeProperty('display');
-  }
-}
-
-/**
- * Confirma a criação do projeto com as peças selecionadas e capa definida
- */
-function confirmCreateProject() {
-  const name = inputProjectName ? inputProjectName.value.trim() : '';
-  if (!name) {
-    showToast('Por favor, informe um nome para o projeto.', 'warning');
-    if (inputProjectName) inputProjectName.focus();
-    return;
-  }
-
-  const selectedModels = state.models.filter(m => state.selectedModelIds.has(m.id));
-  if (selectedModels.length < 2) {
-    showToast('É necessário pelo menos 2 arquivos selecionados.', 'warning');
-    return;
-  }
-
-  // Definir capa selecionada pelo usuário ou primeira peça que possua miniatura
-  const isCustom = state.selectedCoverKey === '__custom__' && !!state.selectedCustomCoverUrl;
-  const chosenCover = isCustom ? '__custom__' : (state.selectedCoverKey || (selectedModels.find(m => m.thumbnailUrl)?.name) || selectedModels[0].name);
-
-  const newProject = {
-    id: 'proj-' + Date.now(),
-    name: name,
-    fileKeys: selectedModels.map(m => m.name),
-    coverKey: chosenCover,
-    customCoverUrl: isCustom ? state.selectedCustomCoverUrl : null,
-    folderName: selectedModels[0].folderName || '',
-    createdAt: Date.now()
-  };
-
-  state.customProjects.push(newProject);
-  saveCustomProjects();
-
-  closeCreateProjectModal();
-  clearSelection();
-
-  updateStatsBadge();
-  renderGallery();
-
-  showToast(`Projeto "${name}" com ${selectedModels.length} mesas criado com sucesso! 📦`, 'success');
-}
-
-/**
- * Desfaz um projeto customizado e retorna os arquivos à galeria
- */
-function dissolveCustomProject(projectId) {
-  const projIdx = state.customProjects.findIndex(p => p.id === projectId);
-  if (projIdx === -1) return;
-
-  const proj = state.customProjects[projIdx];
-  const confirmMsg = `Deseja desagrupar o projeto "${proj.name}"? Os ${proj.fileKeys.length} arquivos voltarão a ser exibidos individualmente na galeria.`;
-  if (!confirm(confirmMsg)) {
-    return;
-  }
-
-  state.customProjects.splice(projIdx, 1);
-  saveCustomProjects();
-
-  updateStatsBadge();
-  renderGallery();
-
-  showToast(`Projeto "${proj.name}" foi desagrupado. Os arquivos voltaram ao estado avulso.`, 'info');
-}
-
-/**
- * Cria a entidade sintética de Projeto Multi-peças / Multi-mesas
- */
-function createProjectEntity(projectName, parts, groupKey, coverKey = null, customCoverUrl = null) {
-  parts.sort((a, b) => compareModelNames(a.name, b.name));
-
-  const totalSize = parts.reduce((sum, p) => sum + (p.size || 0), 0);
-
-  // 1. Prioridade para a capa escolhida pelo usuário (coverKey)
-  let primaryPart = null;
-  if (coverKey && coverKey !== '__custom__') {
-    primaryPart = parts.find(p => p.name === coverKey || p.id === coverKey);
-  }
-  // 2. Se a peça escolhida não tiver miniatura ou se nenhuma foi escolhida, procura qualquer peça que possua miniatura
-  if (!primaryPart || !primaryPart.thumbnailUrl) {
-    primaryPart = parts.find(p => p.thumbnailUrl) || primaryPart || parts[0];
-  }
-
-  let coverThumbnail = customCoverUrl || null;
-  if (!coverThumbnail) {
-    coverThumbnail = primaryPart?.thumbnailUrl || (parts.find(p => p.thumbnailUrl)?.thumbnailUrl) || '';
-  }
-
-  const hasFavorite = parts.some(p => p.isFavorite);
-  const isDuplicate = parts.some(p => p.isDuplicate);
-
-  const types = new Set(parts.map(p => p.type));
-  const dominantType = types.size === 1 ? Array.from(types)[0] : 'misto';
-
-  // Detectar prefixo comum entre as peças para que o nome de cada mesa fique limpo e legível (ex: "base_a", "head")
-  let commonPrefix = '';
-  if (parts.length > 1) {
-    const firstClean = parts[0].name.replace(/\.[^/.]+$/, '');
-    let prefixCandidate = '';
-    for (let i = 0; i < firstClean.length; i++) {
-      const char = firstClean[i];
-      if (parts.every(p => p.name.toLowerCase().startsWith((prefixCandidate + char).toLowerCase()))) {
-        prefixCandidate += char;
-      } else {
-        break;
-      }
-    }
-    const sepIdx = Math.max(prefixCandidate.lastIndexOf('_'), prefixCandidate.lastIndexOf('-'), prefixCandidate.lastIndexOf(' '));
-    if (sepIdx >= 2) {
-      commonPrefix = prefixCandidate.substring(0, sepIdx + 1);
-    } else if (prefixCandidate.length >= 4) {
-      commonPrefix = prefixCandidate;
-    }
-  }
-
-  const plates = [];
-  if (customCoverUrl) {
-    plates.push({
-      id: 0,
-      name: '⭐ Capa',
-      fullName: 'Capa do Projeto',
-      imageUrl: customCoverUrl,
-      isCustomCover: true,
-      isProjectPart: true,
-      model: primaryPart || parts[0]
-    });
-  }
-
-  parts.forEach((part, idx) => {
-    let cleanLabel = part.name;
-    const dotIdx = cleanLabel.lastIndexOf('.');
-    if (dotIdx !== -1) cleanLabel = cleanLabel.substring(0, dotIdx);
-
-    if (commonPrefix && cleanLabel.toLowerCase().startsWith(commonPrefix.toLowerCase()) && cleanLabel.length > commonPrefix.length) {
-      cleanLabel = cleanLabel.substring(commonPrefix.length);
-    }
-
-    const normProj = projectName.replace(/[\s_-]+/g, '').toLowerCase();
-    const normClean = cleanLabel.replace(/[\s_-]+/g, '').toLowerCase();
-    if (normClean.startsWith(normProj) && cleanLabel.length > projectName.length) {
-      cleanLabel = cleanLabel.substring(projectName.length).replace(/^[_\-\s]+/, '');
-    }
-
-    plates.push({
-      id: idx + 1,
-      name: cleanLabel || part.name,
-      fullName: part.name,
-      imageUrl: part.thumbnailUrl,
-      model: part,
-      isProjectPart: true
-    });
-  });
-
-  const projectLastMod = parts.reduce((max, p) => Math.max(max, p.lastModified || (p.file && p.file.lastModified) || 0), 0) || Date.now();
-
-  const projEntity = {
-    id: `proj-${encodeURIComponent(groupKey).replace(/[^a-zA-Z0-9]/g, '_')}`,
-    isProject: true,
-    name: projectName,
-    folderId: primaryPart.folderId,
-    folderName: primaryPart.folderName,
-    path: primaryPart.path,
-    fullDiskPath: primaryPart.fullDiskPath,
-    fullFolderDirectory: primaryPart.fullFolderDirectory,
-    size: totalSize,
-    lastModified: projectLastMod,
-    type: dominantType,
-    typesList: Array.from(types),
-    parts: parts,
-    partsCount: parts.length,
-    isFavorite: hasFavorite,
-    isDuplicate: isDuplicate,
-    thumbnailUrl: coverThumbnail,
-    customCoverUrl: customCoverUrl || null,
-    plates: plates,
-    primaryPart: primaryPart,
-    coverKey: coverKey || (primaryPart ? primaryPart.name : ''),
-    metadata: primaryPart.metadata,
-    slicerData: primaryPart.slicerData
-  };
-
-  parts.forEach(p => {
-    p.parentProject = projEntity;
-  });
-
-  return projEntity;
-}
-
-/**
  * Retorna o nome da pasta pai imediata e o caminho da pasta para exibição no card
  */
 function getModelParentFolderInfo(model) {
   if (!model) return { name: '', full: '' };
-
-  if (model.isProject) {
-    const firstPart = (model.parts && model.parts[0]) || model.primaryPart;
-    if (firstPart) {
-      return getModelParentFolderInfo(firstPart);
-    }
-    return { name: model.folderName || 'Projeto', full: model.folderName || 'Projeto' };
-  }
 
   const folderName = (model.folderName || '').trim().replace(/[\\/]+$/, '');
   let relPath = (model.path || model.name || '').replace(/\\/g, '/').trim();
@@ -5406,132 +4564,15 @@ function getModelParentFolderInfo(model) {
 }
 
 /**
- * Cria e configura um elemento de card para um modelo 3D ou Projeto
+ * Cria e configura um elemento de card para um modelo 3D
  */
 function createModelCard(model) {
   const card = document.createElement('div');
-  card.className = `model-card ${model.isProject ? 'is-project' : ''}`;
+  card.className = 'model-card';
   card.dataset.id = model.id;
 
   const slicerBtn = getSlicerButtonConfig(model);
   const slicerKey = getSlicerFileKey(model);
-
-  // Renderização especializada para Card de Projeto Multi-peças
-  if (model.isProject) {
-    const formattedSize = formatBytes(model.size);
-    const folderInfo = getModelParentFolderInfo(model);
-
-    card.innerHTML = `
-      <div class="card-thumbnail-wrapper">
-        <span class="badge-format project">
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
-            <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
-            <line x1="12" y1="22.08" x2="12" y2="12"></line>
-          </svg>
-          PROJETO
-        </span>
-        <span class="card-project-parts-badge">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
-          ${model.partsCount} mesas
-        </span>
-        <button class="btn-dissolve-card" title="Desagrupar este projeto (voltar a exibir peças separadas)" aria-label="Desagrupar projeto" type="button">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
-            <path d="M7 11V7a5 5 0 0 1 9.9-1"></path>
-          </svg>
-        </button>
-        <button class="btn-favorite ${model.isFavorite ? 'active' : ''}" title="${model.isFavorite ? 'Remover dos favoritos' : 'Favoritar projeto'}" aria-label="Favoritar projeto" type="button">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="${model.isFavorite ? '#fbbf24' : 'none'}" stroke="${model.isFavorite ? '#fbbf24' : 'currentColor'}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
-          </svg>
-        </button>
-        ${model.thumbnailUrl 
-          ? `<img class="card-thumbnail" src="${model.thumbnailUrl}" alt="${escapeHtml(model.name)}" loading="lazy">` 
-          : `
-            <div class="thumb-loader">
-              <div class="spinner"></div>
-              <span>Carregando projeto...</span>
-            </div>
-          `
-        }
-      </div>
-      <div class="card-body">
-        <div class="card-title-row">
-          <div class="card-title" title="${escapeHtml(model.name)} (${model.partsCount} arquivos)" data-fullname="${escapeHtml(model.name)}">
-            <span class="card-title-base card-title-project">${escapeHtml(model.name)}</span>
-          </div>
-          <button class="btn-card-rename" title="Editar nome e foto de capa do projeto" aria-label="Editar projeto" type="button">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
-            </svg>
-          </button>
-        </div>
-        <div class="card-meta">
-          <span>${formattedSize} total</span>
-          <span class="card-dimensions" style="color: #c084fc; font-weight: 600;">${model.partsCount} arquivos 3D</span>
-        </div>
-        <div class="card-footer-actions">
-          <div class="card-folder-info" title="Pasta: ${escapeHtml(folderInfo.full)}">
-            <span class="card-folder-icon">📁</span>
-            <span class="card-folder-name">${escapeHtml(folderInfo.name)}</span>
-          </div>
-          ${slicerSplitHtml(slicerBtn, '', slicerKey)}
-        </div>
-      </div>
-    `;
-
-    setupModelDraggable(card, () => model);
-
-    const btnFavorite = card.querySelector('.btn-favorite');
-    if (btnFavorite) {
-      btnFavorite.addEventListener('click', (e) => {
-        e.stopPropagation();
-        toggleFavorite(model);
-      });
-    }
-
-    const btnSlicer = card.querySelector('.btn-open-slicer');
-    if (btnSlicer) {
-      setupModelDraggable(btnSlicer, () => model.primaryPart || model.parts[0]);
-      btnSlicer.addEventListener('click', (e) => {
-        e.stopPropagation();
-        openModelInSlicer(model.primaryPart || model.parts[0], btnSlicer);
-      });
-      wireSlicerCaret(card.querySelector('.btn-slicer-caret'), () => model.primaryPart || model.parts[0], btnSlicer);
-    }
-
-    const btnDissolve = card.querySelector('.btn-dissolve-card');
-    if (btnDissolve) {
-      btnDissolve.addEventListener('click', (e) => {
-        e.stopPropagation();
-        dissolveCustomProject(model.customProjectId || model.id);
-      });
-    }
-
-    const btnEditProject = card.querySelector('.btn-card-rename');
-    if (btnEditProject) {
-      btnEditProject.addEventListener('click', (e) => {
-        e.stopPropagation();
-        openEditCardModal(model);
-      });
-    }
-
-    const projTitleEl = card.querySelector('.card-title');
-    if (projTitleEl) {
-      projTitleEl.addEventListener('dblclick', (e) => {
-        e.stopPropagation();
-        openEditCardModal(model);
-      });
-    }
-
-    card.addEventListener('click', (e) => {
-      if (e.target.closest('.btn-favorite') || e.target.closest('.btn-open-slicer') || e.target.closest('.btn-slicer-caret') || e.target.closest('.btn-dissolve-card') || e.target.closest('.btn-card-rename')) return;
-      openViewerModal(model);
-    });
-
-    return card;
-  }
 
   const formattedSize = formatBytes(model.size);
   const badgeClass = model.type === 'stl' ? 'stl format-stl' : '3mf format-3mf';
@@ -5845,14 +4886,9 @@ function renderGallery() {
     return;
   }
 
-  const allItems = applyCustomProjects(state.models);
-
-  const filteredUnsorted = allItems
+  const filteredUnsorted = state.models
     .filter(item => {
-      // 1. Seção da Barra Lateral (Todos, Projetos, Favoritos, Duplicados)
-      if (state.activeSection === 'projects' && !item.isProject) {
-        return false;
-      }
+      // 1. Seção da Barra Lateral (Todos, Favoritos, Duplicados)
       if (state.activeSection === 'favorites' && !item.isFavorite) {
         return false;
       }
@@ -5861,33 +4897,18 @@ function renderGallery() {
       }
 
       // 1.5 Filtro de Pasta Conectada / Subpasta
-      if (state.activeFolderId) {
-        const matchesFolder = item.isProject
-          ? item.parts && item.parts.some(p => isModelInFolderFilter(p, state.activeFolderId, state.activeSubfolderPath))
-          : isModelInFolderFilter(item, state.activeFolderId, state.activeSubfolderPath);
-        if (!matchesFolder) return false;
+      if (state.activeFolderId && !isModelInFolderFilter(item, state.activeFolderId, state.activeSubfolderPath)) {
+        return false;
       }
 
       // 2. Filtro de Formatos (.STL / .3MF)
-      if (state.activeFilter !== 'all') {
-        if (item.isProject) {
-          if (!item.typesList.includes(state.activeFilter)) return false;
-        } else if (item.type !== state.activeFilter) {
-          return false;
-        }
+      if (state.activeFilter !== 'all' && item.type !== state.activeFilter) {
+        return false;
       }
 
       // 3. Busca por Nome
-      if (state.searchQuery) {
-        if (item.isProject) {
-          const matchProject = item.name.toLowerCase().includes(state.searchQuery);
-          const matchPart = item.parts && item.parts.some(p => p.name.toLowerCase().includes(state.searchQuery));
-          if (!matchProject && !matchPart) return false;
-        } else {
-          if (!item.name.toLowerCase().includes(state.searchQuery)) {
-            return false;
-          }
-        }
+      if (state.searchQuery && !item.name.toLowerCase().includes(state.searchQuery)) {
+        return false;
       }
 
       return true;
@@ -5928,8 +4949,6 @@ function renderGallery() {
         ? `${activeFolder ? activeFolder.name + '/' : ''}${state.activeSubfolderPath}`
         : (activeFolder ? activeFolder.name : 'pasta selecionada');
       emptyMessage = `Nenhum modelo encontrado na pasta "${escapeHtml(folderDisplayName)}".`;
-    } else if (state.activeSection === 'projects') {
-      emptyMessage = 'Nenhum projeto criado ainda. Selecione arquivos múltiplos na galeria e clique em "Criar Projeto" para agrupá-los!';
     } else if (state.activeSection === 'favorites') {
       emptyMessage = 'Nenhum modelo favoritado ainda. Clique na estrela ⭐ de qualquer modelo para favoritá-lo!';
     } else if (state.activeSection === 'duplicates') {
@@ -6057,40 +5076,6 @@ async function loadModelOnDemand(model) {
 
   if (model.loadingThumbnail) {
     return model;
-  }
-
-  // Se for uma entidade de projeto consolidado, resolve a miniatura através de sua peça principal ou primeira disponível com capa
-  if (model.isProject) {
-    const targetPart = (model.primaryPart && model.primaryPart.thumbnailUrl)
-      ? model.primaryPart
-      : (model.parts ? (model.parts.find(p => p.thumbnailUrl) || model.primaryPart || model.parts[0]) : null);
-    if (!targetPart) return model;
-
-    if (targetPart.thumbnailUrl) {
-      model.thumbnailUrl = targetPart.thumbnailUrl;
-      model.metadata = targetPart.metadata;
-      model.slicerData = targetPart.slicerData;
-      if (model.plates && model.plates.length > 0 && !model.plates[0].imageUrl) {
-        model.plates[0].imageUrl = targetPart.thumbnailUrl;
-      }
-      updateCardThumbnail(model);
-      return model;
-    }
-
-    model.loadingThumbnail = true;
-    return loadModelOnDemand(targetPart).then(loadedPart => {
-      model.loadingThumbnail = false;
-      if (loadedPart && loadedPart.thumbnailUrl) {
-        model.thumbnailUrl = loadedPart.thumbnailUrl;
-        model.metadata = loadedPart.metadata;
-        model.slicerData = loadedPart.slicerData;
-        if (model.plates && model.plates.length > 0 && !model.plates[0].imageUrl) {
-          model.plates[0].imageUrl = loadedPart.thumbnailUrl;
-        }
-      }
-      updateCardThumbnail(model);
-      return model;
-    });
   }
 
   // 1. Tentar recuperar instantaneamente do cache do IndexedDB
@@ -6335,16 +5320,6 @@ async function extractModelThumbnailAndMeta(model, forceExtractPlates = false) {
 function updateCardThumbnail(model) {
   const cards = document.querySelectorAll(`.model-card[data-id="${model.id}"]`);
   if (!cards || cards.length === 0) {
-    if (model.parentProject) {
-      if (!model.parentProject.thumbnailUrl && model.thumbnailUrl) {
-        model.parentProject.thumbnailUrl = model.thumbnailUrl;
-        if (model.parentProject.plates && model.parentProject.plates.length > 0) {
-          const matchingPlate = model.parentProject.plates.find(p => p.model && p.model.id === model.id);
-          if (matchingPlate) matchingPlate.imageUrl = model.thumbnailUrl;
-        }
-      }
-      updateCardThumbnail(model.parentProject);
-    }
     return;
   }
 
@@ -6409,18 +5384,6 @@ function updateCardThumbnail(model) {
       }
     }
   });
-
-  // Se este modelo pertence a um projeto pai, propagar miniatura para o card do projeto pai também
-  if (model.parentProject) {
-    if (!model.parentProject.thumbnailUrl && model.thumbnailUrl) {
-      model.parentProject.thumbnailUrl = model.thumbnailUrl;
-      if (model.parentProject.plates && model.parentProject.plates.length > 0) {
-        const matchingPlate = model.parentProject.plates.find(p => p.model && p.model.id === model.id);
-        if (matchingPlate) matchingPlate.imageUrl = model.thumbnailUrl;
-      }
-      updateCardThumbnail(model.parentProject);
-    }
-  }
 }
 
 function generatePlaceholderThumb(name, type) {
@@ -6444,12 +5407,11 @@ function generatePlaceholderThumb(name, type) {
  */
 function updateViewerModeSeg() {
   if (!viewerModeSeg) return;
-  const hasPlates = (state.activeProject && state.activeProject.plates && state.activeProject.plates.length > 0) ||
-                    (state.activeModel && state.activeModel.plates && state.activeModel.plates.length > 0);
+  const hasPlates = !!(state.activeModel && state.activeModel.plates && state.activeModel.plates.length > 0);
   const hasPhoto = hasPlates || !!(state.activeModel && state.activeModel.thumbnailUrl);
   viewerModeSeg.hidden = !hasPhoto;
   if (viewerSegPhotoLabel) {
-    viewerSegPhotoLabel.textContent = state.activeProject ? 'Foto' : (hasPlates ? 'Foto da mesa' : 'Miniatura');
+    viewerSegPhotoLabel.textContent = hasPlates ? 'Foto da mesa' : 'Miniatura';
   }
   const is3d = state.currentViewerMode === '3d';
   if (btnBackToPlate) btnBackToPlate.setAttribute('aria-pressed', String(!is3d));
@@ -6498,7 +5460,7 @@ function updateViewerPlateLabel(plate) {
     viewerPlateLabel.textContent = '';
     return;
   }
-  const name = plate.isCustomCover ? 'Capa do projeto' : (plate.isProjectPart ? (plate.name || '') : `Mesa ${plate.id}`);
+  const name = `Mesa ${plate.id}`;
   const bits = [name];
   if (plate.objectCount) bits.push(`${plate.objectCount} ${plate.objectCount === 1 ? 'peça' : 'peças'}`);
   if (plate.printTimeFormatted) bits.push(plate.printTimeFormatted);
@@ -6525,11 +5487,6 @@ function updateModalHeaderExtras() {
   const item = state.modalItem;
   if (!item) return;
 
-  if (btnModalTrash) {
-    // Projetos agrupam vários arquivos: a exclusão fica para os arquivos avulsos
-    btnModalTrash.style.display = item.isProject ? 'none' : '';
-  }
-
   if (btnModalFavorite) {
     const fav = !!item.isFavorite;
     btnModalFavorite.setAttribute('aria-pressed', String(fav));
@@ -6537,8 +5494,7 @@ function updateModalHeaderExtras() {
   }
 
   if (modalSlicedChip) {
-    const ref = item.isProject ? (item.primaryPart || (item.parts && item.parts[0])) : item;
-    modalSlicedChip.hidden = !(ref && ref.slicerData && ref.slicerData.isSliced);
+    modalSlicedChip.hidden = !(item.slicerData && item.slicerData.isSliced);
   }
 
   const items = state.currentDisplayItems || [];
@@ -6580,17 +5536,15 @@ function fillModalDetails(model) {
     }
   };
 
-  const isProject = !!model.isProject;
-  const ref = isProject ? (model.primaryPart || (model.parts && model.parts[0])) : model;
-  const meta = !isProject && ref ? ref.metadata : null;
+  const meta = model.metadata;
   const dims = meta && meta.dimensions;
   setRow('Dimensions', dims && (dims.x || dims.y || dims.z)
     ? `${Math.round(dims.x)} × ${Math.round(dims.y)} × ${Math.round(dims.z)} mm` : '');
   setRow('Triangles', meta && meta.triangleCount ? meta.triangleCount.toLocaleString('pt-BR') : '');
 
   // Tempo e filamento só aparecem aqui quando não há a seção Filamentos
-  const slicer = ref && ref.slicerData;
-  const hasFilamentSection = !!(ref && ref.extras && ref.extras.filaments && ref.extras.filaments.length);
+  const slicer = model.slicerData;
+  const hasFilamentSection = !!(model.extras && model.extras.filaments && model.extras.filaments.length);
   setRow('PrintTime', !hasFilamentSection && slicer && slicer.printTimeFormatted ? slicer.printTimeFormatted : '');
   setRow('Filament', !hasFilamentSection && slicer && slicer.filamentGrams
     ? `${slicer.filamentGrams} g${slicer.filamentType ? ' ' + slicer.filamentType : ''}` : '');
@@ -6638,9 +5592,7 @@ function colorDotsHtml(colors, max = 6) {
 }
 
 function getModelExtras(model) {
-  if (!model) return null;
-  const ref = model.isProject ? (model.primaryPart || (model.parts && model.parts[0])) : model;
-  return (ref && ref.extras) || null;
+  return (model && model.extras) || null;
 }
 
 /**
@@ -6648,8 +5600,7 @@ function getModelExtras(model) {
  */
 function fillModalExtras(model) {
   const extras = getModelExtras(model);
-  const ref = model && model.isProject ? (model.primaryPart || (model.parts && model.parts[0])) : model;
-  const show = (id, visible) => { const el = document.getElementById(id); if (el) el.hidden = !visible; };
+  const show =(id, visible) => { const el = document.getElementById(id); if (el) el.hidden = !visible; };
 
   // Autor e origem
   const hasAuthor = !!(extras && (extras.designer || extras.description || extras.license || extras.source));
@@ -6740,7 +5691,7 @@ function fillModalExtras(model) {
     }).join('') + (totalGrams > 0 && filaments.length > 1
       ? `<div class="modal-fil-bar">${filaments.map(f => `<i style="width:${(100 * (f.grams || 0) / totalGrams).toFixed(1)}%;background:${escapeHtml(f.color || '#5b6878')}"></i>`).join('')}</div>`
       : '') + (withStock ? '' : '<button type="button" class="modal-fil-stock-hint" data-open-filaments>Cadastre seus carretéis em <b>Filamentos</b> para ver se você tem essas cores.</button>');
-    const slicer = ref && ref.slicerData;
+    const slicer = model && model.slicerData;
     const parts = [];
     if (slicer && slicer.printTimeFormatted) parts.push(slicer.printTimeFormatted);
     if (totalGrams > 0) parts.push(`${Math.round(totalGrams).toLocaleString('pt-BR')} g`);
@@ -6772,7 +5723,6 @@ function renderModalAttachments(model, extras) {
   if (!items.length) return;
   document.getElementById('modalAttachCount').textContent = items.length;
 
-  const source = model && model.isProject ? (model.primaryPart || (model.parts && model.parts[0])) : model;
   const maxTiles = 10;
   items.slice(0, maxTiles).forEach((item, i) => {
     const tile = document.createElement('button');
@@ -6790,14 +5740,14 @@ function renderModalAttachments(model, extras) {
       tile.innerHTML = `<span class="modal-attach-ext">${escapeHtml((item.ext || 'arq').toUpperCase().slice(0, 4))}</span><small>${item.size ? formatBytes(item.size) : ''}</small>`;
     }
     tile.dataset.index = String(i);
-    tile.addEventListener('click', () => openModalAttachment(source, item));
+    tile.addEventListener('click', () => openModalAttachment(model, item));
     gridEl.appendChild(tile);
   });
 
   // Carrega as fotos sob demanda (só enquanto este modelo estiver aberto)
   const images = items.slice(0, maxTiles).filter(x => x.kind === 'image');
   if (images.length) {
-    loadAttachmentUrls(source, images).then(urls => {
+    loadAttachmentUrls(model, images).then(urls => {
       if (state.modalItem !== model) return;
       gridEl.querySelectorAll('.modal-attach-image').forEach(tile => {
         const item = items[parseInt(tile.dataset.index, 10)];
@@ -6888,8 +5838,7 @@ function setViewerMode(mode) {
   state.currentViewerMode = mode;
   if (modalCanvas && modalCanvas.parentElement) modalCanvas.parentElement.classList.toggle('is-3d', mode === '3d');
 
-  const hasPlates = (state.activeProject && state.activeProject.plates && state.activeProject.plates.length > 0) ||
-                    (state.activeModel && state.activeModel.plates && state.activeModel.plates.length > 0);
+  const hasPlates = !!(state.activeModel && state.activeModel.plates && state.activeModel.plates.length > 0);
 
   if (mode === 'plate') {
     // Modelo sem mesas: a "foto" é a miniatura do próprio arquivo
@@ -6911,9 +5860,7 @@ function setViewerMode(mode) {
 
     // Carregar a malha 3D da mesa atualmente selecionada
     if (state.activeModel) {
-      const isProjectPart = !!(state.activeProject || (state.activeModel && state.activeModel.parentProject));
-      const plateToLoad = isProjectPart ? 1 : (state.activePlateId || 1);
-      loadModelIntoModal(state.activeModel, plateToLoad);
+      loadModelIntoModal(state.activeModel, state.activePlateId || 1);
     }
   }
 }
@@ -6931,10 +5878,9 @@ function renderPlatesList(plates) {
   if (modalSidebar) modalSidebar.style.display = 'flex';
   if (platesSection) platesSection.style.display = 'flex';
   if (platesCount) {
-    const realPlates = plates.filter(p => !p.isCustomCover);
-    const label = state.activeProject ? (realPlates.length === 1 ? 'arquivo' : 'arquivos') : (realPlates.length === 1 ? 'mesa' : 'mesas');
-    const totalSeconds = realPlates.reduce((sum, p) => sum + (p.printTimeSeconds || 0), 0);
-    platesCount.textContent = `${realPlates.length} ${label}${totalSeconds ? ' · ' + formatDurationShort(totalSeconds) : ''}`;
+    const label = plates.length === 1 ? 'mesa' : 'mesas';
+    const totalSeconds = plates.reduce((sum, p) => sum + (p.printTimeSeconds || 0), 0);
+    platesCount.textContent = `${plates.length} ${label}${totalSeconds ? ' · ' + formatDurationShort(totalSeconds) : ''}`;
   }
 
   plates.forEach(plate => {
@@ -6943,12 +5889,10 @@ function renderPlatesList(plates) {
     card.dataset.plateId = plate.id;
     card.title = `${plate.fullName || plate.name}${plate.printTimeFormatted ? ' (' + plate.printTimeFormatted + ')' : ''}`;
 
-    const currentImg = plate.imageUrl || (plate.model && plate.model.thumbnailUrl) || '';
-
-    const badgeNum = plate.isCustomCover ? '⭐' : plate.id;
+    const currentImg = plate.imageUrl || '';
 
     card.innerHTML = `
-      <span class="plate-square-num">${badgeNum}</span>
+      <span class="plate-square-num">${plate.id}</span>
       ${currentImg 
         ? `<img class="plate-square-img" src="${currentImg}" alt="${escapeHtml(plate.name)}">`
         : `<div class="plate-square-placeholder"><span style="font-size: 1.4rem;">🖨️</span></div>`
@@ -6962,31 +5906,6 @@ function renderPlatesList(plates) {
 
     platesList.appendChild(card);
     requestAnimationFrame(updatePlatesNav);
-
-    // Se for parte de projeto e ainda não possuir miniatura, carregar sob demanda
-    if (plate.isProjectPart && !currentImg && plate.model) {
-      loadModelOnDemand(plate.model).then(loadedPart => {
-        if (loadedPart && loadedPart.thumbnailUrl) {
-          plate.imageUrl = loadedPart.thumbnailUrl;
-          const imgEl = card.querySelector('.plate-square-img');
-          if (imgEl) {
-            imgEl.src = loadedPart.thumbnailUrl;
-          } else {
-            const placeholder = card.querySelector('.plate-square-placeholder');
-            if (placeholder) {
-              const newImg = document.createElement('img');
-              newImg.className = 'plate-square-img';
-              newImg.src = loadedPart.thumbnailUrl;
-              newImg.alt = plate.name;
-              placeholder.replaceWith(newImg);
-            }
-          }
-          if (state.activePlateId === plate.id && state.currentViewerMode === 'plate') {
-            modalPlateImg.src = loadedPart.thumbnailUrl;
-          }
-        }
-      });
-    }
   });
 }
 
@@ -7043,59 +5962,6 @@ async function selectPlate(plate) {
     c.classList.toggle('active', parseInt(c.dataset.plateId, 10) === plate.id);
   });
   revealActivePlate();
-
-  // Se for a capa personalizada do projeto
-  if (plate.isCustomCover) {
-    state.activeModel = plate.model || state.activeProject?.primaryPart || state.activeProject?.parts[0];
-    if (state.activeModel) updateModalFilePath(state.activeModel);
-
-    if (modalBadge) {
-      modalBadge.textContent = 'CAPA PROJETO';
-      modalBadge.className = 'badge-format project format-3mf';
-    }
-
-    if (plate.imageUrl) {
-      modalPlateImg.src = plate.imageUrl;
-    }
-
-    if (state.currentViewerMode === '3d') {
-      if (state.activeModel) loadModelIntoModal(state.activeModel, 1);
-    } else {
-      setViewerMode('plate');
-    }
-    return;
-  }
-
-  if (plate.isProjectPart && plate.model) {
-    state.activeModel = plate.model;
-    updateModalFilePath(plate.model);
-
-    if (modalBadge) {
-      modalBadge.textContent = plate.model.type.toUpperCase();
-      modalBadge.className = `badge-format ${plate.model.type} format-${plate.model.type}`;
-    }
-
-    const imgUrl = plate.imageUrl || plate.model.thumbnailUrl;
-    if (imgUrl) {
-      modalPlateImg.src = imgUrl;
-    } else {
-      loadModelOnDemand(plate.model).then(loadedPart => {
-        if (loadedPart && loadedPart.thumbnailUrl) {
-          plate.imageUrl = loadedPart.thumbnailUrl;
-          if (state.activePlateId === plate.id && state.currentViewerMode === 'plate') {
-            modalPlateImg.src = loadedPart.thumbnailUrl;
-          }
-        }
-      });
-    }
-
-    if (state.currentViewerMode === '3d') {
-      loadModelIntoModal(plate.model, 1);
-    } else {
-      setViewerMode('plate');
-    }
-    return;
-  }
 
   // Modelo 3MF com múltiplas mesas (ex: Bambu / OrcaSlicer)
   let imgToUse = plate.imageUrl;
@@ -7264,48 +6130,6 @@ async function openViewerModal(model) {
     }
   }
 
-  // 3. Caso seja um Projeto consolidado multi-peças
-  if (model.isProject) {
-    state.activeProject = model;
-    const firstPart = model.primaryPart || (model.parts && model.parts[0]);
-    if (firstPart) updateModalFilePath(firstPart);
-
-    modalBadge.textContent = 'PROJETO';
-    modalBadge.className = 'badge-format project format-3mf';
-
-    if (modalDuplicateBadge) {
-      const dupParts = model.parts ? model.parts.filter(p => p.isDuplicate) : [];
-      if (dupParts.length > 0) {
-        modalDuplicateBadge.style.display = 'inline-flex';
-        modalDuplicateBadge.title = `Arquivos duplicados detectados neste projeto`;
-        modalDuplicateBadge.textContent = `Duplicados · ${dupParts.length}`;
-      } else {
-        modalDuplicateBadge.style.display = 'none';
-      }
-    }
-
-    if (modalSidebar) modalSidebar.style.display = 'flex';
-    if (platesSection) platesSection.style.display = 'flex';
-    if (platesHeading) platesHeading.textContent = 'Arquivos do projeto';
-    fillModalDetails(model);
-    updateModalHeaderExtras();
-
-    renderPlatesList(model.plates);
-    if (model.plates && model.plates.length > 0) {
-      state.activePlateId = model.plates[0].id;
-      state.currentViewerMode = 'plate';
-      selectPlate(model.plates[0]);
-    }
-    setViewerMode('plate');
-    if (viewerModal) {
-      viewerModal.style.removeProperty('display');
-      viewerModal.classList.add('active');
-    }
-    return;
-  }
-
-  state.activeProject = null;
-
   if (modalBadge) {
     const badgeType = (model.type || '3mf').toUpperCase();
     modalBadge.textContent = badgeType;
@@ -7317,7 +6141,7 @@ async function openViewerModal(model) {
   fillModalDetails(model);
   updateModalHeaderExtras();
 
-  // 4. Exibição imediata: se já possui mesas ou se é modelo convencional
+  // 3. Exibição imediata: se já possui mesas ou se é modelo convencional
   const hasPlates = model.plates && model.plates.length > 0;
 
   if (hasPlates) {
@@ -7345,11 +6169,11 @@ async function openViewerModal(model) {
     viewerModal.classList.add('active');
   }
 
-  // 5. Se o arquivo for 3MF e não tiver mesas ou se faltar foto em alguma mesa, extrair mesas sob demanda em background
+  // 4. Se o arquivo for 3MF e não tiver mesas ou se faltar foto em alguma mesa, extrair mesas sob demanda em background
   const needsPlateExtraction = model.type === '3mf' && (
     !model.plates || 
     model.plates.length === 0 || 
-    model.plates.some(p => !p.imageUrl && !p.isCustomCover)
+    model.plates.some(p => !p.imageUrl)
   );
 
   // 3MF lido antes desta versão ainda não tem autor/impressora/anexos: lê de novo em segundo plano
@@ -7459,8 +6283,7 @@ function onModalResize() {
 
 async function loadModelIntoModal(model, plateId = null) {
   const loadToken = (state.modalLoadToken = (state.modalLoadToken || 0) + 1);
-  const isProjectPart = !!(state.activeProject || (model && model.parentProject));
-  const currentPlate = isProjectPart ? (plateId || 1) : (plateId || state.activePlateId || 1);
+  const currentPlate = plateId || state.activePlateId || 1;
 
   // Limpar malha anterior
   if (state.modalMesh) {
@@ -7608,7 +6431,6 @@ function closeViewerModal() {
     viewerModal.classList.remove('active');
     viewerModal.style.removeProperty('display');
   }
-  state.activeProject = null;
   state.activePlate = null;
   state.activeModel = null;
   state.activePlateId = 1;
@@ -8374,13 +7196,9 @@ window.setSelectionMode = setSelectionMode;
 window.toggleModelSelection = toggleModelSelection;
 window.selectAllVisible = selectAllVisible;
 window.toggleSelectAllVisible = toggleSelectAllVisible;
-window.addCustomCoverCardToPicker = addCustomCoverCardToPicker;
 window.clearSelection = clearSelection;
 window.setSortOrder = setSortOrder;
 window.sortModels = sortModels;
-window.confirmCreateProject = confirmCreateProject;
-window.dissolveCustomProject = dissolveCustomProject;
-window.applyCustomProjects = applyCustomProjects;
 window.openViewerModal = openViewerModal;
 window.closeViewerModal = closeViewerModal;
 window.openEditCardModal = openEditCardModal;

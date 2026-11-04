@@ -84,20 +84,20 @@
           <h3>Configuração do Supabase</h3>
           <p>Informe a URL do seu projeto e a chave anônima pública (anon key).</p>
         </div>
-        <button class="create-project-close" id="btnCloseConfigModal" type="button">&times;</button>
+        <button class="auth-config-close" id="btnCloseConfigModal" type="button">&times;</button>
       </div>
       <div class="auth-config-body">
-        <div class="project-form-group">
+        <div class="auth-config-field">
           <label for="inputSupabaseUrl">Supabase Project URL (NEXT_PUBLIC_SUPABASE_URL)</label>
-          <input type="url" id="inputSupabaseUrl" class="project-name-input" placeholder="https://xyzproject.supabase.co">
+          <input type="url" id="inputSupabaseUrl" class="auth-config-input" placeholder="https://xyzproject.supabase.co">
         </div>
-        <div class="project-form-group">
+        <div class="auth-config-field">
           <label for="inputSupabaseAnonKey">Supabase Anon Key (NEXT_PUBLIC_SUPABASE_ANON_KEY)</label>
-          <input type="password" id="inputSupabaseAnonKey" class="project-name-input" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...">
+          <input type="password" id="inputSupabaseAnonKey" class="auth-config-input" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...">
         </div>
       </div>
-      <div class="create-project-footer">
-        <button class="btn-project-confirm" id="btnSaveSupabaseConfig" type="button">Salvar Credenciais</button>
+      <div class="auth-config-footer">
+        <button class="auth-config-save" id="btnSaveSupabaseConfig" type="button">Salvar Credenciais</button>
       </div>
     </div>
   </div>
@@ -147,13 +147,6 @@
               </span>
               <span class="nav-label">Todos os modelos</span>
               <span class="nav-badge" id="sidebarAllCountBadge">0</span>
-            </button>
-            <button class="sidebar-nav-item" id="navProjects" data-section="projects" type="button">
-              <span class="nav-icon">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
-              </span>
-              <span class="nav-label">Projetos</span>
-              <span class="nav-badge" id="sidebarProjectsCountBadge">0</span>
             </button>
             <button class="sidebar-nav-item" id="navFavorites" data-section="favorites" type="button">
               <span class="nav-icon">
@@ -650,7 +643,7 @@
           </div>
           <span class="viewer-plate-label" id="viewerPlateLabel" hidden></span>
 
-          <!-- Faixa flutuante com as mesas de impressão (ou arquivos do projeto) -->
+          <!-- Faixa flutuante com as mesas de impressão -->
           <div class="viewer-strip" id="platesSection">
             <div class="viewer-strip-head">
               <span id="platesHeading">Mesas de impressão</span>
@@ -778,14 +771,6 @@
         </svg>
         <span>Selecionar visíveis</span>
       </button>
-      <button class="btn-selection-action primary" id="btnOpenCreateProjectModal" type="button" title="Agrupar arquivos selecionados em um único projeto">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
-          <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
-          <line x1="12" y1="22.08" x2="12" y2="12"></line>
-        </svg>
-        <span>Criar Projeto</span>
-      </button>
       <button class="btn-selection-action secondary move-only" id="btnMoveSelection" type="button" title="Mover os arquivos selecionados para outra pasta">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><path d="M12 11v6"/><path d="m15 14-3 3-3-3"/></svg>
         <span>Mover</span>
@@ -797,69 +782,6 @@
       <button class="btn-selection-action ghost" id="btnCancelSelection" type="button" title="Limpar seleção e sair">
         &times;
       </button>
-    </div>
-  </div>
-
-  <!-- Modal de Criação de Projeto Manual -->
-  <div class="modal create-project-modal" id="createProjectModal">
-    <div class="modal-backdrop" id="createProjectBackdrop"></div>
-    <div class="create-project-card">
-      <div class="create-project-header">
-        <div class="create-project-icon">📦</div>
-        <div class="create-project-header-text">
-          <h3>Criar Projeto Multi-mesas</h3>
-          <p>Agrupar os arquivos selecionados em um único card com múltiplas mesas.</p>
-        </div>
-        <button class="create-project-close" id="btnCloseCreateProjectModal" type="button">&times;</button>
-      </div>
-      <div class="create-project-body">
-        <div class="project-form-group">
-          <label for="inputProjectName">Nome do Projeto</label>
-          <input type="text" id="inputProjectName" class="project-name-input" placeholder="Ex: Kamen Rider Black" maxlength="80">
-        </div>
-        <div class="project-summary-box">
-          <div class="summary-item">
-            <span class="summary-label">Peças selecionadas:</span>
-            <span class="summary-val" id="projectModalCount">0</span>
-          </div>
-          <div class="summary-item">
-            <span class="summary-label">Tamanho acumulado:</span>
-            <span class="summary-val" id="projectModalSize">0 B</span>
-          </div>
-        </div>
-        <div class="project-cover-section" id="projectCoverSection">
-          <div class="project-cover-header">
-            <span class="project-cover-title">🖼️ Escolha a Capa do Projeto</span>
-            <div class="project-cover-header-actions">
-              <span class="project-cover-hint" id="projectCoverHint">Selecione uma miniatura</span>
-              <button class="btn-upload-cover" id="btnUploadProjectCover" type="button" title="Carregar foto personalizada do computador (JPG, PNG) para a capa">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                  <polyline points="17 8 12 3 7 8"></polyline>
-                  <line x1="12" y1="3" x2="12" y2="15"></line>
-                </svg>
-                <span>Carregar Foto</span>
-              </button>
-              <input type="file" id="inputCustomCoverFile" accept="image/png, image/jpeg, image/webp" style="display: none;">
-            </div>
-          </div>
-          <div class="project-cover-grid" id="projectCoverGrid">
-            <!-- Miniaturas disponíveis renderizadas via app.js -->
-          </div>
-        </div>
-        <div class="project-parts-preview-wrap">
-          <span class="project-parts-preview-title">Arquivos incluídos no projeto:</span>
-          <div class="project-parts-preview" id="projectModalPartsList">
-            <!-- Peças selecionadas -->
-          </div>
-        </div>
-      </div>
-      <div class="create-project-footer">
-        <button class="btn-project-cancel" id="btnCancelProjectCreation" type="button">Cancelar</button>
-        <button class="btn-project-confirm" id="btnConfirmProjectCreation" type="button">
-          <span>Criar Projeto</span>
-        </button>
-      </div>
     </div>
   </div>
 

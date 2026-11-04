@@ -4,18 +4,9 @@
 // Os testes abaixo são passos de uma mesma sessão do app e rodam em ordem.
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { fileURLToPath } from 'node:url';
-import { createRequire } from 'node:module';
 import path from 'node:path';
-import fs from 'node:fs';
-import { _electron as electron } from 'playwright-core';
+import { launchVault3D, SAMPLE_FOLDER, SAMPLE_MODELS } from './vault3d-app.mjs';
 
-const { TEST_MODE_ENV } = createRequire(import.meta.url)('../../test-mode.js');
-
-// Sem a barra final: no Windows `"C:\pasta\"` escapa a aspa e o Electron não acha o app
-const ROOT = path.resolve(fileURLToPath(new URL('../..', import.meta.url)));
-const SAMPLE_FOLDER = fileURLToPath(new URL('./fixtures/pasta-exemplo', import.meta.url));
-const SAMPLE_MODELS = fs.readdirSync(SAMPLE_FOLDER).filter(name => /\.(stl|3mf)$/i.test(name));
 const SAMPLE_STLS = SAMPLE_MODELS.filter(name => /\.stl$/i.test(name));
 const MULTI_PLATE_3MF = 'caixa_organizadora_fatiada.3mf';
 const MULTI_PLATE_3MF_PLATE_IDS = ['1', '2'];
@@ -23,44 +14,15 @@ const CJK_STL = '龙猫模型_テスト.stl'; // conteúdo próprio, para não v
 // O pré-carregamento do Em Alta começa 3,5 s depois do login: esperamos além disso
 const NETWORK_QUIET_MS = 5000;
 
-const app = await electron.launch({
-  args: [ROOT],
-  cwd: ROOT,
-  env: { ...process.env, [TEST_MODE_ENV]: '1' }
+const vault = await launchVault3D();
+const { window, consoleErrors, consoleWarnings } = vault;
+after(() => vault.close());
+
+// JSON.stringify põe o nome entre aspas com escape, o que também vale como texto de seletor CSS
+const cardOf = name => window.locator('#modelsGrid .model-card').filter({
+  has: window.locator(`.card-title[data-fullname=${JSON.stringify(name)}]`)
 });
-
-// Ouvintes ligados antes de qualquer espera, para pegar erros desde a abertura da janela
-const consoleErrors = [];
-const consoleWarnings = [];
-const supabaseRequests = [];
-const watchWindow = page => {
-  page.on('console', msg => {
-    if (msg.type() === 'error') consoleErrors.push(msg.text());
-    if (msg.type() === 'warning') consoleWarnings.push(msg.text());
-  });
-  page.on('pageerror', err => consoleErrors.push(err.message));
-  page.on('request', req => { if (/supabase\.co/i.test(req.url())) supabaseRequests.push(req.url()); });
-};
-app.windows().forEach(watchWindow);
-app.on('window', watchWindow);
-
-const userDataDir = await app.evaluate(({ app }) => app.getPath('userData'));
-
-// Pedidos ao Em Alta passam pelo processo principal: contamos sem buscar nada na internet
-await app.evaluate(({ ipcMain }) => {
-  globalThis.__trendingCalls = 0;
-  ipcMain.removeHandler('fetch-trending-models');
-  ipcMain.handle('fetch-trending-models', () => {
-    globalThis.__trendingCalls += 1;
-    return { success: false, makerWorld: [], makerOnline: [] };
-  });
-});
-
-const window = await app.firstWindow();
-
-const cardTitleOf = name => window.locator('#modelsGrid .model-card .card-title').filter({
-  has: window.locator(`xpath=self::*[@data-fullname=${JSON.stringify(name)}]`)
-});
+const cardTitleOf = name => cardOf(name).locator('.card-title');
 const openViewer = window.locator('#viewerModal.active');
 
 // Abre o Modelo pelo card, confere o nome no modal e sempre fecha o modal no fim do passo
@@ -76,26 +38,16 @@ async function withModelOpen(name, step) {
   }
 }
 
-after(async () => {
-  await app.close();
-  fs.rmSync(userDataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
-});
-
 test('Abre pela pasta em modo de teste, sem login real, com dados numa pasta temporária', async () => {
   assert.equal(await window.evaluate(() => window.electronAPI.isTestMode), true);
-  assert.match(path.basename(userDataDir), /^vault3d-test-/);
-  await window.locator('#dashboardLayout').waitFor({ state: 'visible' });
+  assert.match(path.basename(vault.userDataDir), /^vault3d-test-/);
+  await vault.waitForLibrary();
   assert.equal(await window.locator('#authContainer').isVisible(), false);
 });
 
 test('Conecta a Pasta conectada de exemplo e mostra um card para cada Modelo', async () => {
   assert.ok(SAMPLE_STLS.length >= 2, 'a pasta de exemplo precisa de pelo menos dois STL');
-
-  // O diálogo nativo de pasta responde a pasta de exemplo; o app segue o mesmo fluxo do usuário
-  await app.evaluate(({ dialog }, folder) => {
-    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] });
-  }, SAMPLE_FOLDER);
-  await window.locator('#btnEmptySelectFolder').click();
+  await vault.connectFolder(SAMPLE_FOLDER);
 
   const cards = window.locator('#modelsGrid .model-card');
   await cards.nth(SAMPLE_MODELS.length - 1).waitFor({ state: 'visible' });
@@ -138,12 +90,64 @@ test('Abre o Modelo de nome oriental sem erro', async () => {
   });
 });
 
+test('O modal de editar card abre para um Modelo, com o nome e as fotos de capa', async () => {
+  const modal = window.locator('#editCardModal');
+  await cardOf(MULTI_PLATE_3MF).locator('.btn-card-rename').click();
+  await modal.waitFor({ state: 'visible' });
+  try {
+    assert.equal((await window.locator('#editCardModalTitle').textContent()).trim(), 'Editar arquivo');
+    assert.equal(await window.locator('#editCardNameInput').inputValue(), MULTI_PLATE_3MF.replace(/\.3mf$/i, ''));
+    await window.locator('#editCardCoverGrid > *').first().waitFor({ state: 'visible' });
+  } finally {
+    await window.locator('#btnCancelEditCard').click();
+    await modal.waitFor({ state: 'hidden' });
+  }
+});
+
+test('A contagem da Biblioteca bate com os Modelos da pasta', async () => {
+  assert.equal((await window.locator('#sidebarAllCountBadge').textContent()).trim(), String(SAMPLE_MODELS.length));
+});
+
+test('A busca encontra o Modelo pelo nome', async () => {
+  const cards = window.locator('#modelsGrid .model-card');
+  await window.locator('#searchInput').fill('cubo');
+  await cards.first().waitFor({ state: 'visible' });
+  assert.equal(await cards.count(), 1);
+  assert.equal((await cardTitleOf('cubo_calibracao_20mm.stl').count()), 1);
+
+  await window.locator('#searchInput').fill('');
+  await cards.nth(SAMPLE_MODELS.length - 1).waitFor({ state: 'visible' });
+  assert.equal(await cards.count(), SAMPLE_MODELS.length);
+});
+
+test('Favoritar um Modelo põe ele na faixa de Favoritos e desfavoritar tira', async () => {
+  const favoritesStrip = window.locator('#favoritesSection');
+  await cardOf(CJK_STL).locator('.btn-favorite').click();
+  await favoritesStrip.waitFor({ state: 'visible' });
+  assert.equal((await window.locator('#favoritesCountBadge').textContent()).trim(), '1');
+  const favoriteNames = await window.locator('#favoritesGrid .card-title').evaluateAll(els => els.map(el => el.dataset.fullname));
+  assert.deepEqual(favoriteNames, [CJK_STL]);
+
+  await cardOf(CJK_STL).locator('.btn-favorite').click();
+  await favoritesStrip.waitFor({ state: 'hidden' });
+});
+
+test('A seleção de vários Modelos continua funcionando', async () => {
+  const checkboxes = window.locator('#modelsGrid .model-card .card-select-checkbox');
+  await checkboxes.nth(0).click();
+  await checkboxes.nth(1).click();
+  await window.locator('#selectionActionBar').waitFor({ state: 'visible' });
+  assert.equal((await window.locator('#selectionCountBadge').textContent()).trim(), '2');
+  await window.locator('#btnCancelSelection').click();
+  await window.locator('#selectionActionBar').waitFor({ state: 'hidden' });
+});
+
 test('Nenhum erro no console durante a abertura, a conexão da pasta e os Modelos abertos', () => {
   assert.deepEqual(consoleErrors, []);
 });
 
 test('No modo de teste não há estatísticas de uso nem pedidos ao Em Alta', async () => {
   await new Promise(resolve => setTimeout(resolve, NETWORK_QUIET_MS));
-  assert.deepEqual(supabaseRequests, []);
-  assert.equal(await app.evaluate(() => globalThis.__trendingCalls), 0);
+  assert.deepEqual(vault.supabaseRequests, []);
+  assert.equal(await vault.trendingCalls(), 0);
 });

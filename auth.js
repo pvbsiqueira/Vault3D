@@ -165,9 +165,6 @@ function updateAuthUI(session) {
     const viewerModal = document.getElementById('viewerModal');
     if (viewerModal) viewerModal.style.removeProperty('display');
 
-    const createProjectModal = document.getElementById('createProjectModal');
-    if (createProjectModal) createProjectModal.style.removeProperty('display');
-
     // Disparar o callback de inicialização da biblioteca apenas UMA vez por sessão
     if (!hasTriggeredAuthSuccess && typeof onAuthSuccessCallback === 'function') {
       hasTriggeredAuthSuccess = true;
@@ -199,12 +196,6 @@ function updateAuthUI(session) {
     if (viewerModal) {
       viewerModal.classList.remove('active');
       viewerModal.style.removeProperty('display');
-    }
-
-    const createProjectModal = document.getElementById('createProjectModal');
-    if (createProjectModal) {
-      createProjectModal.classList.remove('active');
-      createProjectModal.style.removeProperty('display');
     }
 
     const logoutModal = document.getElementById('logoutConfirmModal');

@@ -535,7 +535,6 @@ body.dashboard-body {
 .badge-format.\33 mf,
 .badge-format[class*="3mf"],
 .badge-format.format-3mf { background: rgba(7, 11, 16, 0.78); color: var(--accent-3mf); box-shadow: none; font-weight: 600; }
-.badge-format.project { background: rgba(7, 11, 16, 0.78); border-color: rgba(196, 181, 253, 0.4); color: #c4b5fd; box-shadow: none; }
 
 /* Checkbox de seleção fica no canto inferior esquerdo para não brigar com os selos */
 .card-select-checkbox { top: auto !important; bottom: 8px; left: 8px !important; }
@@ -628,15 +627,6 @@ body.dashboard-body {
 
 .card-rename-input-wrapper { background: var(--bg-main); border: 1px solid var(--accent-line); box-shadow: 0 0 0 3px var(--accent-soft); }
 
-.model-card.is-project { border-color: rgba(196, 181, 253, 0.18); }
-.model-card.is-project:hover { border-color: rgba(196, 181, 253, 0.4); box-shadow: none; }
-.card-project-parts-badge {
-  font: 600 10.5px var(--font-mono);
-  background: rgba(7, 11, 16, 0.78);
-  border-color: rgba(196, 181, 253, 0.35);
-  box-shadow: none;
-}
-
 /* ---------- Paginação ---------- */
 .pagination-bar {
   margin-top: 24px;
@@ -672,7 +662,7 @@ body.dashboard-body {
 
 /* ---------- Botões sobre ciano: texto escuro para contraste ---------- */
 .btn-modal-slicer-footer,
-.btn-project-confirm,
+.auth-config-save,
 .btn-selection-action.primary,
 .btn-auth-submit,
 .btn-verify-otp,
@@ -683,7 +673,7 @@ body.dashboard-body {
   box-shadow: none !important;
 }
 .btn-modal-slicer-footer:hover,
-.btn-project-confirm:hover,
+.auth-config-save:hover,
 .btn-selection-action.primary:hover,
 .btn-auth-submit:hover,
 .btn-verify-otp:hover,
