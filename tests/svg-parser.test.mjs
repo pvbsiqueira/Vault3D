@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { parseSVGSize, readSVGText } from '../svg-parser.js';
+import { parseSVGSize, readSVGText, opaqueBounds, drawingSizeMm } from '../svg-parser.js';
 
 const close = (a, b) => Math.abs(a - b) < 1e-6;
 const assertSize = (size, x, y) => {
@@ -52,6 +52,26 @@ test('SVG sem tamanho, inválido ou que não é SVG devolve null', () => {
 test('Texto com BOM é lido', () => {
   const buf = new TextEncoder().encode('﻿<svg width="10mm" height="20mm"/>');
   assertSize(parseSVGSize(readSVGText(buf.buffer)), 10, 20);
+});
+
+// Imagem RGBA transparente com um retângulo visível de (x0,y0) até (x1,y1), fim exclusivo
+function imageWithRect(w, h, x0, y0, x1, y1, alpha = 255) {
+  const data = new Uint8ClampedArray(w * h * 4);
+  for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) data[(y * w + x) * 4 + 3] = alpha;
+  return data;
+}
+
+test('Contorno visível: só os pixels com cor contam, a borda quase transparente não', () => {
+  assert.deepEqual(opaqueBounds(imageWithRect(10, 8, 2, 1, 7, 5), 10, 8), { left: 2, top: 1, right: 7, bottom: 5 });
+  assert.equal(opaqueBounds(imageWithRect(10, 8, 2, 1, 7, 5, 4), 10, 8), null);
+  assert.equal(opaqueBounds(new Uint8ClampedArray(10 * 8 * 4), 10, 8), null);
+});
+
+test('Medida do desenho é a do contorno, na escala da folha', () => {
+  // Folha de 120 × 60 mm em 240 × 120 px; desenho de 2 a 238 px e de 2 a 118 px → 118 × 58 mm
+  assertSize(drawingSizeMm({ x: 120, y: 60 }, { left: 2, top: 2, right: 238, bottom: 118 }, 240, 120), 118, 58);
+  // Desenho vazio: fica a folha
+  assertSize(drawingSizeMm({ x: 120, y: 60 }, null, 240, 120), 120, 60);
 });
 
 test('Arquivo de exemplo do app é lido', () => {

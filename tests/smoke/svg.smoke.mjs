@@ -5,7 +5,7 @@ import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { launchVault3D, SAMPLE_FOLDER } from './vault3d-app.mjs';
 
-const SVG_MODEL = 'placa_porta_oficina.svg'; // 120 × 60 mm
+const SVG_MODEL = 'placa_porta_oficina.svg'; // folha de 120 × 60 mm; o desenho mede 118 × 58 mm, como no Bambu Studio
 const SVG_KEY = `pasta-exemplo/${SVG_MODEL}`;
 
 const vault = await launchVault3D();
@@ -35,7 +35,7 @@ test('O SVG da pasta aparece como card com selo .SVG e medidas 2D em mm', async 
   await svgCard.waitFor({ state: 'visible' });
   assert.equal((await svgCard.locator('.badge-format').textContent()).trim(), '.SVG');
   await svgCard.locator('.card-thumbnail').waitFor({ state: 'visible' });
-  assert.equal((await svgCard.locator('.card-dimensions').textContent()).trim(), '120×60 mm');
+  assert.equal((await svgCard.locator('.card-dimensions').textContent()).trim(), '118×58 mm');
 });
 
 test('A faixa de resumo conta os SVG', async () => {
@@ -63,7 +63,7 @@ test('Abrir o card mostra o desenho em 2D, sem a vista 3D', async () => {
     assert.equal(await window.locator('#modalCanvas').isVisible(), false);
     assert.equal(await window.locator('#viewerModeSeg').isVisible(), false);
     assert.equal((await window.locator('#modalBadge').textContent()).trim(), 'SVG');
-    assert.equal((await window.locator('#modalInfoDimensions').textContent()).trim(), '120 × 60 mm');
+    assert.equal((await window.locator('#modalInfoDimensions').textContent()).trim(), '118 × 58 mm');
 
     // A proporção do desenho na tela é a do arquivo (2:1)
     const box = await img.boundingBox();

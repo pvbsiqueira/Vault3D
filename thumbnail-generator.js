@@ -1,7 +1,7 @@
 import * as THREE from './vendor/three.module.js';
 import JSZip from './vendor/jszip.js';
 import { parseSTL } from './stl-parser.js';
-import { readSVGText, parseSVGSize } from './svg-parser.js';
+import { readSVGText, parseSVGSize, opaqueBounds, drawingSizeMm } from './svg-parser.js';
 import { extract3MFExtras, enrichFromMakerOnline } from './threemf-extras.js';
 
 let sharedRenderer = null;
@@ -121,6 +121,24 @@ export function loadSVGImage(arrayBuffer) {
 }
 
 /**
+ * Mede o contorno do que aparece no desenho: a folha é desenhada numa imagem transparente
+ * (2048 px no lado maior, ~0,06 mm num desenho de 120 mm) e contam só os pixels visíveis.
+ */
+function measureSVGDrawing(img, pageMm) {
+  const MAX_SIDE = 2048;
+  const ratio = pageMm.x / pageMm.y;
+  const width = Math.max(1, Math.round(ratio >= 1 ? MAX_SIDE : MAX_SIDE * ratio));
+  const height = Math.max(1, Math.round(ratio >= 1 ? MAX_SIDE / ratio : MAX_SIDE));
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(img, 0, 0, width, height);
+  const bounds = opaqueBounds(ctx.getImageData(0, 0, width, height).data, width, height);
+  return drawingSizeMm(pageMm, bounds, width, height);
+}
+
+/**
  * Gera miniatura e medidas de um SVG: o desenho com as cores originais sobre um fundo claro,
  * como uma folha, para traços pretos não sumirem no fundo escuro do card.
  */
@@ -143,9 +161,10 @@ export async function generateSVGThumbnail(arrayBuffer) {
     const h = ratio > boxW / boxH ? boxW / ratio : boxH;
     ctx.drawImage(img, (canvas.width - w) / 2, (canvas.height - h) / 2, w, h);
 
+    const drawing = size ? measureSVGDrawing(img, size) : null;
     return {
       thumbnailUrl: canvas.toDataURL('image/webp', 0.9),
-      metadata: size ? { dimensions: { x: size.x, y: size.y } } : {}
+      metadata: drawing ? { dimensions: { x: drawing.x, y: drawing.y } } : {}
     };
   } finally {
     URL.revokeObjectURL(url);

@@ -2,6 +2,7 @@
  * Vault3D · Leitor de SVG
  * Tira do SVG as medidas em mm do jeito que os fatiadores leem ao importar:
  * unidades reais (mm, cm, in, pt, pc) são convertidas e px ou número sem unidade valem 96 DPI.
+ * A folha (width/height/viewBox) dá a escala; a medida mostrada é a do contorno do desenho dentro dela.
  */
 
 const MM_PER_UNIT = {
@@ -54,7 +55,39 @@ function parseViewBox(value) {
 }
 
 /**
- * Medidas do desenho em mm: { x: largura, y: altura }, ou null se o SVG não diz o tamanho.
+ * Retângulo dos pixels visíveis de uma imagem RGBA (alfa acima de minAlpha, para ignorar a borda suavizada),
+ * com right/bottom exclusivos. null se a imagem estiver toda transparente.
+ */
+export function opaqueBounds(rgba, width, height, minAlpha = 8) {
+  let left = width, top = height, right = -1, bottom = -1;
+  for (let y = 0; y < height; y++) {
+    const row = y * width * 4;
+    for (let x = 0; x < width; x++) {
+      if (rgba[row + x * 4 + 3] > minAlpha) {
+        if (x < left) left = x;
+        if (x > right) right = x;
+        if (y < top) top = y;
+        bottom = y;
+      }
+    }
+  }
+  return right < 0 ? null : { left, top, right: right + 1, bottom: bottom + 1 };
+}
+
+/**
+ * Medidas do contorno do desenho em mm, como o fatiador mede ao importar (e não o tamanho da folha).
+ * pageMm é a folha inteira e bounds vem de opaqueBounds numa imagem da folha com width × height pixels.
+ */
+export function drawingSizeMm(pageMm, bounds, width, height) {
+  if (!pageMm || !bounds) return pageMm || null;
+  return {
+    x: (bounds.right - bounds.left) / width * pageMm.x,
+    y: (bounds.bottom - bounds.top) / height * pageMm.y
+  };
+}
+
+/**
+ * Tamanho da folha do SVG em mm: { x: largura, y: altura }, ou null se o SVG não diz o tamanho.
  * Sem width/height, vale o viewBox em px; com só um dos dois, o outro sai da proporção do viewBox.
  */
 export function parseSVGSize(text) {
