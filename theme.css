@@ -768,7 +768,7 @@ body.dashboard-body {
 /* Filtro de formatos no cabeçalho da página (antes do Ordenar) */
 .format-filter {
   display: inline-grid;
-  grid-template-columns: repeat(3, auto);
+  grid-template-columns: repeat(4, auto);
   background: var(--bg-panel);
 }
 .format-filter .sidebar-format-btn { height: 26px; padding: 0 10px; }

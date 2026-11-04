@@ -299,7 +299,7 @@ body.dashboard-body {
 /* Grupo de Formatos da Sidebar */
 .sidebar-format-group {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 0.35rem;
   background: #111624;
   padding: 4px;

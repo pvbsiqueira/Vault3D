@@ -42,6 +42,14 @@ test('A faixa de resumo conta os SVG', async () => {
   assert.equal((await window.locator('#sidebarSvgCountBadge').textContent()).trim(), '1.SVG');
 });
 
+test('Os botões do filtro (Todos, STL, 3MF e SVG) ficam na mesma linha', async () => {
+  const tops = await window.locator('#formatFilterGroup .sidebar-format-btn').evaluateAll(
+    els => els.map(el => Math.round(el.getBoundingClientRect().top))
+  );
+  assert.equal(tops.length, 4);
+  assert.equal(new Set(tops).size, 1, `alturas diferentes: ${tops}`);
+});
+
 test('O filtro SVG mostra só o SVG e o Todos traz o resto de volta', async () => {
   const total = await cards.count();
   await window.locator('#formatFilterGroup [data-filter="svg"]').click();
