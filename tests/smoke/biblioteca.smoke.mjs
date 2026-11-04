@@ -17,6 +17,9 @@ const ROOT = path.resolve(fileURLToPath(new URL('../..', import.meta.url)));
 const SAMPLE_FOLDER = fileURLToPath(new URL('./fixtures/pasta-exemplo', import.meta.url));
 const SAMPLE_MODELS = fs.readdirSync(SAMPLE_FOLDER).filter(name => /\.(stl|3mf)$/i.test(name));
 const SAMPLE_STLS = SAMPLE_MODELS.filter(name => /\.stl$/i.test(name));
+const MULTI_PLATE_3MF = 'caixa_organizadora_fatiada.3mf';
+const MULTI_PLATE_3MF_PLATE_IDS = ['1', '2'];
+const CJK_STL = '龙猫模型_テスト.stl'; // conteúdo próprio, para não virar duplicado de outro STL
 // O pré-carregamento do Em Alta começa 3,5 s depois do login: esperamos além disso
 const NETWORK_QUIET_MS = 5000;
 
@@ -28,9 +31,13 @@ const app = await electron.launch({
 
 // Ouvintes ligados antes de qualquer espera, para pegar erros desde a abertura da janela
 const consoleErrors = [];
+const consoleWarnings = [];
 const supabaseRequests = [];
 const watchWindow = page => {
-  page.on('console', msg => { if (msg.type() === 'error') consoleErrors.push(msg.text()); });
+  page.on('console', msg => {
+    if (msg.type() === 'error') consoleErrors.push(msg.text());
+    if (msg.type() === 'warning') consoleWarnings.push(msg.text());
+  });
   page.on('pageerror', err => consoleErrors.push(err.message));
   page.on('request', req => { if (/supabase\.co/i.test(req.url())) supabaseRequests.push(req.url()); });
 };
@@ -50,6 +57,24 @@ await app.evaluate(({ ipcMain }) => {
 });
 
 const window = await app.firstWindow();
+
+const cardTitleOf = name => window.locator('#modelsGrid .model-card .card-title').filter({
+  has: window.locator(`xpath=self::*[@data-fullname=${JSON.stringify(name)}]`)
+});
+const openViewer = window.locator('#viewerModal.active');
+
+// Abre o Modelo pelo card, confere o nome no modal e sempre fecha o modal no fim do passo
+async function withModelOpen(name, step) {
+  await cardTitleOf(name).click();
+  await openViewer.waitFor({ state: 'visible' });
+  try {
+    assert.equal((await window.locator('#modalPathName').textContent()).trim(), name);
+    await step();
+  } finally {
+    await window.locator('#modalCloseBtn').click();
+    await openViewer.waitFor({ state: 'hidden' });
+  }
+}
 
 after(async () => {
   await app.close();
@@ -82,7 +107,38 @@ test('Conecta a Pasta conectada de exemplo e mostra um card para cada Modelo', a
   assert.deepEqual(names.sort(), [...SAMPLE_MODELS].sort());
 });
 
-test('Nenhum erro no console durante a abertura e a conexão da pasta', () => {
+test('O 3MF e o Modelo de nome oriental aparecem como cards com o nome certo', async () => {
+  for (const name of [MULTI_PLATE_3MF, CJK_STL]) {
+    // Nome e extensão ficam em pedaços separados no card: juntos formam o nome do arquivo
+    assert.equal((await cardTitleOf(name).textContent()).trim(), name);
+  }
+});
+
+test('Abre o 3MF e mostra as duas Mesas no modal', async () => {
+  await withModelOpen(MULTI_PLATE_3MF, async () => {
+    // Só as Mesas de verdade: uma capa personalizada também vira um quadrado na lista
+    const plates = window.locator('#platesList .plate-square-card:not(:has(.plate-square-num:text-is("⭐")))');
+    await plates.nth(MULTI_PLATE_3MF_PLATE_IDS.length - 1).waitFor({ state: 'visible' });
+    const ids = await plates.evaluateAll(els => els.map(el => el.dataset.plateId));
+    assert.deepEqual(ids, MULTI_PLATE_3MF_PLATE_IDS);
+  });
+});
+
+test('Abre o Modelo de nome oriental sem erro', async () => {
+  await withModelOpen(CJK_STL, async () => {
+    const warningsBefore = consoleWarnings.length;
+    // Com miniatura pronta o modal abre na imagem: pede a vista 3D, que lê o arquivo do disco
+    await window.locator('#viewerModeSeg:visible, #modalCanvas:visible').first().waitFor();
+    if (!(await window.locator('#modalCanvas').isVisible())) await window.locator('#btnOpen3DView').click();
+    await window.locator('#modalCanvas').waitFor({ state: 'visible' });
+    // O carregamento mostra a sobreposição na hora e só a esconde ao terminar (com ou sem malha)
+    await window.locator('#viewerLoadingOverlay').waitFor({ state: 'hidden' });
+    // Erro de leitura vai para o teste de console; malha que não pôde ser gerada só avisa
+    assert.deepEqual(consoleWarnings.slice(warningsBefore), []);
+  });
+});
+
+test('Nenhum erro no console durante a abertura, a conexão da pasta e os Modelos abertos', () => {
   assert.deepEqual(consoleErrors, []);
 });
 
