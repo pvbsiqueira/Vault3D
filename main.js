@@ -292,7 +292,7 @@ async function scanDirectoryDiskRecursive(dirPath, rootPath = dirPath) {
         results = results.concat(sub);
       } else if (entry.isFile()) {
         const ext = path.extname(entry.name).toLowerCase().replace('.', '');
-        if (ext === 'stl' || ext === '3mf') {
+        if (ext === 'stl' || ext === '3mf' || ext === 'svg') {
           const stats = await fs.promises.stat(fullPath);
           const relPath = path.relative(rootPath, fullPath).replace(/\\/g, '/');
           results.push({
@@ -351,7 +351,7 @@ ipcMain.handle('scan-folder-disk', async (event, targetPathOrName) => {
 // 5.2. Leitura nativa de arquivo no disco
 ipcMain.handle('read-file', async (event, filePath) => {
   if (!guards.isModelFilePath(filePath)) {
-    throw new Error('Apenas arquivos STL e 3MF podem ser lidos');
+    throw new Error('Apenas arquivos STL, 3MF e SVG podem ser lidos');
   }
   if (!fs.existsSync(filePath)) {
     throw new Error('Arquivo não encontrado: ' + filePath);
@@ -400,12 +400,16 @@ ipcMain.handle('select-folder-dialog', async (event, defaultPath) => {
 // Sem fatiador escolhido, usa o programa associado pelo Windows (comportamento original).
 ipcMain.handle('open-in-slicer', async (event, targetPath, slicerId) => {
   // Só arquivos 3D: assim o "abrir com o programa padrão" nunca executa outro tipo de arquivo
-  if (!guards.isModelFilePath(targetPath)) return { success: false, message: 'Apenas arquivos STL e 3MF podem ser abertos no fatiador' };
+  if (!guards.isModelFilePath(targetPath)) return { success: false, message: 'Apenas arquivos STL, 3MF e SVG podem ser abertos no fatiador' };
   try {
     if (!fs.existsSync(targetPath)) {
       return { success: false, message: 'Arquivo não encontrado no disco local' };
     }
     const { slicer, reason } = await slicers.resolveSlicerFor(targetPath, slicerId);
+    const isSvg = /\.svg$/i.test(targetPath);
+    if (reason === 'no-svg-slicer') {
+      return { success: false, reason, message: 'Nenhum fatiador instalado abre SVG' };
+    }
     if (slicer && slicer.exePath) {
       try {
         const child = spawn(slicer.exePath, [targetPath], {
@@ -421,6 +425,8 @@ ipcMain.handle('open-in-slicer', async (event, targetPath, slicerId) => {
         console.warn('Falha ao iniciar o fatiador escolhido, usando o padrão do Windows:', err);
       }
     }
+    // O programa padrão do Windows para .svg é o navegador ou um editor, nunca um fatiador
+    if (isSvg) return { success: false, message: 'Não foi possível abrir o SVG no fatiador' };
     const errorMsg = await shell.openPath(targetPath);
     if (errorMsg) {
       return { success: false, message: errorMsg };
@@ -498,7 +504,7 @@ ipcMain.handle('remove-custom-slicer', async (event, id) => {
 // 7. Renomear arquivo diretamente no disco (Windows)
 ipcMain.handle('rename-file', async (event, { oldPath, newName } = {}) => {
   if (!guards.isModelFilePath(oldPath) || !guards.isValidModelFileName(newName)) {
-    return { success: false, message: 'Nome inválido: use só letras, números e a extensão .stl ou .3mf' };
+    return { success: false, message: 'Nome inválido: use só letras, números e a extensão .stl, .3mf ou .svg' };
   }
   if (!fs.existsSync(oldPath)) {
     return { success: false, message: 'Arquivo original não encontrado no disco' };
@@ -535,7 +541,7 @@ ipcMain.handle('trash-files', async (event, filePaths) => {
   const results = [];
   for (const filePath of list) {
     if (!guards.isModelFilePath(filePath)) {
-      results.push({ path: filePath, success: false, message: 'Apenas arquivos STL e 3MF podem ser excluídos' });
+      results.push({ path: filePath, success: false, message: 'Apenas arquivos STL, 3MF e SVG podem ser excluídos' });
       continue;
     }
     if (!fs.existsSync(filePath)) {
@@ -588,7 +594,7 @@ ipcMain.handle('move-files', async (event, { items, onConflict } = {}) => {
     results.push(result);
 
     if (!guards.isModelFilePath(from) || !guards.isValidModelFileName(wanted)) {
-      result.message = 'Apenas arquivos STL e 3MF podem ser movidos';
+      result.message = 'Apenas arquivos STL, 3MF e SVG podem ser movidos';
       continue;
     }
     if (!toDir || !path.isAbsolute(toDir)) {

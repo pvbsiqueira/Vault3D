@@ -1,15 +1,16 @@
 /**
  * Novidades de cada versão, mostradas na janela "Novidades" depois de uma atualização.
  * A primeira entrada é sempre a versão deste instalador. De 3 a 5 itens curtos por versão.
- * icon: spool | palette | tag | gift | shield | offline | star | rename | layers | filter | settings
+ * icon: spool | palette | tag | gift | shield | offline | star | rename | layers | filter | settings | vector
  * action (opcional): 'filaments' ou 'settings' mostra um botão que leva até a tela
  */
 export const CHANGELOG = [
   {
     version: '1.6.0',
     date: '2026-11-04',
-    title: 'Biblioteca mais simples',
+    title: 'Arquivos SVG na Biblioteca',
     items: [
+      { icon: 'vector', title: 'SVG na Biblioteca', text: 'Os arquivos .SVG das suas pastas ganham card, filtro próprio, visualização com zoom e medidas em mm. O botão do fatiador só mostra os fatiadores que abrem SVG.' },
       { icon: 'layers', title: 'Projetos removidos', text: 'A função de juntar vários arquivos em um Projeto saiu do app, porque quase ninguém usava.' },
       { icon: 'shield', title: 'Seus arquivos continuam lá', text: 'Nenhum arquivo foi movido nem apagado. Os que estavam em um Projeto voltam a aparecer soltos na Biblioteca.' },
       { icon: 'filter', title: 'Filtro STL e 3MF corrigido', text: 'Ao filtrar por um formato que não está nas suas pastas, os botões Todos, STL e 3MF sumiam. Agora continuam lá para você trocar de filtro.' }

@@ -12,7 +12,7 @@ const { TEST_MODE_ENV } = createRequire(import.meta.url)('../../test-mode.js');
 const ROOT = path.resolve(fileURLToPath(new URL('../..', import.meta.url)));
 
 export const SAMPLE_FOLDER = fileURLToPath(new URL('./fixtures/pasta-exemplo', import.meta.url));
-export const SAMPLE_MODELS = fs.readdirSync(SAMPLE_FOLDER).filter(name => /\.(stl|3mf)$/i.test(name));
+export const SAMPLE_MODELS = fs.readdirSync(SAMPLE_FOLDER).filter(name => /\.(stl|3mf|svg)$/i.test(name));
 
 export async function launchVault3D() {
   const app = await electron.launch({

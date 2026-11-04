@@ -1,6 +1,7 @@
 import * as THREE from './vendor/three.module.js';
 import { OrbitControls } from './vendor/OrbitControls.js';
-import { generateSTLThumbnail, extract3MFThumbnail, extract3MFCoverOptions, parse3MFGeometry } from './thumbnail-generator.js';
+import { generateSTLThumbnail, generateSVGThumbnail, loadSVGImage, extract3MFThumbnail, extract3MFCoverOptions, parse3MFGeometry } from './thumbnail-generator.js';
+import { readSVGText, parseSVGSize } from './svg-parser.js';
 import { enrichFromMakerOnline } from './threemf-extras.js';
 import JSZip from './vendor/jszip.js';
 import { parseSTL } from './stl-parser.js';
@@ -10,7 +11,11 @@ import { openFoldersDB, getModelCacheKey, getCachedThumbnail, saveCachedThumbnai
 import { loadFavorites, saveFavorites, applyFavorites, addFileFavorite, removeFileFavorite, favoriteKeyOf } from './favorites.js';
 import { initWhatsNew } from './whats-new.js';
 import { initFilamentStock, renderFilamentPage, setFilamentSearch, filamentStatusHtml, hasSpools } from './filament-stock.js';
-import { initSlicerPicker, isSlicerChoiceSupported, slicerSplitHtml, openSlicerMenu, getDefaultSlicerName, getSlicerState, onSlicersChanged, getSlicerNames, getLastSlicer, setLastSlicer, slicerIconHtml, refreshSlicerSettings } from './slicer-picker.js';
+import { initSlicerPicker, isSlicerChoiceSupported, slicerSplitHtml, openSlicerMenu, getDefaultSlicerName, getSlicerState, onSlicersChanged, getSlicerNames, getLastSlicer, setLastSlicer, slicerIconHtml, refreshSlicerSettings, pickSvgSlicerId } from './slicer-picker.js';
+
+// Formatos de Modelo que o app lê das Pastas conectadas
+const MODEL_TYPES = ['stl', '3mf', 'svg'];
+const isModelExt = (ext) => MODEL_TYPES.includes(ext);
 
 // Estado global da aplicação
 const state = {
@@ -19,7 +24,7 @@ const state = {
   activeFolderId: null, // ID da pasta conectada ativa para filtro ou null (todas)
   activeSubfolderPath: null, // Caminho relativo da subpasta ativa ou null (toda a pasta)
   collapsedFolders: new Set(), // Set com chaves de pastas/subpastas recolhidas
-  activeFilter: 'all', // 'all', 'stl', '3mf', 'duplicates'
+  activeFilter: 'all', // 'all', 'stl', '3mf', 'svg', 'duplicates'
   activeSection: 'all', // 'all', 'favorites', 'duplicates', 'trending', 'filaments', 'settings'
   searchQuery: '',
   modalScene: null,
@@ -100,6 +105,7 @@ const allFoldersBadge = document.getElementById('allFoldersBadge');
 const fileCountBadge = document.getElementById('fileCountBadge');
 const sidebarStlCountBadge = document.getElementById('sidebarStlCountBadge');
 const sidebar3mfCountBadge = document.getElementById('sidebar3mfCountBadge');
+const sidebarSvgCountBadge = document.getElementById('sidebarSvgCountBadge');
 const statsScopeLabel = document.getElementById('statsScopeLabel');
 const statsDuplicatesCount = document.getElementById('statsDuplicatesCount');
 const statsDuplicatesCell = document.getElementById('statsDuplicatesCell');
@@ -172,6 +178,10 @@ const modalPlateImg = document.getElementById('modalPlateImg');
 const viewerLoadingOverlay = document.getElementById('viewerLoadingOverlay');
 const viewerLoadingText = document.getElementById('viewerLoadingText');
 const viewerControlsBar = document.getElementById('viewerControlsBar');
+const modalSvgView = document.getElementById('modalSvgView');
+const modalSvgImg = document.getElementById('modalSvgImg');
+const svgControlsBar = document.getElementById('svgControlsBar');
+const btnSvgResetView = document.getElementById('btnSvgResetView');
 const modalSidebar = document.getElementById('modalSidebar');
 const platesSection = document.getElementById('platesSection');
 const platesCount = document.getElementById('platesCount');
@@ -564,6 +574,7 @@ function init() {
     state.isAutoRotating = !state.isAutoRotating;
     btnToggleRotate.style.color = state.isAutoRotating ? '#38bdf8' : 'var(--text-secondary)';
   });
+  setupSvgViewControls();
   btnToggleWireframe.addEventListener('click', () => {
     if (state.modalMesh) {
       state.isWireframe = !state.isWireframe;
@@ -755,7 +766,7 @@ function setNavSection(section) {
   if (btnRefreshTrending) btnRefreshTrending.style.display = 'none';
   if (trendingUpdatedLabel) trendingUpdatedLabel.style.display = 'none';
   if (shellSubtitle) {
-    shellSubtitle.textContent = 'Seus arquivos STL e 3MF, lidos direto do seu computador.';
+    shellSubtitle.textContent = 'Seus arquivos STL, 3MF e SVG, lidos direto do seu computador.';
   }
   if (btnRefreshFolders) {
     btnRefreshFolders.style.display = state.folders.length > 0 ? 'inline-flex' : 'none';
@@ -822,7 +833,7 @@ async function proceedWithDirectoryPicker() {
           saveFolderDiskPaths();
           await addFilesToLibrary(files, res.folderName, null, true);
         } else {
-          showToast(`Nenhum arquivo 3D (.STL ou .3MF) foi encontrado em "${res.folderName}".`, 'warning');
+          showToast(`Nenhum arquivo (.STL, .3MF ou .SVG) foi encontrado em "${res.folderName}".`, 'warning');
         }
       }
       return;
@@ -859,7 +870,7 @@ async function scanDirectoryHandle(dirHandle, path = '') {
   for await (const entry of dirHandle.values()) {
     if (entry.kind === 'file') {
       const ext = entry.name.split('.').pop().toLowerCase();
-      if (ext === 'stl' || ext === '3mf') {
+      if (isModelExt(ext)) {
         const file = await entry.getFile();
         results.push({
           file,
@@ -892,7 +903,7 @@ function handleFallbackFileSelect(e) {
   const validFiles = fileList
     .filter(file => {
       const ext = file.name.split('.').pop().toLowerCase();
-      return ext === 'stl' || ext === '3mf';
+      return isModelExt(ext);
     })
     .map(file => ({
       file,
@@ -952,7 +963,7 @@ function setupDragAndDrop() {
           files.push(...scanned);
         } else if (handle.kind === 'file') {
           const ext = handle.name.split('.').pop().toLowerCase();
-          if (ext === 'stl' || ext === '3mf') {
+          if (isModelExt(ext)) {
             const f = await handle.getFile();
             files.push({
               file: f,
@@ -987,7 +998,7 @@ function setupDragAndDrop() {
 async function scanWebkitEntry(entry, results, path = '') {
   if (entry.isFile) {
     const ext = entry.name.split('.').pop().toLowerCase();
-    if (ext === 'stl' || ext === '3mf') {
+    if (isModelExt(ext)) {
       const file = await new Promise(resolve => entry.file(resolve));
       results.push({
         file,
@@ -1021,7 +1032,8 @@ async function loadSampleModels(persistToDB = true) {
     const samples = [
       { name: 'cubo_calibracao_20mm.stl', url: './sample_models/cubo_calibracao_20mm.stl', type: 'stl', lastModified: sampleBaseTime },
       { name: 'piramide_teste.stl', url: './sample_models/piramide_teste.stl', type: 'stl', lastModified: sampleBaseTime - 60000 },
-      { name: 'caixa_organizadora_fatiada.3mf', url: './sample_models/caixa_organizadora_fatiada.3mf', type: '3mf', lastModified: sampleBaseTime - 120000 }
+      { name: 'caixa_organizadora_fatiada.3mf', url: './sample_models/caixa_organizadora_fatiada.3mf', type: '3mf', lastModified: sampleBaseTime - 120000 },
+      { name: 'placa_porta_oficina.svg', url: './sample_models/placa_porta_oficina.svg', type: 'svg', lastModified: sampleBaseTime - 180000 }
     ];
 
     const loadedFiles = [];
@@ -1618,7 +1630,7 @@ async function reconnectAllSavedFolders() {
  */
 async function addFilesToLibrary(files, folderName, dirHandle = null, persistToDB = true, existingFolderId = null) {
   if (!files || files.length === 0) {
-    showToast(`Nenhum arquivo 3D (.STL ou .3MF) foi encontrado em "${folderName}".`, 'warning');
+    showToast(`Nenhum arquivo (.STL, .3MF ou .SVG) foi encontrado em "${folderName}".`, 'warning');
     return;
   }
 
@@ -2390,6 +2402,9 @@ function updateStatsBadge() {
   if (sidebar3mfCountBadge) {
     sidebar3mfCountBadge.textContent = `${scopedModels.filter(m => m.type === '3mf').length}.3MF`;
   }
+  if (sidebarSvgCountBadge) {
+    sidebarSvgCountBadge.textContent = `${scopedModels.filter(m => m.type === 'svg').length}.SVG`;
+  }
 
   const scopedDupCount = scopedModels.filter(m => m.isDuplicate).length;
   if (statsDuplicatesCount) statsDuplicatesCount.textContent = scopedDupCount;
@@ -2810,8 +2825,8 @@ async function openEditCardModal(item) {
     initialOptions.push({
       id: 'auto',
       kind: 'default',
-      label: item.type === '3mf' ? 'Capa padrão' : 'Miniatura 3D',
-      sublabel: item.type === '3mf' ? 'Miniatura do 3MF' : 'Gerada do STL',
+      label: item.type === '3mf' ? 'Capa padrão' : item.type === 'svg' ? 'Desenho' : 'Miniatura 3D',
+      sublabel: item.type === '3mf' ? 'Miniatura do 3MF' : `Gerada do ${item.type.toUpperCase()}`,
       dataUrl: defaultThumb
     });
   }
@@ -2836,7 +2851,7 @@ async function openEditCardModal(item) {
   if (subEl) {
     subEl.textContent = item.type === '3mf'
       ? 'Altere o nome ou escolha entre as fotos internas do 3MF e do computador'
-      : 'Altere o nome ou escolha uma foto personalizada para representar este STL';
+      : `Altere o nome ou escolha uma foto personalizada para representar este ${item.type.toUpperCase()}`;
   }
   if (nameLabel) nameLabel.textContent = 'Nome do arquivo';
   if (extBadge) {
@@ -2891,7 +2906,7 @@ async function openEditCardModal(item) {
             editCardState.selectedSource = matchByUrl ? matchByUrl.id : (merged[0] ? merged[0].id : 'auto');
           }
         }
-      } else if (item.type === 'stl' && !defaultThumb) {
+      } else if (!defaultThumb) {
         const loaded = await loadModelOnDemand(item);
         if (!editCardState || editCardState.token !== token) return;
         const stlThumb = (loaded && (loaded.defaultThumbnailUrl || loaded.thumbnailUrl)) || item.thumbnailUrl;
@@ -2899,8 +2914,8 @@ async function openEditCardModal(item) {
           editCardState.options.push({
             id: 'auto',
             kind: 'default',
-            label: 'Miniatura 3D',
-            sublabel: 'Gerada do STL',
+            label: item.type === 'svg' ? 'Desenho' : 'Miniatura 3D',
+            sublabel: `Gerada do ${item.type.toUpperCase()}`,
             dataUrl: stlThumb
           });
         }
@@ -2994,7 +3009,7 @@ async function confirmEditCardModal() {
 
       // Se o visualizador 3D estiver exibindo este arquivo na foto da capa, atualizar
       if (state.activeModel && state.activeModel.id === item.id && modalPlateImg && (!state.activePlate || state.activePlate.id === 1)) {
-        if (item.type === 'stl' || !item.plates || item.plates.length === 0) {
+        if (item.type !== '3mf' || !item.plates || item.plates.length === 0) {
           modalPlateImg.src = item.thumbnailUrl;
         }
       }
@@ -4170,6 +4185,7 @@ async function copyTextToClipboard(text) {
  */
 function getSlicerButtonConfig(model = null) {
   const isDesktop = Boolean(typeof window !== 'undefined' && window.electronAPI && window.electronAPI.isElectron);
+  if (isDesktop && isSvgModel(model)) return getSvgSlicerButtonConfig(model);
   if (isDesktop) {
     const defaultName = getDefaultSlicerName();
     const fileKey = model ? getSlicerFileKey(model) : '';
@@ -4207,6 +4223,32 @@ function getSlicerButtonConfig(model = null) {
   };
 }
 
+/** O botão dos cards só conhece a chave do arquivo, que termina na extensão */
+function isSvgModel(model) {
+  return Boolean(model && (model.type === 'svg' || /\.svg$/i.test(model.slicerKey || '')));
+}
+
+/** Botão de um SVG: só fatiadores que importam SVG; sem nenhum instalado, fica desativado com o motivo */
+function getSvgSlicerButtonConfig(model) {
+  const fileKey = getSlicerFileKey(model);
+  const names = getSlicerNames(pickSvgSlicerId(getLastSlicer(fileKey)));
+  if (!names) {
+    return {
+      disabled: true,
+      text: 'Abrir no Fatiador',
+      cardText: 'Abrir no Fatiador',
+      title: 'Nenhum fatiador instalado abre SVG',
+      icon: slicerIconHtml(null, 16)
+    };
+  }
+  return {
+    text: `Abrir no ${names.short}`,
+    cardText: names.short,
+    title: `Abrir no ${names.full}`,
+    icon: slicerIconHtml(names.iconUrl, 16)
+  };
+}
+
 /** Chave estável do arquivo para lembrar o último fatiador usado nele */
 function getSlicerFileKey(model) {
   if (!model) return '';
@@ -4225,6 +4267,9 @@ function refreshSlicerLabels() {
     const cfg = getSlicerButtonConfig(model);
     const html = `${cfg.icon}<span>${escapeHtml(compact ? cfg.cardText : cfg.text)}</span>`;
     btn.title = cfg.title;
+    btn.disabled = Boolean(cfg.disabled);
+    const caret = btn.parentElement && btn.parentElement.querySelector('.btn-slicer-caret');
+    if (caret) caret.disabled = Boolean(cfg.disabled);
     // Durante o "Fatiador aberto!" só troca o que volta depois
     if (btn.classList.contains('btn-copied')) btn.dataset.origHtml = html;
     else btn.innerHTML = html;
@@ -4284,6 +4329,7 @@ function wireSlicerCaret(caretEl, getModel, mainBtn) {
     e.stopPropagation();
     e.preventDefault();
     openSlicerMenu(caretEl, {
+      svgOnly: isSvgModel(getModel()),
       onPick: (slicerId) => {
         const m = getModel();
         if (m) openModelInSlicer(m, mainBtn, slicerId);
@@ -4320,6 +4366,10 @@ async function openModelInSlicer(model, buttonEl, slicerId) {
       copyTextToClipboard(fullPath).catch(() => {});
 
       const res = await window.electronAPI.openInSlicer(fullPath, chosenSlicerId);
+      if (res && res.reason === 'no-svg-slicer') {
+        showToast('Nenhum fatiador instalado abre SVG. Instale o Bambu Studio, o OrcaSlicer ou o PrusaSlicer.', 'warning');
+        return;
+      }
       if (res && res.success) {
         if (res.slicerId) setLastSlicer(fileKey, res.slicerId);
         if (buttonEl) {
@@ -4563,6 +4613,12 @@ function getModelParentFolderInfo(model) {
   return { name: folderName || 'Biblioteca', full: folderName || 'Biblioteca' };
 }
 
+/** Medidas do Modelo para o card e o modal: o SVG é 2D (largura × altura), STL e 3MF têm também a altura z */
+function formatDimensions(dims, sep = '×') {
+  const parts = [dims.x, dims.y, dims.z].filter(v => typeof v === 'number').map(v => Math.round(v));
+  return `${parts.join(sep)} mm`;
+}
+
 /**
  * Cria e configura um elemento de card para um modelo 3D
  */
@@ -4575,7 +4631,7 @@ function createModelCard(model) {
   const slicerKey = getSlicerFileKey(model);
 
   const formattedSize = formatBytes(model.size);
-  const badgeClass = model.type === 'stl' ? 'stl format-stl' : '3mf format-3mf';
+  const badgeClass = `${model.type} format-${model.type}`;
   const isSliced = model.slicerData && model.slicerData.isSliced;
   const isSelected = state.selectedModelIds.has(model.id);
   const folderInfo = getModelParentFolderInfo(model);
@@ -4643,7 +4699,7 @@ function createModelCard(model) {
       <div class="card-meta">
         <span>${formattedSize}</span>
         ${model.metadata?.dimensions ? `
-          <span class="card-dimensions">${Math.round(model.metadata.dimensions.x)}×${Math.round(model.metadata.dimensions.y)}×${Math.round(model.metadata.dimensions.z)} mm</span>
+          <span class="card-dimensions">${formatDimensions(model.metadata.dimensions)}</span>
         ` : ''}
       </div>
       ${model.isDuplicate ? `
@@ -5288,6 +5344,13 @@ async function extractModelThumbnailAndMeta(model, forceExtractPlates = false) {
       model.thumbnailUrl = res.thumbnailUrl;
     }
     model.metadata = res.metadata;
+  } else if (model.type === 'svg') {
+    const res = await generateSVGThumbnail(buffer);
+    model.defaultThumbnailUrl = res.thumbnailUrl || model.defaultThumbnailUrl || model.thumbnailUrl;
+    if (!hasUserChosenCover) {
+      model.thumbnailUrl = res.thumbnailUrl;
+    }
+    model.metadata = res.metadata;
   } else if (model.type === '3mf') {
     const res = await extract3MFThumbnail(buffer, model.name);
     model.defaultThumbnailUrl = res.thumbnailUrl || model.defaultThumbnailUrl || model.thumbnailUrl;
@@ -5380,7 +5443,7 @@ function updateCardThumbnail(model) {
       if (metaDiv && !card.querySelector('.card-dimensions')) {
         const span = document.createElement('span');
         span.className = 'card-dimensions';
-        span.textContent = `${Math.round(model.metadata.dimensions.x)}×${Math.round(model.metadata.dimensions.y)}×${Math.round(model.metadata.dimensions.z)} mm`;
+        span.textContent = formatDimensions(model.metadata.dimensions);
         metaDiv.appendChild(span);
       }
     }
@@ -5539,8 +5602,7 @@ function fillModalDetails(model) {
 
   const meta = model.metadata;
   const dims = meta && meta.dimensions;
-  setRow('Dimensions', dims && (dims.x || dims.y || dims.z)
-    ? `${Math.round(dims.x)} × ${Math.round(dims.y)} × ${Math.round(dims.z)} mm` : '');
+  setRow('Dimensions', dims && (dims.x || dims.y || dims.z) ? formatDimensions(dims, ' × ') : '');
   setRow('Triangles', meta && meta.triangleCount ? meta.triangleCount.toLocaleString('pt-BR') : '');
 
   // Tempo e filamento só aparecem aqui quando não há a seção Filamentos
@@ -5840,8 +5902,19 @@ function setViewerMode(mode) {
   if (modalCanvas && modalCanvas.parentElement) modalCanvas.parentElement.classList.toggle('is-3d', mode === '3d');
 
   const hasPlates = !!(state.activeModel && state.activeModel.plates && state.activeModel.plates.length > 0);
+  const isSvg = mode === 'svg';
+  if (modalSvgView) modalSvgView.hidden = !isSvg;
+  if (svgControlsBar) svgControlsBar.hidden = !isSvg;
+  if (!isSvg) clearSvgView();
 
-  if (mode === 'plate') {
+  if (isSvg) {
+    // SVG é 2D: sem seletor Foto/3D, sem malha e sem controles de câmera
+    modalPlateImg.style.display = 'none';
+    modalCanvas.style.display = 'none';
+    viewerControlsBar.style.display = 'none';
+    if (viewerModeSeg) viewerModeSeg.hidden = true;
+    if (state.activeModel) loadSvgIntoModal(state.activeModel);
+  } else if (mode === 'plate') {
     // Modelo sem mesas: a "foto" é a miniatura do próprio arquivo
     if (!hasPlates && state.activeModel && state.activeModel.thumbnailUrl) {
       modalPlateImg.src = state.activeModel.thumbnailUrl;
@@ -6145,7 +6218,9 @@ async function openViewerModal(model) {
   // 3. Exibição imediata: se já possui mesas ou se é modelo convencional
   const hasPlates = model.plates && model.plates.length > 0;
 
-  if (hasPlates) {
+  if (model.type === 'svg') {
+    if (platesSection) platesSection.style.display = 'none';
+  } else if (hasPlates) {
     if (platesSection) platesSection.style.display = 'flex';
     state.activePlateId = model.plates[0].id;
     state.currentViewerMode = 'plate';
@@ -6169,6 +6244,8 @@ async function openViewerModal(model) {
     viewerModal.style.removeProperty('display');
     viewerModal.classList.add('active');
   }
+  // O SVG é encaixado pelo tamanho da área, que só existe com o modal já na tela
+  if (model.type === 'svg') setViewerMode('svg');
 
   // 4. Se o arquivo for 3MF e não tiver mesas ou se faltar foto em alguma mesa, extrair mesas sob demanda em background
   const needsPlateExtraction = model.type === '3mf' && (
@@ -6282,6 +6359,130 @@ function onModalResize() {
   }
 }
 
+/** Arquivo do Modelo para o visualizador: já lido, pelo handle da pasta ou pelo endereço (exemplos) */
+async function ensureModelFile(model) {
+  if (!model.file && model.handle && typeof model.handle.getFile === 'function') {
+    try {
+      model.file = await model.handle.getFile();
+    } catch (e) {
+      console.warn('Handle getFile falhou:', e);
+    }
+  }
+  if (!model.file && model.url) {
+    try {
+      const resp = await fetch(model.url);
+      if (resp.ok) {
+        const blob = await resp.blob();
+        model.file = new File([blob], model.name, { type: 'application/octet-stream' });
+      }
+    } catch (e) {
+      console.warn('Fetch model.url falhou:', e);
+    }
+  }
+  if (!model.file) {
+    throw new Error('Arquivo não disponível');
+  }
+  return model.file;
+}
+
+/**
+ * Visualização 2D do SVG: o desenho com as cores originais sobre uma folha clara,
+ * com zoom pela roda do mouse (em torno do cursor) e arraste para mover.
+ */
+const svgView = { url: null, scale: 1, x: 0, y: 0, ratio: 1, drag: null };
+
+function applySvgViewTransform() {
+  if (modalSvgImg) modalSvgImg.style.transform = `translate(${svgView.x}px, ${svgView.y}px) scale(${svgView.scale})`;
+}
+
+/** Encaixa o desenho na área do visualizador, com margem, e volta o zoom ao normal */
+function resetSvgView() {
+  if (!modalSvgView || !modalSvgImg) return;
+  const boxW = modalSvgView.clientWidth * 0.8;
+  const boxH = modalSvgView.clientHeight * 0.8;
+  if (boxW <= 0 || boxH <= 0) return;
+  const wide = svgView.ratio > boxW / boxH;
+  modalSvgImg.style.width = `${wide ? boxW : boxH * svgView.ratio}px`;
+  modalSvgImg.style.height = `${wide ? boxW / svgView.ratio : boxH}px`;
+  svgView.scale = 1;
+  svgView.x = 0;
+  svgView.y = 0;
+  applySvgViewTransform();
+}
+
+function clearSvgView() {
+  if (modalSvgImg) modalSvgImg.removeAttribute('src');
+  if (svgView.url) URL.revokeObjectURL(svgView.url);
+  svgView.url = null;
+}
+
+async function loadSvgIntoModal(model) {
+  const loadToken = (state.modalLoadToken = (state.modalLoadToken || 0) + 1);
+  clearSvgView();
+  viewerLoadingOverlay.style.display = 'flex';
+  viewerLoadingText.textContent = `Carregando desenho de ${model.name}...`;
+  try {
+    const buffer = await (await ensureModelFile(model)).arrayBuffer();
+    const size = parseSVGSize(readSVGText(buffer));
+    const { img, url } = await loadSVGImage(buffer);
+    if (loadToken !== state.modalLoadToken) {
+      URL.revokeObjectURL(url);
+      return;
+    }
+    svgView.url = url;
+    svgView.ratio = size ? size.x / size.y : (img.naturalWidth || 4) / (img.naturalHeight || 3);
+    modalSvgImg.src = url;
+    resetSvgView();
+  } catch (err) {
+    console.warn('Erro ao abrir o SVG no visualizador:', err);
+    if (loadToken === state.modalLoadToken) showToast('Não foi possível mostrar este SVG.', 'warning');
+  } finally {
+    if (loadToken === state.modalLoadToken) viewerLoadingOverlay.style.display = 'none';
+  }
+}
+
+function setupSvgViewControls() {
+  if (!modalSvgView) return;
+  modalSvgView.addEventListener('wheel', (e) => {
+    if (!svgView.url) return;
+    e.preventDefault();
+    const rect = modalSvgView.getBoundingClientRect();
+    // Ponto do cursor em relação ao centro, onde o desenho está encaixado
+    const cx = e.clientX - rect.left - rect.width / 2;
+    const cy = e.clientY - rect.top - rect.height / 2;
+    const next = Math.min(20, Math.max(0.2, svgView.scale * Math.exp(-e.deltaY * 0.0015)));
+    const k = next / svgView.scale;
+    svgView.x = cx - (cx - svgView.x) * k;
+    svgView.y = cy - (cy - svgView.y) * k;
+    svgView.scale = next;
+    applySvgViewTransform();
+  }, { passive: false });
+
+  modalSvgView.addEventListener('pointerdown', (e) => {
+    if (!svgView.url || e.button !== 0) return;
+    svgView.drag = { px: e.clientX, py: e.clientY, x: svgView.x, y: svgView.y };
+    modalSvgView.setPointerCapture(e.pointerId);
+    modalSvgView.classList.add('is-dragging');
+  });
+  modalSvgView.addEventListener('pointermove', (e) => {
+    if (!svgView.drag) return;
+    svgView.x = svgView.drag.x + e.clientX - svgView.drag.px;
+    svgView.y = svgView.drag.y + e.clientY - svgView.drag.py;
+    applySvgViewTransform();
+  });
+  const endDrag = () => {
+    svgView.drag = null;
+    modalSvgView.classList.remove('is-dragging');
+  };
+  modalSvgView.addEventListener('pointerup', endDrag);
+  modalSvgView.addEventListener('pointercancel', endDrag);
+  modalSvgView.addEventListener('dblclick', resetSvgView);
+  if (btnSvgResetView) btnSvgResetView.addEventListener('click', resetSvgView);
+  window.addEventListener('resize', () => {
+    if (state.currentViewerMode === 'svg' && svgView.url) resetSvgView();
+  });
+}
+
 async function loadModelIntoModal(model, plateId = null) {
   const loadToken = (state.modalLoadToken = (state.modalLoadToken || 0) + 1);
   const currentPlate = plateId || state.activePlateId || 1;
@@ -6298,29 +6499,7 @@ async function loadModelIntoModal(model, plateId = null) {
   viewerLoadingText.textContent = `Carregando malha 3D de ${model.name}${plateLabel}...`;
 
   try {
-    if (!model.file && model.handle && typeof model.handle.getFile === 'function') {
-      try {
-        model.file = await model.handle.getFile();
-      } catch (e) {
-        console.warn('Handle getFile falhou:', e);
-      }
-    }
-    if (!model.file && model.url) {
-      try {
-        const resp = await fetch(model.url);
-        if (resp.ok) {
-          const blob = await resp.blob();
-          model.file = new File([blob], model.name, { type: 'application/octet-stream' });
-        }
-      } catch (e) {
-        console.warn('Fetch model.url falhou:', e);
-      }
-    }
-    if (!model.file) {
-      throw new Error('Arquivo não disponível');
-    }
-
-    const buffer = await model.file.arrayBuffer();
+    const buffer = await (await ensureModelFile(model)).arrayBuffer();
     let geometry = null;
     let dimensions = { x: 0, y: 0, z: 0 };
     let volumeCm3 = 0;
@@ -6449,6 +6628,9 @@ function closeViewerModal() {
   }
   if (modalCanvas) modalCanvas.style.display = 'none';
   if (viewerModeSeg) viewerModeSeg.hidden = true;
+  clearSvgView();
+  if (modalSvgView) modalSvgView.hidden = true;
+  if (svgControlsBar) svgControlsBar.hidden = true;
   updateViewerPlateLabel(null);
   state.modalItem = null;
   state.modalLoadToken = (state.modalLoadToken || 0) + 1;

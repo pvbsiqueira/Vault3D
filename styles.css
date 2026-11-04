@@ -13,6 +13,8 @@
   --accent-stl-glow: rgba(34, 211, 238, 0.25);
   --accent-3mf: #10b981;
   --accent-3mf-glow: rgba(16, 185, 129, 0.25);
+  --accent-svg: #c084fc;
+  --accent-svg-glow: rgba(192, 132, 252, 0.25);
   --accent-cyan: #06b6d4;
 
   /* 8-Point Grid Spacing Tokens */
@@ -651,6 +653,12 @@ body.dashboard-body {
   background: rgba(16, 185, 129, 0.15);
   color: #34d399;
   border: 1px solid rgba(16, 185, 129, 0.25);
+}
+
+.stats-badge.svg {
+  background: rgba(192, 132, 252, 0.15);
+  color: var(--accent-svg);
+  border: 1px solid rgba(192, 132, 252, 0.25);
 }
 
 /* Área Principal do Dashboard */

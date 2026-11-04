@@ -5,9 +5,11 @@ const g = require('../file-guards');
 
 const abs = (...p) => path.resolve(path.sep, ...p);
 
-test('Só caminhos completos de arquivos STL/3MF são aceitos', () => {
+test('Só caminhos completos de arquivos STL/3MF/SVG são aceitos', () => {
   assert.equal(g.isModelFilePath(abs('modelos', 'peca.stl')), true);
   assert.equal(g.isModelFilePath(abs('modelos', 'peca.3MF')), true);
+  assert.equal(g.isModelFilePath(abs('modelos', 'logo.SVG')), true);
+  assert.equal(g.isModelFilePath(abs('modelos', 'logo.svgz')), false);
   assert.equal(g.isModelFilePath(abs('Windows', 'system32', 'calc.exe')), false);
   assert.equal(g.isModelFilePath(abs('docs', 'senhas.txt')), false);
   assert.equal(g.isModelFilePath('peca.stl'), false);
@@ -19,6 +21,7 @@ test('Só caminhos completos de arquivos STL/3MF são aceitos', () => {
 test('Nome novo no renomear: só nome de arquivo 3D válido no Windows', () => {
   assert.equal(g.isValidModelFileName('Suporte de fone.stl'), true);
   assert.equal(g.isValidModelFileName('caixa (2).3mf'), true);
+  assert.equal(g.isValidModelFileName('placa de porta.svg'), true);
   assert.equal(g.isValidModelFileName('..\\..\\Desktop\\x.stl'), false);
   assert.equal(g.isValidModelFileName('pasta/x.stl'), false);
   assert.equal(g.isValidModelFileName('x.exe'), false);

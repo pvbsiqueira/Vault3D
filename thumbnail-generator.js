@@ -1,6 +1,7 @@
 import * as THREE from './vendor/three.module.js';
 import JSZip from './vendor/jszip.js';
 import { parseSTL } from './stl-parser.js';
+import { readSVGText, parseSVGSize } from './svg-parser.js';
 import { extract3MFExtras, enrichFromMakerOnline } from './threemf-extras.js';
 
 let sharedRenderer = null;
@@ -103,6 +104,52 @@ export async function generateSTLThumbnail(arrayBuffer) {
     },
     geometry
   };
+}
+
+/**
+ * Carrega o SVG como imagem. Dentro de <img> o navegador não roda scripts nem busca nada de fora,
+ * então um SVG com código escondido não tem como agir no app.
+ */
+export function loadSVGImage(arrayBuffer) {
+  const url = URL.createObjectURL(new Blob([arrayBuffer], { type: 'image/svg+xml' }));
+  const img = new Image();
+  img.src = url;
+  return img.decode().then(() => ({ img, url }), (err) => {
+    URL.revokeObjectURL(url);
+    throw err;
+  });
+}
+
+/**
+ * Gera miniatura e medidas de um SVG: o desenho com as cores originais sobre um fundo claro,
+ * como uma folha, para traços pretos não sumirem no fundo escuro do card.
+ */
+export async function generateSVGThumbnail(arrayBuffer) {
+  const size = parseSVGSize(readSVGText(arrayBuffer));
+  const { img, url } = await loadSVGImage(arrayBuffer);
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = 400;
+    canvas.height = 300;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#eef1f5';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Proporção pelo tamanho do arquivo; sem ele, pela imagem (SVG sem tamanho vira 300×150 no navegador)
+    const ratio = size ? size.x / size.y : (img.naturalWidth || 4) / (img.naturalHeight || 3);
+    const boxW = canvas.width * 0.84;
+    const boxH = canvas.height * 0.84;
+    const w = ratio > boxW / boxH ? boxW : boxH * ratio;
+    const h = ratio > boxW / boxH ? boxW / ratio : boxH;
+    ctx.drawImage(img, (canvas.width - w) / 2, (canvas.height - h) / 2, w, h);
+
+    return {
+      thumbnailUrl: canvas.toDataURL('image/webp', 0.9),
+      metadata: size ? { dimensions: { x: size.x, y: size.y } } : {}
+    };
+  } finally {
+    URL.revokeObjectURL(url);
+  }
 }
 
 /**

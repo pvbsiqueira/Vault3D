@@ -1,8 +1,8 @@
 // Regras de quais caminhos e nomes o processo principal aceita vindos da janela do app.
-// O app só trabalha com arquivos 3D: qualquer outro arquivo é recusado antes de ler, abrir ou renomear.
+// O app só trabalha com Modelos (STL, 3MF e SVG): qualquer outro arquivo é recusado antes de ler, abrir ou renomear.
 const path = require('path');
 
-const MODEL_EXT_RE = /\.(stl|3mf)$/i;
+const MODEL_EXT_RE = /\.(stl|3mf|svg)$/i;
 // Nomes reservados do Windows (CON, PRN, AUX, NUL, COM1..9, LPT1..9), com ou sem extensão
 const RESERVED_NAME_RE = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\.|$)/i;
 const MAX_CHUNK_BYTES = 64 * 1024 * 1024;
@@ -15,7 +15,7 @@ function isModelFilePath(p) {
     && MODEL_EXT_RE.test(p);
 }
 
-// Nome novo de um arquivo 3D: só o nome (sem pasta), extensão .stl/.3mf e válido no Windows
+// Nome novo de um Modelo: só o nome (sem pasta), extensão .stl/.3mf/.svg e válido no Windows
 function isValidModelFileName(name) {
   if (typeof name !== 'string') return false;
   const trimmed = name.trim();

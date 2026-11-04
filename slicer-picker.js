@@ -97,6 +97,21 @@ export function setLastSlicer(fileKey, slicerId) {
   }
 }
 
+/** SVG só abre em fatiador que importa SVG (o processo principal marca cada um com opensSvg) */
+export function getSvgSlicers() {
+  return slicerState.slicers.filter((s) => s.opensSvg);
+}
+
+/**
+ * Fatiador que abre um SVG no clique normal: o último usado no arquivo, o padrão ou o primeiro que aceita SVG.
+ * null quando nenhum fatiador instalado abre SVG.
+ */
+export function pickSvgSlicerId(lastId) {
+  const ok = getSvgSlicers();
+  const found = ok.find((s) => s.id === lastId) || ok.find((s) => s.id === slicerState.defaultId) || ok[0];
+  return found ? found.id : null;
+}
+
 /** Nome do fatiador usado no clique normal (padrão do usuário) */
 export function getDefaultSlicerName() {
   const s = slicerState.slicers.find((x) => x.id === slicerState.defaultId);
@@ -131,7 +146,7 @@ export async function loadSlicers(force = false) {
 /** Botão "Abrir no Fatiador" + setinha. A setinha some via CSS quando não há o que escolher. */
 export function slicerSplitHtml(cfg, extraClass = '', fileKey = '') {
   const btn = `
-    <button class="btn-open-slicer ${extraClass}" title="${escapeHtml(cfg.title)}" type="button"${fileKey ? ` data-slicer-key="${escapeHtml(fileKey)}"` : ''}>
+    <button class="btn-open-slicer ${extraClass}" title="${escapeHtml(cfg.title)}" type="button"${fileKey ? ` data-slicer-key="${escapeHtml(fileKey)}"` : ''}${cfg.disabled ? ' disabled' : ''}>
       ${cfg.icon}
       <span>${escapeHtml(cfg.cardText || cfg.text)}</span>
     </button>`;
@@ -139,7 +154,7 @@ export function slicerSplitHtml(cfg, extraClass = '', fileKey = '') {
   return `
     <div class="slicer-split">
       ${btn}
-      <button class="btn-slicer-caret" type="button" title="Abrir em outro fatiador" aria-label="Abrir em outro fatiador" aria-haspopup="menu">${CARET_ICON}</button>
+      <button class="btn-slicer-caret" type="button" title="Abrir em outro fatiador" aria-label="Abrir em outro fatiador" aria-haspopup="menu"${cfg.disabled ? ' disabled' : ''}>${CARET_ICON}</button>
     </div>`;
 }
 
@@ -160,8 +175,9 @@ function closeSlicerMenu() {
  * @param {HTMLElement} anchor   a setinha clicada
  * @param {object} opts
  *   onPick: (slicerId) => void               abre o arquivo no fatiador escolhido
+ *   svgOnly: true                            arquivo SVG: só fatiadores que importam SVG, sem o padrão do Windows
  */
-export function openSlicerMenu(anchor, { onPick } = {}) {
+export function openSlicerMenu(anchor, { onPick, svgOnly = false } = {}) {
   if (menuEl && menuEl.dataset.anchorId === anchor.dataset.slicerMenuId) {
     closeSlicerMenu();
     return;
@@ -169,10 +185,12 @@ export function openSlicerMenu(anchor, { onPick } = {}) {
   closeSlicerMenu();
   if (!anchor.dataset.slicerMenuId) anchor.dataset.slicerMenuId = `sm-${Math.random().toString(36).slice(2)}`;
 
-  const items = [
-    ...slicerState.slicers.map((s) => ({ id: s.id, name: s.name, iconUrl: s.iconUrl })),
-    { id: 'system', name: slicerState.systemName, iconUrl: null }
-  ];
+  const items = svgOnly
+    ? getSvgSlicers().map((s) => ({ id: s.id, name: s.name, iconUrl: s.iconUrl }))
+    : [
+      ...slicerState.slicers.map((s) => ({ id: s.id, name: s.name, iconUrl: s.iconUrl })),
+      { id: 'system', name: slicerState.systemName, iconUrl: null }
+    ];
 
   menuEl = document.createElement('div');
   menuEl.className = 'slicer-menu';
@@ -248,7 +266,7 @@ function renderSettingsList() {
     const selected = s.id === slicerState.defaultId;
     return `
       <li class="slicer-row ${selected ? 'is-selected' : ''}" data-id="${escapeHtml(s.id)}" role="radio" aria-checked="${selected}" tabindex="0"
-          title="${escapeHtml(s.system ? 'Usa o programa que o Windows associa a arquivos .stl e .3mf' : s.exePath || '')}">
+          title="${escapeHtml(s.system ? 'Usa o programa que o Windows associa a arquivos .stl e .3mf (arquivos .svg sempre abrem num fatiador)' : s.exePath || '')}">
         <span class="slicer-row-radio" aria-hidden="true">${selected ? CHECK_ICON : ''}</span>
         ${slicerIconHtml(s.iconUrl, 18)}
         <span class="slicer-row-name">${escapeHtml(s.name)}</span>

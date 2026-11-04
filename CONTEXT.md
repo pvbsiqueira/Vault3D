@@ -1,6 +1,6 @@
 # Vault3D
 
-Aplicativo para quem tem impressora 3D organizar e visualizar seus arquivos de impressão (STL e 3MF) direto do computador, sem abrir o fatiador.
+Aplicativo para quem tem impressora 3D organizar e visualizar seus arquivos de impressão (STL, 3MF e SVG) direto do computador, sem abrir o fatiador.
 
 ## Language
 
@@ -15,11 +15,11 @@ Uma pasta do computador do usuário que o app lê para montar a Biblioteca. Os a
 _Avoid_: Diretório, pasta monitorada
 
 **Modelo**:
-Um arquivo STL ou 3MF que aparece como um card na biblioteca do usuário.
-_Avoid_: Arquivo, item, peça
+Um arquivo STL, 3MF ou SVG que aparece como um card na biblioteca do usuário. Um SVG é um desenho 2D: o app mostra o desenho e suas medidas, e a altura da peça é decidida no fatiador.
+_Avoid_: Arquivo, item, peça, desenho (para o SVG)
 
 **Mesa**:
-Uma placa de impressão dentro de um 3MF, com suas próprias miniatura, tempo, gramas de filamento e cores. Um STL não tem mesas.
+Uma placa de impressão dentro de um 3MF, com suas próprias miniatura, tempo, gramas de filamento e cores. Um STL ou SVG não tem mesas.
 _Avoid_: Placa, plate
 
 ### Filamentos

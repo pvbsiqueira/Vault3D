@@ -7,19 +7,20 @@ const fs = require('fs');
 const { execFile } = require('child_process');
 
 // Fatiadores conhecidos. "dir" casa com o nome da pasta de instalação e "exe" com o executável.
+// "svg" marca os que importam SVG (Bambu Studio, PrusaSlicer e os derivados do Orca); Cura e SuperSlicer não importam.
 const KNOWN_SLICERS = [
-  { id: 'bambu', name: 'Bambu Studio', dir: /^bambu ?studio/i, exe: ['bambu-studio.exe'] },
-  { id: 'orca', name: 'OrcaSlicer', dir: /^orca ?slicer/i, exe: ['orca-slicer.exe', 'OrcaSlicer.exe'] },
-  { id: 'prusa', name: 'PrusaSlicer', dir: /^(prusa3d|prusaslicer)/i, exe: ['prusa-slicer.exe'] },
+  { id: 'bambu', name: 'Bambu Studio', svg: true, dir: /^bambu ?studio/i, exe: ['bambu-studio.exe'] },
+  { id: 'orca', name: 'OrcaSlicer', svg: true, dir: /^orca ?slicer/i, exe: ['orca-slicer.exe', 'OrcaSlicer.exe'] },
+  { id: 'prusa', name: 'PrusaSlicer', svg: true, dir: /^(prusa3d|prusaslicer)/i, exe: ['prusa-slicer.exe'] },
   { id: 'cura', name: 'UltiMaker Cura', dir: /^(ulti ?maker )?cura/i, exe: ['UltiMaker-Cura.exe', 'Ultimaker-Cura.exe', 'Cura.exe'] },
-  { id: 'creality', name: 'Creality Print', dir: /^creality/i, exe: ['CrealityPrint.exe', 'Creality Print.exe'] },
+  { id: 'creality', name: 'Creality Print', svg: true, dir: /^creality/i, exe: ['CrealityPrint.exe', 'Creality Print.exe'] },
   // O AnycubicSlicerNext.exe é só um lançador sem ícone próprio: o logo fica nas imagens do programa
-  { id: 'anycubic', name: 'Anycubic Slicer Next', dir: /^anycubic ?slicer/i, exe: ['AnycubicSlicerNext.exe', 'anycubicslicernext.exe', 'AnycubicSlicer.exe'],
+  { id: 'anycubic', name: 'Anycubic Slicer Next', svg: true, dir: /^anycubic ?slicer/i, exe: ['AnycubicSlicerNext.exe', 'anycubicslicernext.exe', 'AnycubicSlicer.exe'],
     icons: ['resources/images/AnycubicSlicerNext_256px.png', 'resources/images/AnycubicSlicer_64.png', 'resources/images/AnycubicSlicer.ico'] },
-  { id: 'elegoo', name: 'ElegooSlicer', dir: /^elegoo ?slicer/i, exe: ['elegoo-slicer.exe', 'ElegooSlicer.exe'] },
-  { id: 'flashforge', name: 'Orca-Flashforge', dir: /^orca-flashforge/i, exe: ['orca-flashforge.exe', 'Orca-Flashforge.exe'] },
-  { id: 'snapmaker', name: 'Snapmaker Orca', dir: /^snapmaker ?orca/i, exe: ['snapmaker-orca.exe', 'Snapmaker_Orca.exe', 'Snapmaker Orca.exe'] },
-  { id: 'qidi', name: 'QIDIStudio', dir: /^qidi ?studio/i, exe: ['qidi-studio.exe', 'QIDIStudio.exe'] },
+  { id: 'elegoo', name: 'ElegooSlicer', svg: true, dir: /^elegoo ?slicer/i, exe: ['elegoo-slicer.exe', 'ElegooSlicer.exe'] },
+  { id: 'flashforge', name: 'Orca-Flashforge', svg: true, dir: /^orca-flashforge/i, exe: ['orca-flashforge.exe', 'Orca-Flashforge.exe'] },
+  { id: 'snapmaker', name: 'Snapmaker Orca', svg: true, dir: /^snapmaker ?orca/i, exe: ['snapmaker-orca.exe', 'Snapmaker_Orca.exe', 'Snapmaker Orca.exe'] },
+  { id: 'qidi', name: 'QIDIStudio', svg: true, dir: /^qidi ?studio/i, exe: ['qidi-studio.exe', 'QIDIStudio.exe'] },
   { id: 'superslicer', name: 'SuperSlicer', dir: /^superslicer/i, exe: ['superslicer.exe'] }
 ];
 
@@ -195,7 +196,7 @@ async function detectInstalled(force = false) {
 
   detectedCache = KNOWN_SLICERS
     .filter((d) => found[d.id])
-    .map((d) => ({ id: d.id, name: d.name, exePath: found[d.id], iconPath: findIconFile(d, found[d.id]), custom: false }));
+    .map((d) => ({ id: d.id, name: d.name, exePath: found[d.id], iconPath: findIconFile(d, found[d.id]), custom: false, opensSvg: Boolean(d.svg) }));
   return detectedCache;
 }
 
@@ -204,7 +205,8 @@ async function listSlicers(force = false) {
   const detected = await detectInstalled(force);
   const custom = prefs.custom
     .filter((c) => fs.existsSync(c.exePath))
-    .map((c) => ({ id: c.id, name: c.name, exePath: c.exePath, custom: true }));
+    // O app não sabe se um fatiador adicionado pelo usuário abre SVG: ele foi escolhido de propósito, então aparece
+    .map((c) => ({ id: c.id, name: c.name, exePath: c.exePath, custom: true, opensSvg: true }));
   const slicers = [...detected, ...custom];
   const defaultId = slicers.some((s) => s.id === prefs.defaultId) ? prefs.defaultId : SYSTEM_ID;
   return { slicers, defaultId, systemName: SYSTEM_ENTRY.name };
@@ -230,6 +232,10 @@ function addCustom(exePath) {
   return entry;
 }
 
+function isSvgPath(filePath) {
+  return typeof filePath === 'string' && /\.svg$/i.test(filePath);
+}
+
 function removeCustom(id) {
   const prefs = readPrefs();
   prefs.custom = prefs.custom.filter((c) => c.id !== id);
@@ -241,9 +247,18 @@ function removeCustom(id) {
 /**
  * Decide em qual fatiador abrir: escolha explícita (menu da setinha) > padrão do usuário.
  * Retorna slicer null para usar o programa padrão do Windows.
+ * SVG só abre num fatiador que importa SVG: o padrão do Windows abriria o navegador. Sem nenhum, reason 'no-svg-slicer'.
  */
 async function resolveSlicerFor(filePath, slicerId) {
-  const { slicers, defaultId } = await listSlicers();
+  const listed = await listSlicers();
+  const { defaultId } = listed;
+  if (isSvgPath(filePath)) {
+    const slicers = listed.slicers.filter((s) => s.opensSvg);
+    const chosen = slicers.find((s) => s.id === slicerId) || slicers.find((s) => s.id === defaultId) || slicers[0];
+    if (!chosen) return { slicer: null, reason: 'no-svg-slicer' };
+    return { slicer: chosen, reason: chosen.id === slicerId ? 'explicit' : 'default' };
+  }
+  const { slicers } = listed;
   if (slicerId === SYSTEM_ID) return { slicer: null, reason: 'explicit' };
   if (slicerId) {
     const chosen = slicers.find((s) => s.id === slicerId);
@@ -254,6 +269,7 @@ async function resolveSlicerFor(filePath, slicerId) {
 
 module.exports = {
   SYSTEM_ID,
+  KNOWN_SLICERS,
   init,
   listSlicers,
   setPrefs,
