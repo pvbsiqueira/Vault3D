@@ -4939,7 +4939,8 @@ function renderGallery() {
     favoritesSection.style.display = 'none';
     allSectionHeader.style.display = 'none';
     if (topPageSizeWrap) topPageSizeWrap.style.display = 'none';
-    if (sortControlWrap) sortControlWrap.style.display = 'none';
+    // O Ordenar fica: os filtros de formato aparecem junto com ele (ui-shell.js), e escondê-los
+    // aqui prenderia o usuário num filtro sem resultado (ex.: 3MF numa pasta só de STL)
     if (paginationBar) paginationBar.style.display = 'none';
 
     let emptyMessage = 'Nenhum arquivo corresponde aos filtros aplicados.';
