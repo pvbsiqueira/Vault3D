@@ -1,27 +1,38 @@
 const { app, BrowserWindow, ipcMain, shell, dialog, session, clipboard, nativeImage } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const { spawn } = require('child_process');
 const { autoUpdater } = require('electron-updater');
 const slicers = require('./slicers');
 const guards = require('./file-guards');
+const { isTestModeEnabled, TEST_MODE_ARG } = require('./test-mode');
 
 app.name = 'Vault3D';
+
+// Modo de teste (só pela pasta do projeto): dados de usuário numa pasta temporária própria,
+// sem ler nem gravar a Biblioteca, o IndexedDB, o localStorage ou as preferências reais.
+const testMode = isTestModeEnabled({ isPackaged: app.isPackaged, env: process.env });
+if (testMode) {
+  app.setPath('userData', fs.mkdtempSync(path.join(os.tmpdir(), 'vault3d-test-')));
+}
 slicers.init(app.getPath('userData'));
 
 const PROTOCOL_PREFIX = 'vault3d';
 
-// Registrar como handler padrão do protocolo vault3d:// (deep link)
-try {
-  if (process.defaultApp) {
-    if (process.argv.length >= 2) {
-      app.setAsDefaultProtocolClient(PROTOCOL_PREFIX, process.execPath, [path.resolve(process.argv[1])]);
+// Registrar como handler padrão do protocolo vault3d:// (deep link). No modo de teste não mexe no Windows.
+if (!testMode) {
+  try {
+    if (process.defaultApp) {
+      if (process.argv.length >= 2) {
+        app.setAsDefaultProtocolClient(PROTOCOL_PREFIX, process.execPath, [path.resolve(process.argv[1])]);
+      }
+    } else {
+      app.setAsDefaultProtocolClient(PROTOCOL_PREFIX);
     }
-  } else {
-    app.setAsDefaultProtocolClient(PROTOCOL_PREFIX);
+  } catch (err) {
+    console.warn('Aviso ao registrar protocolo:', err);
   }
-} catch (err) {
-  console.warn('Aviso ao registrar protocolo:', err);
 }
 
 // Configurações do Auto-Updater
@@ -51,7 +62,8 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: true,
-      webSecurity: true
+      webSecurity: true,
+      additionalArguments: testMode ? [TEST_MODE_ARG] : []
     }
   });
 

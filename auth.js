@@ -18,6 +18,9 @@ import {
   saveSupabaseConfig 
 } from './supabase-config.js';
 
+// Usuário fictício do modo de teste (nunca existe no Supabase)
+const TEST_MODE_USER = Object.freeze({ id: 'vault3d-test-user', email: 'teste@vault3d.local' });
+
 let currentUser = null;
 let onAuthSuccessCallback = null;
 let lastSentEmail = '';
@@ -770,6 +773,12 @@ export async function initAuth(onAuthenticated) {
     });
   }
 
+  // Modo de teste (teste de fumaça): um usuário fictício conta como logado, sem falar com o Supabase
+  if (isTestMode()) {
+    updateAuthUI({ user: TEST_MODE_USER });
+    return;
+  }
+
   // Verificar se credenciais do Supabase estão configuradas
   const config = await getSupabaseConfig();
   if (configNoticeWrap) {
@@ -789,6 +798,13 @@ export async function initAuth(onAuthenticated) {
   await onAuthStateChange((event, session) => {
     updateAuthUI(session);
   });
+}
+
+/**
+ * Sinal somente leitura vindo do preload; no app instalado é sempre falso
+ */
+export function isTestMode() {
+  return typeof window !== 'undefined' && window.electronAPI?.isTestMode === true;
 }
 
 /**

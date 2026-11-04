@@ -4,6 +4,10 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('electronAPI', {
   isElectron: true,
 
+  // Modo de teste (teste de fumaça): o processo principal só passa este argumento fora do app instalado.
+  // O preload roda em sandbox e não pode carregar test-mode.js, por isso o texto se repete aqui.
+  isTestMode: process.argv.includes('--vault3d-test-mode'),
+
   // Versão do aplicativo
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
 

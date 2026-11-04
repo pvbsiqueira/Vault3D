@@ -4,7 +4,7 @@ import { generateSTLThumbnail, extract3MFThumbnail, extract3MFCoverOptions, pars
 import { enrichFromMakerOnline } from './threemf-extras.js';
 import JSZip from './vendor/jszip.js';
 import { parseSTL } from './stl-parser.js';
-import { initAuth, getAuthenticatedUser } from './auth.js';
+import { initAuth, getAuthenticatedUser, isTestMode } from './auth.js';
 import { startUsageTracking } from './usage-tracker.js';
 import { openFoldersDB, getModelCacheKey, getCachedThumbnail, saveCachedThumbnail, clearThumbnailCache, pruneThumbnailCache, saveFolderToDB, removeFolderFromDB, clearAllFoldersFromDB, getAllFoldersFromDB } from './library-db.js';
 import { loadFavorites, saveFavorites, applyFavorites, addFileFavorite, removeFileFavorite, favoriteKeyOf } from './favorites.js';
@@ -712,13 +712,16 @@ function init() {
     // Restaurar biblioteca salva apenas quando usuário estiver autenticado
     checkAndRestoreSavedFolders();
 
-    // Estatísticas de uso: só abertura/fechamento do app, nenhum dado de arquivo
-    startUsageTracking(user);
+    // No modo de teste (teste de fumaça) nada fala com a internet ao abrir
+    if (!isTestMode()) {
+      // Estatísticas de uso: só abertura/fechamento do app, nenhum dado de arquivo
+      startUsageTracking(user);
 
-    // Pré-aquecer silenciosamente o cache da seção Em Alta em background
-    setTimeout(() => {
-      prefetchTrendingSilent();
-    }, 3500);
+      // Pré-aquecer silenciosamente o cache da seção Em Alta em background
+      setTimeout(() => {
+        prefetchTrendingSilent();
+      }, 3500);
+    }
   });
 
   // Resetar estado e visualização da biblioteca ao desconectar

@@ -9,7 +9,8 @@
     "dist": "electron-builder",
     "dist:win": "electron-builder --win",
     "vendor": "node scripts/build-vendor.mjs",
-    "test": "node --test \"tests/*.test.*\""
+    "test": "node --test \"tests/*.test.*\"",
+    "test:smoke": "node --test --test-concurrency=1 \"tests/smoke/*.smoke.mjs\""
   },
   "keywords": [
     "3d",
@@ -31,6 +32,7 @@
     "electron-builder": "^25.1.8",
     "esbuild": "^0.24.0",
     "jszip": "3.10.1",
+    "playwright-core": "^1.64.1",
     "three": "0.160.0"
   },
   "build": {
@@ -59,7 +61,7 @@
       "!dash/*",
       "!supabase/*",
       "!scripts/*",
-      "!tests/*"
+      "!tests{,/**/*}"
     ],
     "extraResources": [
       {
