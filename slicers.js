@@ -1,31 +1,32 @@
 /**
  * Vault3D · Fatiadores instalados (processo principal do Electron)
- * Detecta os fatiadores do Windows e guarda o fatiador padrão escolhido pelo usuário.
+ * Detecta os fatiadores instalados e guarda o padrão escolhido pelo usuário.
  */
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const { execFile } = require('child_process');
 
-// Fatiadores conhecidos. "dir" casa com o nome da pasta de instalação e "exe" com o executável.
-// "svg" marca os que importam SVG (Bambu Studio, PrusaSlicer e os derivados do Orca); Cura e SuperSlicer não importam.
+// "dir" e "exe" são usados no Windows; "macApps" lista nomes dos bundles no macOS.
+// "svg" marca os fatiadores que também importam SVG.
 const KNOWN_SLICERS = [
-  { id: 'bambu', name: 'Bambu Studio', svg: true, dir: /^bambu ?studio/i, exe: ['bambu-studio.exe'] },
-  { id: 'orca', name: 'OrcaSlicer', svg: true, dir: /^orca ?slicer/i, exe: ['orca-slicer.exe', 'OrcaSlicer.exe'] },
-  { id: 'prusa', name: 'PrusaSlicer', svg: true, dir: /^(prusa3d|prusaslicer)/i, exe: ['prusa-slicer.exe'] },
-  { id: 'cura', name: 'UltiMaker Cura', dir: /^(ulti ?maker )?cura/i, exe: ['UltiMaker-Cura.exe', 'Ultimaker-Cura.exe', 'Cura.exe'] },
-  { id: 'creality', name: 'Creality Print', svg: true, dir: /^creality/i, exe: ['CrealityPrint.exe', 'Creality Print.exe'] },
+  { id: 'bambu', name: 'Bambu Studio', svg: true, dir: /^bambu ?studio/i, exe: ['bambu-studio.exe'], macApps: ['Bambu Studio.app', 'BambuStudio.app'] },
+  { id: 'orca', name: 'OrcaSlicer', svg: true, dir: /^orca ?slicer/i, exe: ['orca-slicer.exe', 'OrcaSlicer.exe'], macApps: ['OrcaSlicer.app'] },
+  { id: 'prusa', name: 'PrusaSlicer', svg: true, dir: /^(prusa3d|prusaslicer)/i, exe: ['prusa-slicer.exe'], macApps: ['PrusaSlicer.app'] },
+  { id: 'cura', name: 'UltiMaker Cura', dir: /^(ulti ?maker )?cura/i, exe: ['UltiMaker-Cura.exe', 'Ultimaker-Cura.exe', 'Cura.exe'], macApps: ['UltiMaker Cura.app', 'Cura.app'] },
+  { id: 'creality', name: 'Creality Print', svg: true, dir: /^creality/i, exe: ['CrealityPrint.exe', 'Creality Print.exe'], macApps: ['Creality Print.app', 'CrealityPrint.app'] },
   // O AnycubicSlicerNext.exe é só um lançador sem ícone próprio: o logo fica nas imagens do programa
   { id: 'anycubic', name: 'Anycubic Slicer Next', svg: true, dir: /^anycubic ?slicer/i, exe: ['AnycubicSlicerNext.exe', 'anycubicslicernext.exe', 'AnycubicSlicer.exe'],
-    icons: ['resources/images/AnycubicSlicerNext_256px.png', 'resources/images/AnycubicSlicer_64.png', 'resources/images/AnycubicSlicer.ico'] },
-  { id: 'elegoo', name: 'ElegooSlicer', svg: true, dir: /^elegoo ?slicer/i, exe: ['elegoo-slicer.exe', 'ElegooSlicer.exe'] },
-  { id: 'flashforge', name: 'Orca-Flashforge', svg: true, dir: /^orca-flashforge/i, exe: ['orca-flashforge.exe', 'Orca-Flashforge.exe'] },
-  { id: 'snapmaker', name: 'Snapmaker Orca', svg: true, dir: /^snapmaker ?orca/i, exe: ['snapmaker-orca.exe', 'Snapmaker_Orca.exe', 'Snapmaker Orca.exe'] },
-  { id: 'qidi', name: 'QIDIStudio', svg: true, dir: /^qidi ?studio/i, exe: ['qidi-studio.exe', 'QIDIStudio.exe'] },
-  { id: 'superslicer', name: 'SuperSlicer', dir: /^superslicer/i, exe: ['superslicer.exe'] }
+    icons: ['resources/images/AnycubicSlicerNext_256px.png', 'resources/images/AnycubicSlicer_64.png', 'resources/images/AnycubicSlicer.ico'], macApps: ['AnycubicSlicerNext.app'] },
+  { id: 'elegoo', name: 'ElegooSlicer', svg: true, dir: /^elegoo ?slicer/i, exe: ['elegoo-slicer.exe', 'ElegooSlicer.exe'], macApps: ['ElegooSlicer.app'] },
+  { id: 'flashforge', name: 'Orca-Flashforge', svg: true, dir: /^orca-flashforge/i, exe: ['orca-flashforge.exe', 'Orca-Flashforge.exe'], macApps: ['Orca-Flashforge.app'] },
+  { id: 'snapmaker', name: 'Snapmaker Orca', svg: true, dir: /^snapmaker ?orca/i, exe: ['snapmaker-orca.exe', 'Snapmaker_Orca.exe', 'Snapmaker Orca.exe'], macApps: ['Snapmaker Orca.app'] },
+  { id: 'qidi', name: 'QIDIStudio', svg: true, dir: /^qidi ?studio/i, exe: ['qidi-studio.exe', 'QIDIStudio.exe'], macApps: ['QIDIStudio.app'] },
+  { id: 'superslicer', name: 'SuperSlicer', dir: /^superslicer/i, exe: ['superslicer.exe'], macApps: ['SuperSlicer.app'] }
 ];
 
 const SYSTEM_ID = 'system';
-const SYSTEM_ENTRY = { id: SYSTEM_ID, name: 'Padrão do Windows', exePath: null, custom: false };
+const SYSTEM_ENTRY = { id: SYSTEM_ID, name: 'Aplicativo padrão do sistema', exePath: null, custom: false };
 
 let prefsFile = null;
 let detectedCache = null;
@@ -116,6 +117,43 @@ function scanProgramFolders() {
   return found;
 }
 
+function scanMacApplications(roots = [path.join(os.homedir(), 'Applications'), '/Applications']) {
+  const found = {};
+  for (const root of roots) {
+    let entries = [];
+    try {
+      entries = fs.readdirSync(root, { withFileTypes: true }).filter((entry) => {
+        if (!entry.name.endsWith('.app')) return false;
+        try { return fs.statSync(path.join(root, entry.name)).isDirectory(); } catch (_) { return false; }
+      });
+    } catch (_) {
+      continue;
+    }
+    for (const def of KNOWN_SLICERS) {
+      if (found[def.id]) continue;
+      const names = (def.macApps || []).map((name) => name.toLowerCase());
+      const entry = entries.find((candidate) => names.includes(candidate.name.toLowerCase()));
+      if (entry) found[def.id] = path.join(root, entry.name);
+    }
+  }
+  return found;
+}
+
+function detectMacInstalled(roots) {
+  const found = scanMacApplications(roots);
+  return KNOWN_SLICERS
+    .filter((def) => found[def.id])
+    .map((def) => ({ id: def.id, name: def.name, exePath: found[def.id], custom: false, opensSvg: Boolean(def.svg) }));
+}
+
+function getLaunchCommand(slicerPath, targetPath, platform = process.platform) {
+  if (platform === 'darwin') {
+    return { command: 'open', args: ['-a', slicerPath, targetPath], cwd: undefined };
+  }
+  const pathApi = platform === 'win32' ? path.win32 : path;
+  return { command: slicerPath, args: [targetPath], cwd: pathApi.dirname(slicerPath) };
+}
+
 /** Lê as instalações registradas no Windows (pega fatiadores instalados fora de Arquivos de Programas) */
 function queryUninstallRegistry() {
   const keys = [
@@ -162,6 +200,10 @@ function findIconFile(def, exePath) {
 
 async function detectInstalled(force = false) {
   if (detectedCache && !force) return detectedCache;
+  if (process.platform === 'darwin') {
+    detectedCache = detectMacInstalled();
+    return detectedCache;
+  }
   if (process.platform !== 'win32') {
     detectedCache = [];
     return detectedCache;
@@ -246,8 +288,8 @@ function removeCustom(id) {
 
 /**
  * Decide em qual fatiador abrir: escolha explícita (menu da setinha) > padrão do usuário.
- * Retorna slicer null para usar o programa padrão do Windows.
- * SVG só abre num fatiador que importa SVG: o padrão do Windows abriria o navegador. Sem nenhum, reason 'no-svg-slicer'.
+ * Retorna slicer null para usar o programa padrão do sistema.
+ * SVG só abre num fatiador que importa SVG. Sem nenhum, reason 'no-svg-slicer'.
  */
 async function resolveSlicerFor(filePath, slicerId) {
   const listed = await listSlicers();
@@ -275,5 +317,7 @@ module.exports = {
   setPrefs,
   addCustom,
   removeCustom,
-  resolveSlicerFor
+  resolveSlicerFor,
+  detectMacInstalled,
+  getLaunchCommand
 };

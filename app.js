@@ -12,10 +12,13 @@ import { loadFavorites, saveFavorites, applyFavorites, addFileFavorite, removeFi
 import { initWhatsNew } from './whats-new.js';
 import { initFilamentStock, renderFilamentPage, setFilamentSearch, filamentStatusHtml, hasSpools } from './filament-stock.js';
 import { initSlicerPicker, isSlicerChoiceSupported, slicerSplitHtml, openSlicerMenu, getDefaultSlicerName, getSlicerState, onSlicersChanged, getSlicerNames, getLastSlicer, setLastSlicer, slicerIconHtml, refreshSlicerSettings, pickSvgSlicerId } from './slicer-picker.js';
+import { diskPathSeparator as diskPathSeparatorFor, joinDiskPath as joinDiskPathFor, dirOfDiskPath, basenameDiskPath } from './disk-paths.mjs';
 
 // Formatos de Modelo que o app lê das Pastas conectadas
 const MODEL_TYPES = ['stl', '3mf', 'svg'];
 const isModelExt = (ext) => MODEL_TYPES.includes(ext);
+const diskPathSeparator = () => diskPathSeparatorFor(window.electronAPI?.platform);
+const joinDiskPath = (root, subPath) => joinDiskPathFor(root, subPath, window.electronAPI?.platform);
 
 // Estado global da aplicação
 const state = {
@@ -296,7 +299,7 @@ function init() {
   // Monitorar atualizações automáticas no modo Desktop
   setupDesktopUpdater();
 
-  // Exclusão de arquivos (Lixeira do Windows) no modo Desktop
+  // Exclusão de arquivos (Lixeira do sistema) no modo Desktop
   setupTrashFeature();
 
   // Mover arquivos entre as pastas conectadas no modo Desktop
@@ -797,7 +800,7 @@ function setNavSection(section) {
 
 /**
  * Ponto de entrada ao clicar em "Adicionar Pasta"
- * Abre diretamente o seletor nativo de pasta do Windows
+ * Abre diretamente o seletor nativo de pasta do sistema
  */
 async function handleChooseFolder() {
   proceedWithDirectoryPicker();
@@ -825,7 +828,7 @@ async function proceedWithDirectoryPicker() {
             type: item.type,
             path: item.path,
             fullDiskPath: item.fullDiskPath,
-            fullFolderDirectory: scanRes.folderPath + '\\',
+            fullFolderDirectory: scanRes.folderPath + diskPathSeparator(),
             handle: null,
             parentHandle: null
           }));
@@ -1447,7 +1450,7 @@ async function checkAndRestoreSavedFolders() {
               type: item.type,
               path: item.path,
               fullDiskPath: item.fullDiskPath,
-              fullFolderDirectory: scanRes.folderPath + '\\',
+              fullFolderDirectory: scanRes.folderPath + diskPathSeparator(),
               handle: f.handle || null,
               parentHandle: null
             }));
@@ -1575,7 +1578,7 @@ async function reconnectAllSavedFolders() {
             type: item.type,
             path: item.path,
             fullDiskPath: item.fullDiskPath,
-            fullFolderDirectory: scanRes.folderPath + '\\',
+            fullFolderDirectory: scanRes.folderPath + diskPathSeparator(),
             handle: f.handle || null,
             parentHandle: null
           }));
@@ -1669,11 +1672,11 @@ async function addFilesToLibrary(files, folderName, dirHandle = null, persistToD
     if (scanned) {
       m.fullDiskPath = scanned;
     } else if (rootBase) {
-      let sub = (m.path || m.name).replace(/\//g, '\\');
-      if (sub.toLowerCase().startsWith(folderName.toLowerCase() + '\\')) {
+      let sub = (m.path || m.name).replace(/[\\/]/g, diskPathSeparator());
+      if (sub.toLowerCase().startsWith(folderName.toLowerCase() + diskPathSeparator())) {
         sub = sub.substring(folderName.length + 1);
       }
-      m.fullDiskPath = `${rootBase}\\${sub}`.replace(/\\\\+/g, '\\');
+      m.fullDiskPath = joinDiskPath(rootBase, sub);
     }
     if (m.fullDiskPath) m.fullFolderDirectory = dirOfDiskPath(m.fullDiskPath);
   });
@@ -1818,7 +1821,7 @@ async function refreshConnectedFolders() {
                 type: item.type,
                 path: item.path,
                 fullDiskPath: item.fullDiskPath,
-                fullFolderDirectory: resolvedRootPath + '\\',
+                fullFolderDirectory: resolvedRootPath + diskPathSeparator(),
                 handle: null,
                 parentHandle: null
               }));
@@ -1909,7 +1912,7 @@ async function refreshConnectedFolders() {
             isDuplicate: false,
             duplicatesCount: 0,
             duplicateOrigins: '',
-            fullDiskPath: item.fullDiskPath || (rootBase ? `${rootBase}\\${sub}`.replace(/\\\\+/g, '\\') : null)
+            fullDiskPath: item.fullDiskPath || (rootBase ? joinDiskPath(rootBase, sub) : null)
           };
           newModel.fullFolderDirectory = newModel.fullDiskPath ? dirOfDiskPath(newModel.fullDiskPath) : null;
           if (applyFavorites(savedFavs, [newModel])) saveFavorites(savedFavs);
@@ -3100,11 +3103,11 @@ function setupEditCardFeature() {
 }
 
 // ==========================================
-// Exclusão de arquivos (Lixeira do Windows)
+// Exclusão de arquivos (Lixeira do sistema)
 // ==========================================
 
 /**
- * A exclusão só existe no app desktop: os arquivos vão para a Lixeira do Windows
+ * A exclusão só existe no app desktop: os arquivos vão para a Lixeira do sistema
  * e podem ser restaurados por lá se a pessoa mudar de ideia.
  */
 function isTrashSupported() {
@@ -3132,8 +3135,8 @@ function askTrashConfirmation(models, { title, description, confirmLabel } = {})
   if (titleEl) titleEl.textContent = title || (count === 1 ? 'Mover arquivo para a Lixeira?' : `Mover ${count} arquivos para a Lixeira?`);
   if (trashConfirmDesc) {
     trashConfirmDesc.textContent = description || (count === 1
-      ? 'O arquivo sai da pasta e vai para a Lixeira do Windows. Dá para restaurar por lá se precisar.'
-      : 'Os arquivos saem da pasta e vão para a Lixeira do Windows. Dá para restaurar por lá se precisar.');
+      ? 'O arquivo sai da pasta e vai para a Lixeira. Dá para restaurar por lá se precisar.'
+      : 'Os arquivos saem da pasta e vão para a Lixeira. Dá para restaurar por lá se precisar.');
   }
 
   // Lista curta, sem rolagem: até 4 nomes e um resumo do restante
@@ -3315,7 +3318,7 @@ async function keepOnlyThisCopy(model) {
   const folder = getModelParentFolderInfo(model);
   await trashModels(others, {
     title: others.length === 1 ? 'Apagar a outra cópia?' : `Apagar as outras ${others.length} cópias?`,
-    description: `"${model.name}"${folder.name ? ` em ${folder.name}` : ''} fica onde está. ${others.length === 1 ? 'A cópia abaixo vai' : 'As cópias abaixo vão'} para a Lixeira do Windows.`,
+    description: `"${model.name}"${folder.name ? ` em ${folder.name}` : ''} fica onde está. ${others.length === 1 ? 'A cópia abaixo vai' : 'As cópias abaixo vão'} para a Lixeira.`,
     confirmLabel: others.length === 1 ? 'Apagar cópia' : 'Apagar cópias'
   });
 }
@@ -3402,19 +3405,8 @@ function getModelRelativeDir(model) {
 }
 
 /**
- * Pasta (com a barra no fim) de um caminho completo do Windows
+ * Pasta (com a barra no fim) de um caminho completo do sistema
  */
-function dirOfDiskPath(fullPath) {
-  const p = String(fullPath || '');
-  const i = Math.max(p.lastIndexOf('\\'), p.lastIndexOf('/'));
-  return i === -1 ? '' : fullPath.substring(0, i + 1);
-}
-
-function joinDiskPath(root, subPath) {
-  const base = root.replace(/[\\/]+$/, '');
-  return subPath ? `${base}\\${subPath.replace(/\//g, '\\')}` : base;
-}
-
 function describeMoveTarget(folderId, subPath) {
   const folder = state.folders.find(f => f.id === folderId);
   if (!folder) return '';
@@ -3453,7 +3445,7 @@ function applyModelMove(model, folder, subPath, res) {
   model.name = newName;
   model.path = subPath ? `${subPath}/${newName}` : newName;
   model.fullDiskPath = res.newPath;
-  model.fullFolderDirectory = res.newPath.substring(0, res.newPath.lastIndexOf('\\') + 1);
+  model.fullFolderDirectory = dirOfDiskPath(res.newPath);
   if (res.size) model.size = res.size;
   if (res.lastModified) model.lastModified = res.lastModified;
   // O proxy de leitura guarda o caminho antigo: trocar pelo novo
@@ -4082,7 +4074,7 @@ function setupMoveFeature() {
 
 /**
  * Configura o comportamento nativo de Arrastar e Soltar (Drag & Drop)
- * permitindo arrastar o arquivo 3D do navegador para a janela do fatiador ou Windows Explorer
+ * permitindo arrastar o arquivo 3D do navegador para a janela do fatiador ou do gerenciador de arquivos
  */
 function setupModelDraggable(element, getModelFn) {
   if (!element) return;
@@ -4121,7 +4113,7 @@ function setupModelDraggable(element, getModelFn) {
       }
       const blobUrl = model._blobUrl;
 
-      // 1. DownloadURL nativo do Chromium para arrastar para a janela do fatiador ou Windows Explorer
+      // 1. DownloadURL nativo do Chromium para arrastar para a janela do fatiador ou do gerenciador de arquivos
       if (blobUrl) {
         e.dataTransfer.setData('DownloadURL', `application/octet-stream:${fileName}:${blobUrl}`);
       }
@@ -4212,7 +4204,7 @@ function getSlicerButtonConfig(model = null) {
     };
   }
   return {
-    title: 'Copiar caminho para colar no fatiador ou Windows Explorer',
+    title: 'Copiar caminho para colar no fatiador ou gerenciador de arquivos',
     text: 'Copiar caminho',
     icon: `
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -4288,7 +4280,7 @@ async function resolveSlicerTarget(targetModel) {
   if (!targetModel) return { targetModel: null, fullPath: null };
 
   const folderName = targetModel.folderName || '';
-  const relPath = (targetModel.path || targetModel.name).replace(/\//g, '\\');
+  const relPath = (targetModel.path || targetModel.name).replace(/[\\/]/g, diskPathSeparator());
 
   let fullPath = targetModel.fullDiskPath;
   if (!fullPath && window.electronAPI && typeof window.electronAPI.resolveDiskPath === 'function') {
@@ -4308,12 +4300,12 @@ async function resolveSlicerTarget(targetModel) {
   if (!fullPath && knownRoot) {
     const rootBase = knownRoot;
     let sub = relPath;
-    if (sub.toLowerCase().startsWith(folderName.toLowerCase() + '\\')) {
+    if (sub.toLowerCase().startsWith(folderName.toLowerCase() + diskPathSeparator())) {
       sub = sub.substring(folderName.length + 1);
     }
-    fullPath = `${rootBase}\\${sub}`.replace(/\\\\+/g, '\\');
+    fullPath = joinDiskPath(rootBase, sub);
     targetModel.fullDiskPath = fullPath;
-    targetModel.fullFolderDirectory = rootBase + '\\';
+    targetModel.fullFolderDirectory = String(rootBase).replace(/[\\/]*$/, diskPathSeparator());
   }
 
   return { targetModel, fullPath };
@@ -4428,7 +4420,8 @@ async function openModelInSlicer(model, buttonEl, slicerId) {
       }, 2200);
     }
 
-    showToast(`📋 Caminho copiado! Pressione Ctrl+V no seu fatiador ou Windows Explorer.`, 'success');
+    const pasteShortcut = window.electronAPI && window.electronAPI.platform === 'darwin' ? '⌘V' : 'Ctrl+V';
+    showToast(`📋 Caminho copiado! Pressione ${pasteShortcut} no seu fatiador ou gerenciador de arquivos.`, 'success');
 
   } catch (err) {
     console.error('Erro ao abrir ou copiar modelo:', err);
@@ -6091,13 +6084,13 @@ function updateFolderTooltip(folderName, diskPath) {
 }
 
 /**
- * Formata e exibe o caminho completo do arquivo desde o drive C:\
+ * Formata e exibe o caminho completo do arquivo no disco
  */
 async function updateModalFilePath(model) {
   if (!model) return;
 
   const folderName = model.folderName || '';
-  const relPath = (model.path || model.name).replace(/\//g, '\\');
+  const relPath = (model.path || model.name).replace(/[\\/]/g, diskPathSeparator());
 
   // 1. Se o modelo já possui o caminho completo no disco cacheado
   if (model.fullDiskPath && model.fullFolderDirectory) {
@@ -6111,15 +6104,14 @@ async function updateModalFilePath(model) {
   if (state.folderDiskPaths[folderName]) {
     const rootDir = state.folderDiskPaths[folderName];
     let sub = relPath;
-    if (sub.toLowerCase().startsWith(folderName.toLowerCase() + '\\')) {
+    if (sub.toLowerCase().startsWith(folderName.toLowerCase() + diskPathSeparator())) {
       sub = sub.substring(folderName.length + 1);
     } else if (sub.toLowerCase() === folderName.toLowerCase()) {
       sub = '';
     }
-    const combined = sub ? `${rootDir}\\${sub}` : rootDir;
-    const lastSlash = combined.lastIndexOf('\\');
-    const folderDir = lastSlash !== -1 ? combined.substring(0, lastSlash + 1) : `${rootDir}\\`;
-    const fName = lastSlash !== -1 ? combined.substring(lastSlash + 1) : model.name;
+    const combined = joinDiskPath(rootDir, sub);
+    const folderDir = dirOfDiskPath(combined) || `${rootDir}${diskPathSeparator()}`;
+    const fName = basenameDiskPath(combined) || model.name;
 
     model.fullDiskPath = combined;
     model.fullFolderDirectory = folderDir;
@@ -6132,11 +6124,11 @@ async function updateModalFilePath(model) {
 
   // 3. Pasta sem caminho conhecido: mostra o caminho dentro da biblioteca e tenta localizar no disco
   let sub = relPath;
-  if (sub.toLowerCase().startsWith(folderName.toLowerCase() + '\\')) {
+  if (sub.toLowerCase().startsWith(folderName.toLowerCase() + diskPathSeparator())) {
     sub = sub.substring(folderName.length + 1);
   }
-  const lastSlash = sub.lastIndexOf('\\');
-  const libraryDir = `${folderName}\\${lastSlash !== -1 ? sub.substring(0, lastSlash + 1) : ''}`;
+  const lastSlash = sub.lastIndexOf(diskPathSeparator());
+  const libraryDir = `${folderName}${diskPathSeparator()}${lastSlash !== -1 ? sub.substring(0, lastSlash + 1) : ''}`;
   if (modalPathFolder) modalPathFolder.textContent = libraryDir;
   if (modalPathName) modalPathName.textContent = model.name;
   if (modalFileName) modalFileName.title = `${libraryDir}${model.name}`;

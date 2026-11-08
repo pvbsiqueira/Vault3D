@@ -3,6 +3,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 // Expor API segura para a aplicação renderizada (app.js)
 contextBridge.exposeInMainWorld('electronAPI', {
   isElectron: true,
+  platform: process.platform,
 
   // Modo de teste (teste de fumaça): o processo principal só passa este argumento fora do app instalado.
   // O preload roda em sandbox e não pode carregar test-mode.js, por isso o texto se repete aqui.
@@ -23,10 +24,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Leitura nativa de fatia/chunk de arquivo no disco
   readFileChunk: (filePath, start, length) => ipcRenderer.invoke('read-file-chunk', { filePath, start, length }),
 
-  // Diálogo nativo de seleção de pasta no Windows
+  // Diálogo nativo de seleção de pasta
   selectFolderDialog: (defaultPath) => ipcRenderer.invoke('select-folder-dialog', defaultPath),
 
-  // Abrir pasta ou arquivo no Windows Explorer
+  // Abrir pasta ou arquivo no gerenciador de arquivos do sistema
   openInExplorer: (filePath) => ipcRenderer.invoke('open-in-explorer', filePath),
 
   // Abrir arquivo 3D diretamente no Fatiador associado (Bambu Studio, OrcaSlicer, Cura, etc.)
@@ -39,17 +40,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
   addCustomSlicer: () => ipcRenderer.invoke('add-custom-slicer'),
   removeCustomSlicer: (id) => ipcRenderer.invoke('remove-custom-slicer', id),
 
-  // Renomear arquivo diretamente no disco (Windows)
+  // Renomear arquivo diretamente no disco
   renameFile: (oldPath, newName) => ipcRenderer.invoke('rename-file', { oldPath, newName }),
 
-  // Mover arquivos para a Lixeira do Windows
+  // Mover arquivos para a Lixeira do sistema
   trashFiles: (filePaths) => ipcRenderer.invoke('trash-files', filePaths),
   hashFile: (filePath) => ipcRenderer.invoke('hash-file', filePath),
 
   // Mover arquivos 3D entre as pastas conectadas
   moveFiles: (items, onConflict) => ipcRenderer.invoke('move-files', { items, onConflict }),
 
-  // Cópia nativa direta para a Área de Transferência do Windows
+  // Cópia nativa direta para a Área de Transferência do sistema
   copyToClipboard: (text) => ipcRenderer.invoke('copy-to-clipboard', text),
 
   // Consulta à API pública do MakerOnline (detalhes do 3MF) feita pelo processo principal
