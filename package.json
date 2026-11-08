@@ -8,6 +8,7 @@
     "pack": "electron-builder --dir",
     "dist": "electron-builder",
     "dist:win": "electron-builder --win",
+    "dist:mac": "electron-builder --mac dmg zip --x64 --arm64",
     "vendor": "node scripts/build-vendor.mjs",
     "test": "node --test \"tests/*.test.*\"",
     "test:smoke": "node --test --test-concurrency=1 \"tests/smoke/*.smoke.mjs\""
@@ -79,6 +80,28 @@
           ]
         }
       ]
+    },
+    "mac": {
+      "icon": "build/icon.icns",
+      "artifactName": "Vault3D-${version}-mac-${arch}.${ext}",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "identity": null,
+      "notarize": false
     },
     "nsis": {
       "oneClick": false,

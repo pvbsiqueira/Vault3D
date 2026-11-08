@@ -20,7 +20,7 @@ slicers.init(app.getPath('userData'));
 
 const PROTOCOL_PREFIX = 'vault3d';
 
-// Registrar como handler padrão do protocolo vault3d:// (deep link). No modo de teste não mexe no Windows.
+// Registrar como handler padrão do protocolo vault3d:// (deep link). No modo de teste não altera o sistema.
 if (!testMode) {
   try {
     if (process.defaultApp) {
@@ -35,7 +35,8 @@ if (!testMode) {
   }
 }
 
-// Configurações do Auto-Updater
+// O auto-updater de macOS exige atualização assinada pela mesma identidade.
+// A versão sem assinatura usa download manual pelo GitHub Releases.
 autoUpdater.autoDownload = true;
 autoUpdater.autoInstallOnAppQuit = true;
 autoUpdater.allowPrerelease = false;
@@ -67,7 +68,7 @@ function createWindow() {
     }
   });
 
-  // Ocultar barra de menu padrão do Windows para visual limpo estilo app moderno
+  // Mantém uma janela limpa nos sistemas que exibem barra de menu na própria janela.
   mainWindow.setMenuBarVisibility(false);
 
   // Só as permissões que o app usa (copiar texto, tela cheia do visualizador e pastas no modo web)
@@ -91,7 +92,7 @@ function createWindow() {
     mainWindow.show();
 
     // Em ambiente de produção empacotado, verificar atualizações automaticamente na inicialização
-    if (app.isPackaged) {
+    if (app.isPackaged && process.platform !== 'darwin') {
       setTimeout(() => {
         autoUpdater.checkForUpdatesAndNotify().catch((err) => {
           console.warn('Verificação de atualização silenciosa:', err ? err.message : err);
@@ -204,6 +205,9 @@ ipcMain.handle('get-app-version', () => {
 
 // 2. Forçar verificação de atualizações
 ipcMain.handle('check-for-updates', async () => {
+  if (process.platform === 'darwin') {
+    return { success: false, message: 'No macOS, baixe a versão mais recente manualmente pelo GitHub Releases.' };
+  }
   if (!app.isPackaged) {
     return { success: false, message: 'Auto-update desativado em ambiente de desenvolvimento local.' };
   }
@@ -217,11 +221,11 @@ ipcMain.handle('check-for-updates', async () => {
 
 // 3. Reiniciar o app e aplicar a atualização baixada
 ipcMain.handle('restart-and-install-update', () => {
-  // Instalação silenciosa (sem o assistente do Windows) e reabre o app ao terminar
+  // Instala a atualização e reabre o app ao terminar.
   autoUpdater.quitAndInstall(true, true);
 });
 
-// 4. Abrir no Windows Explorer
+// 4. Abrir no gerenciador de arquivos do sistema
 ipcMain.handle('open-in-explorer', async (event, targetPath) => {
   if (typeof targetPath !== 'string' || !path.isAbsolute(targetPath)) return false;
   try {
@@ -235,27 +239,36 @@ ipcMain.handle('open-in-explorer', async (event, targetPath) => {
       return true;
     }
   } catch (e) {
-    console.warn('Erro ao abrir no Explorer:', e);
+    console.warn('Erro ao abrir no gerenciador de arquivos:', e);
   }
   return false;
 });
 
-// Função auxiliar interna para resolução de caminhos de pastas no disco do Windows
+// Função auxiliar interna para resolução de caminhos de pastas no disco.
 function resolveDiskPathInternal(folderName, relPath = '') {
   if (!folderName) return { success: false };
 
   const cleanRel = (relPath || '').replace(/\//g, path.sep);
   const home = app.getPath('home');
 
-  // Pastas candidatas comuns no Windows
-  const candidateRoots = [
-    path.join(home, 'Downloads', folderName),
-    path.join(home, 'Desktop', folderName),
-    path.join(home, 'Documents', folderName),
-    path.join(home, '3D Objects', folderName),
-    path.join(home, folderName),
-    ...['C', 'D', 'E', 'F', 'G'].map(letter => `${letter}:\\${folderName}`)
-  ];
+  const candidateRoots = process.platform === 'darwin'
+    ? [
+        path.join(home, 'Downloads', folderName),
+        path.join(home, 'Desktop', folderName),
+        path.join(home, 'Documents', folderName),
+        path.join(home, '3D Objects', folderName),
+        path.join(home, folderName),
+        path.join('/Volumes', folderName),
+        path.join('/Users/Shared', folderName)
+      ]
+    : [
+        path.join(home, 'Downloads', folderName),
+        path.join(home, 'Desktop', folderName),
+        path.join(home, 'Documents', folderName),
+        path.join(home, '3D Objects', folderName),
+        path.join(home, folderName),
+        ...['C', 'D', 'E', 'F', 'G'].map(letter => `${letter}:\\${folderName}`)
+      ];
 
   // Só aceita o palpite quando existe exatamente uma pasta com esse nome (e o arquivo está nela):
   // com duas pastas iguais em lugares diferentes não dá para saber qual é a certa.
@@ -312,7 +325,7 @@ async function scanDirectoryDiskRecursive(dirPath, rootPath = dirPath) {
   return results;
 }
 
-// 5. Resolução nativa de caminhos no disco do Windows
+// 5. Resolução nativa de caminhos no disco
 ipcMain.handle('resolve-disk-path', async (event, { folderName, relPath }) => {
   return resolveDiskPathInternal(folderName, relPath);
 });
@@ -378,7 +391,7 @@ ipcMain.handle('read-file-chunk', async (event, { filePath, start, length } = {}
   }
 });
 
-// 5.4. Diálogo nativo do Windows para seleção de pasta
+// 5.4. Diálogo nativo para seleção de pasta
 ipcMain.handle('select-folder-dialog', async (event, defaultPath) => {
   const result = await dialog.showOpenDialog(mainWindow, {
     title: 'Selecionar Pasta de Modelos 3D',
@@ -397,7 +410,7 @@ ipcMain.handle('select-folder-dialog', async (event, defaultPath) => {
 });
 
 // 6. Abrir arquivo 3D no Fatiador: o escolhido no menu do card ou o padrão do usuário.
-// Sem fatiador escolhido, usa o programa associado pelo Windows (comportamento original).
+// Sem fatiador escolhido, usa o programa associado pelo sistema.
 ipcMain.handle('open-in-slicer', async (event, targetPath, slicerId) => {
   // Só arquivos 3D: assim o "abrir com o programa padrão" nunca executa outro tipo de arquivo
   if (!guards.isModelFilePath(targetPath)) return { success: false, message: 'Apenas arquivos STL, 3MF e SVG podem ser abertos no fatiador' };
@@ -412,20 +425,21 @@ ipcMain.handle('open-in-slicer', async (event, targetPath, slicerId) => {
     }
     if (slicer && slicer.exePath) {
       try {
-        const child = spawn(slicer.exePath, [targetPath], {
+        const launch = slicers.getLaunchCommand(slicer.exePath, targetPath);
+        const child = spawn(launch.command, launch.args, {
           detached: true,
           stdio: 'ignore',
-          cwd: path.dirname(slicer.exePath),
+          cwd: launch.cwd,
           windowsHide: false
         });
         child.on('error', (err) => console.warn('Erro ao iniciar o fatiador:', err));
         child.unref();
         return { success: true, slicerId: slicer.id, slicerName: slicer.name, reason };
       } catch (err) {
-        console.warn('Falha ao iniciar o fatiador escolhido, usando o padrão do Windows:', err);
+        console.warn('Falha ao iniciar o fatiador escolhido, usando o padrão do sistema:', err);
       }
     }
-    // O programa padrão do Windows para .svg é o navegador ou um editor, nunca um fatiador
+    // O programa padrão do sistema para .svg pode ser navegador ou editor, nunca um fatiador.
     if (isSvg) return { success: false, message: 'Não foi possível abrir o SVG no fatiador' };
     const errorMsg = await shell.openPath(targetPath);
     if (errorMsg) {
@@ -486,8 +500,8 @@ ipcMain.handle('set-slicer-prefs', async (event, prefs) => {
 ipcMain.handle('add-custom-slicer', async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
     title: 'Escolha o programa do fatiador',
-    properties: ['openFile'],
-    filters: [{ name: 'Programas', extensions: ['exe'] }]
+    properties: process.platform === 'darwin' ? ['openFile', 'openDirectory'] : ['openFile'],
+    ...(process.platform === 'darwin' ? {} : { filters: [{ name: 'Programas', extensions: ['exe'] }] })
   });
   if (result.canceled || !result.filePaths || !result.filePaths[0]) {
     return { success: false, canceled: true };
@@ -501,7 +515,7 @@ ipcMain.handle('remove-custom-slicer', async (event, id) => {
   return { success: true, ...(await listSlicersWithIcons()) };
 });
 
-// 7. Renomear arquivo diretamente no disco (Windows)
+// 7. Renomear arquivo diretamente no disco
 ipcMain.handle('rename-file', async (event, { oldPath, newName } = {}) => {
   if (!guards.isModelFilePath(oldPath) || !guards.isValidModelFileName(newName)) {
     return { success: false, message: 'Nome inválido: use só letras, números e a extensão .stl, .3mf ou .svg' };
@@ -512,8 +526,18 @@ ipcMain.handle('rename-file', async (event, { oldPath, newName } = {}) => {
   try {
     const dir = path.dirname(oldPath);
     const newPath = path.join(dir, newName);
-    // Mudar só maiúsculas/minúsculas é permitido (no Windows o "existe" seria o próprio arquivo)
-    if (fs.existsSync(newPath) && newPath.toLowerCase() !== oldPath.toLowerCase()) {
+    // No Windows nomes não diferenciam maiúsculas/minúsculas; em outros sistemas comparamos exatamente.
+    let samePath = process.platform === 'win32'
+      ? newPath.toLowerCase() === oldPath.toLowerCase()
+      : newPath === oldPath;
+    if (!samePath && fs.existsSync(newPath)) {
+      try {
+        samePath = fs.realpathSync(newPath) === fs.realpathSync(oldPath);
+      } catch (_) {
+        // A verificação abaixo continua tratando o destino como outro arquivo.
+      }
+    }
+    if (fs.existsSync(newPath) && !samePath) {
       return { success: false, message: 'Já existe um arquivo com esse nome nesta pasta' };
     }
     await fs.promises.rename(oldPath, newPath);
@@ -535,7 +559,7 @@ ipcMain.handle('hash-file', async (event, filePath) => {
   });
 });
 
-// 7.1 Mover arquivos 3D para a Lixeira do Windows (pode ser desfeito pela própria Lixeira)
+// 7.1 Mover arquivos 3D para a Lixeira do sistema (pode ser desfeito pela própria Lixeira)
 ipcMain.handle('trash-files', async (event, filePaths) => {
   const list = Array.isArray(filePaths) ? filePaths : [];
   const results = [];
@@ -609,7 +633,10 @@ ipcMain.handle('move-files', async (event, { items, onConflict } = {}) => {
       await fs.promises.mkdir(toDir, { recursive: true });
       let newName = wanted;
       let to = path.join(toDir, newName);
-      if (to.toLowerCase() === from.toLowerCase()) {
+      const samePath = process.platform === 'win32'
+        ? to.toLowerCase() === from.toLowerCase()
+        : to === from;
+      if (samePath) {
         result.message = 'O arquivo já está nessa pasta';
         continue;
       }
@@ -647,7 +674,7 @@ ipcMain.handle('move-files', async (event, { items, onConflict } = {}) => {
   return results;
 });
 
-// 8. Cópia direta para a Área de Transferência nativa do Windows
+// 8. Cópia direta para a Área de Transferência nativa
 ipcMain.handle('copy-to-clipboard', (event, text) => {
   if (typeof text === 'string') {
     clipboard.writeText(text);

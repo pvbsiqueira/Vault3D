@@ -14,7 +14,7 @@ const slicerState = {
   loaded: false,
   slicers: [],
   defaultId: 'system',
-  systemName: 'Padrão do Windows'
+  systemName: 'Aplicativo padrão do sistema'
 };
 
 const listeners = new Set();
@@ -175,7 +175,7 @@ function closeSlicerMenu() {
  * @param {HTMLElement} anchor   a setinha clicada
  * @param {object} opts
  *   onPick: (slicerId) => void               abre o arquivo no fatiador escolhido
- *   svgOnly: true                            arquivo SVG: só fatiadores que importam SVG, sem o padrão do Windows
+ *   svgOnly: true                            arquivo SVG: só fatiadores que importam SVG, sem o aplicativo padrão
  */
 export function openSlicerMenu(anchor, { onPick, svgOnly = false } = {}) {
   if (menuEl && menuEl.dataset.anchorId === anchor.dataset.slicerMenuId) {
@@ -266,11 +266,11 @@ function renderSettingsList() {
     const selected = s.id === slicerState.defaultId;
     return `
       <li class="slicer-row ${selected ? 'is-selected' : ''}" data-id="${escapeHtml(s.id)}" role="radio" aria-checked="${selected}" tabindex="0"
-          title="${escapeHtml(s.system ? 'Usa o programa que o Windows associa a arquivos .stl e .3mf (arquivos .svg sempre abrem num fatiador)' : s.exePath || '')}">
+          title="${escapeHtml(s.system ? 'Usa o aplicativo associado pelo sistema a arquivos .stl e .3mf (arquivos .svg sempre abrem num fatiador)' : s.exePath || '')}">
         <span class="slicer-row-radio" aria-hidden="true">${selected ? CHECK_ICON : ''}</span>
         ${slicerIconHtml(s.iconUrl, 18)}
         <span class="slicer-row-name">${escapeHtml(s.name)}</span>
-        ${s.system ? '<span class="slicer-row-tag">programa associado no Windows</span>' : ''}
+        ${s.system ? '<span class="slicer-row-tag">aplicativo associado no sistema</span>' : ''}
         ${s.custom ? `<button type="button" class="slicer-remove" data-id="${escapeHtml(s.id)}" title="Remover da lista" aria-label="Remover ${escapeHtml(s.name)}">&times;</button>` : ''}
       </li>`;
   }).join('');

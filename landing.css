@@ -79,6 +79,8 @@ p { margin: 0; }
 .btn svg { width: 18px; height: 18px; flex: none; }
 .btn-primary { background: var(--accent); color: var(--on-accent); box-shadow: 0 8px 30px -8px rgba(34, 211, 238, .55); }
 .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 14px 40px -10px rgba(34, 211, 238, .75); }
+.btn-outline { border-color: var(--line-strong); color: var(--text); background: rgba(14, 21, 30, .72); }
+.btn-outline:hover { transform: translateY(-2px); border-color: var(--accent); }
 .btn-sm { padding: 9px 18px; font-size: .9rem; }
 
 /* ---------- Miolo: texto + visualizador ---------- */

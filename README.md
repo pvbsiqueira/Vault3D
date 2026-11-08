@@ -1,6 +1,6 @@
 # 🧊 Vault3D - Gerenciador de arquivos 3D (STL e 3MF)
 
-Aplicativo para Windows que organiza, inspeciona e visualiza arquivos de impressão 3D (**STL** e **3MF**) direto do computador, sem abrir o fatiador.
+Aplicativo desktop para Windows e macOS que organiza, inspeciona e visualiza arquivos de impressão 3D (**STL**, **3MF** e **SVG**) direto do computador, sem abrir o fatiador.
 
 ---
 
@@ -10,7 +10,7 @@ Aplicativo para Windows que organiza, inspeciona e visualiza arquivos de impress
 - **3MF com várias mesas**: miniatura de cada mesa, tempo e gramas de filamento, cores, autor, licença e origem (MakerWorld e MakerOnline).
 - **Visualizador 3D** (Three.js) com órbita, zoom e várias peças ao mesmo tempo.
 - **Abrir no fatiador**: detecta os fatiadores instalados, lembra o último usado em cada arquivo.
-- **Organização**: favoritos, projetos, renomear, mover entre pastas, duplicados e Lixeira do Windows.
+- **Organização**: favoritos, renomear, mover entre pastas, duplicados e Lixeira do sistema.
 - **Filamentos**: cadastro dos carretéis (marca, material, cor e quanto resta) e aviso no 3MF se você tem o material e a cor.
 - **Novidades**: janela com o que mudou em cada versão (textos em `changelog.js`).
 - **Em Alta**: modelos mais baixados do MakerWorld e do MakerOnline.
@@ -21,9 +21,10 @@ Aplicativo para Windows que organiza, inspeciona e visualiza arquivos de impress
 ## 🚀 Como executar em desenvolvimento
 
 1. `npm install`
-2. `npm start` (ou dê um duplo clique em **iniciar-desktop.bat**)
+2. `npm start` (no Windows, também pode dar um duplo clique em **iniciar-desktop.bat**)
+3. Para empacotar no macOS: `npm run dist:mac` (gera DMG e ZIP unsigned para Intel e Apple Silicon)
 
-Mudanças em `main.js` ou `preload.js` pedem fechar e abrir o app de novo. Mudanças só na tela atualizam com `Ctrl+R`.
+Mudanças em `main.js` ou `preload.js` pedem fechar e abrir o app de novo. Mudanças só na tela atualizam com `Ctrl+R` no Windows ou `⌘R` no macOS.
 
 ### Testes
 
@@ -37,13 +38,15 @@ Three.js, JSZip e o cliente do Supabase ficam empacotados em `vendor/`, para o a
 
 ## 📦 Versões
 
-Um tag `vX.Y.Z` na `main` dispara o workflow **Build & Release Desktop App**, que gera o instalador `Vault3D-Setup-X.Y.Z.exe` e o `latest.yml` usados pela atualização automática.
+Uma tag `vX.Y.Z` na `main` dispara o workflow **Build & Release Desktop App**. A release inclui o instalador Windows (`.exe`) e builds macOS (`.dmg` e `.zip`) para Intel e Apple Silicon. No Windows, o app atualiza automaticamente pelo GitHub Releases. Os builds macOS são unsigned e sem notarização; o usuário precisa permitir a abertura em Privacidade e Segurança e instalar novas versões manualmente.
+
+No macOS, depois da primeira tentativa de abrir um build baixado, acesse **Ajustes do Sistema → Privacidade e Segurança → Abrir Mesmo Assim**. Baixe builds apenas das releases oficiais do Vault3D.
 
 ---
 
 ## 🛠️ Tecnologias
 
-- **Electron** (app Desktop para Windows)
+- **Electron** (app Desktop para Windows e macOS)
 - **Three.js** (renderização 3D)
 - **JSZip** (leitura dos pacotes 3MF)
 - **Supabase** (login por e-mail)
